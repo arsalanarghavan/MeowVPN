@@ -1,0 +1,71 @@
+# Dependencies
+node_modules/
+vendor/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build outputs
+dist/
+build/
+*.log
+
+# Docker
+docker-compose.override.yml
+
+# Database
+*.sqlite
+*.sqlite-journal
+
+# SSL Certificates
+*.pem
+*.key
+*.crt
+ssl/
+
+# Backups
+backups/
+*.backup
+
+# Laravel
+storage/*.key
+storage/logs/*
+!storage/logs/.gitkeep
+storage/framework/cache/*
+!storage/framework/cache/.gitkeep
+storage/framework/sessions/*
+!storage/framework/sessions/.gitkeep
+storage/framework/views/*
+!storage/framework/views/.gitkeep
+bootstrap/cache/*
+!bootstrap/cache/.gitkeep
+
+# Frontend
+frontend/dist/
+frontend/.next/
+frontend/.vite/
+
+# Python
+*.egg-info/
+.venv/
+venv/
+ENV/
+

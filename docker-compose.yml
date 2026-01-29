@@ -1,0 +1,215 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: meowvpn_postgres
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-meowvpn}
+      POSTGRES_USER: ${DB_USERNAME:-meowvpn}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    networks:
+      - meowvpn_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-meowvpn}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: meowvpn_redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-changeme}
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    networks:
+      - meowvpn_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-changeme}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  laravel:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: meowvpn_laravel
+    working_dir: /var/www/html
+    volumes:
+      - ./backend:/var/www/html
+      - laravel_storage:/var/www/html/storage
+      - laravel_cache:/var/www/html/bootstrap/cache
+    environment:
+      - APP_ENV=${APP_ENV:-production}
+      - APP_DEBUG=${APP_DEBUG:-false}
+      - APP_URL=${APP_URL:-http://localhost}
+      - DB_CONNECTION=pgsql
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_DATABASE=${DB_DATABASE:-meowvpn}
+      - DB_USERNAME=${DB_USERNAME:-meowvpn}
+      - DB_PASSWORD=${DB_PASSWORD:-changeme}
+      - REDIS_HOST=redis
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-changeme}
+      - REDIS_PORT=6379
+      - CACHE_DRIVER=redis
+      - SESSION_DRIVER=redis
+      - QUEUE_CONNECTION=redis
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - ZIBAL_MERCHANT_ID=${ZIBAL_MERCHANT_ID:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - meowvpn_network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    command: php artisan serve --host=0.0.0.0 --port=8000
+    restart: unless-stopped
+
+  horizon:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: meowvpn_horizon
+    working_dir: /var/www/html
+    volumes:
+      - ./backend:/var/www/html
+      - laravel_storage:/var/www/html/storage
+      - laravel_cache:/var/www/html/bootstrap/cache
+    environment:
+      - APP_ENV=${APP_ENV:-production}
+      - DB_CONNECTION=pgsql
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_DATABASE=${DB_DATABASE:-meowvpn}
+      - DB_USERNAME=${DB_USERNAME:-meowvpn}
+      - DB_PASSWORD=${DB_PASSWORD:-changeme}
+      - REDIS_HOST=redis
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-changeme}
+      - REDIS_PORT=6379
+    depends_on:
+      laravel:
+        condition: service_healthy
+    networks:
+      - meowvpn_network
+    command: php artisan horizon
+    restart: unless-stopped
+
+  scheduler:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: meowvpn_scheduler
+    working_dir: /var/www/html
+    volumes:
+      - ./backend:/var/www/html
+      - laravel_storage:/var/www/html/storage
+      - laravel_cache:/var/www/html/bootstrap/cache
+    environment:
+      - APP_ENV=${APP_ENV:-production}
+      - DB_CONNECTION=pgsql
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_DATABASE=${DB_DATABASE:-meowvpn}
+      - DB_USERNAME=${DB_USERNAME:-meowvpn}
+      - DB_PASSWORD=${DB_PASSWORD:-changeme}
+      - REDIS_HOST=redis
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-changeme}
+      - REDIS_PORT=6379
+    depends_on:
+      laravel:
+        condition: service_healthy
+    networks:
+      - meowvpn_network
+    command: sh -c "while true; do php artisan schedule:run --verbose --no-interaction; sleep 60; done"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    container_name: meowvpn_frontend
+    environment:
+      - VITE_API_URL=${VITE_API_URL:-http://api.localhost}
+    networks:
+      - meowvpn_network
+    restart: unless-stopped
+
+  telegram-bot:
+    build:
+      context: ./telegram-bot
+      dockerfile: Dockerfile
+    container_name: meowvpn_telegram_bot
+    volumes:
+      - ./telegram-bot:/app
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - API_BASE_URL=${API_BASE_URL:-http://laravel:8000}
+      - REDIS_HOST=redis
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-changeme}
+      - REDIS_PORT=6379
+      - SUPPORT_USERNAME=${SUPPORT_USERNAME:-@support}
+      - CARD_NUMBER=${CARD_NUMBER:-}
+      - CARD_HOLDER=${CARD_HOLDER:-}
+    depends_on:
+      laravel:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - meowvpn_network
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    container_name: meowvpn_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./docker/certbot/conf:/etc/letsencrypt
+      - ./docker/certbot/www:/var/www/certbot
+    depends_on:
+      - laravel
+      - frontend
+    networks:
+      - meowvpn_network
+    restart: unless-stopped
+
+  certbot:
+    image: certbot/certbot
+    container_name: meowvpn_certbot
+    volumes:
+      - ./docker/certbot/conf:/etc/letsencrypt
+      - ./docker/certbot/www:/var/www/certbot
+    networks:
+      - meowvpn_network
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+volumes:
+  postgres_data:
+  redis_data:
+  laravel_storage:
+  laravel_cache:
+
+networks:
+  meowvpn_network:
+    driver: bridge
