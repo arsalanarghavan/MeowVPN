@@ -34,6 +34,64 @@ print_step() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] STEP: $1" >> "$LOG_FILE"
 }
 
+print_warning() {
+    echo -e "${YELLOW}⚠ $1${NC}"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] WARNING: $1" >> "$LOG_FILE"
+}
+
+# Function to wait for service with retry logic
+wait_for_service() {
+    local service_name=$1
+    local check_command=$2
+    local max_wait=${3:-120}
+    local retry_interval=${4:-2}
+    local wait_count=0
+    
+    print_info "Waiting for $service_name to be ready (max ${max_wait}s)..."
+    while [ $wait_count -lt $max_wait ]; do
+        if eval "$check_command" >> "$LOG_FILE" 2>&1; then
+            print_success "$service_name is ready"
+            return 0
+        fi
+        wait_count=$((wait_count + retry_interval))
+        sleep $retry_interval
+        echo -n "."
+    done
+    echo ""
+    print_error "$service_name failed to start within ${max_wait} seconds"
+    return 1
+}
+
+# Function to check if port is available
+check_port() {
+    local port=$1
+    if command -v netstat &> /dev/null; then
+        if netstat -tuln 2>/dev/null | grep -q ":$port "; then
+            return 1
+        fi
+    elif command -v ss &> /dev/null; then
+        if ss -tuln 2>/dev/null | grep -q ":$port "; then
+            return 1
+        fi
+    fi
+    return 0
+}
+
+# Function to check disk space (minimum 5GB free)
+check_disk_space() {
+    local min_space_gb=5
+    local available_space_gb
+    
+    if command -v df &> /dev/null; then
+        available_space_gb=$(df -BG "$PROJECT_DIR" 2>/dev/null | tail -1 | awk '{print $4}' | sed 's/G//')
+        if [ -n "$available_space_gb" ] && [ "$available_space_gb" -lt "$min_space_gb" ]; then
+            print_warning "Low disk space: ${available_space_gb}GB available (minimum ${min_space_gb}GB recommended)"
+            return 1
+        fi
+    fi
+    return 0
+}
+
 # Error handler
 cleanup_on_error() {
     local exit_code=$?
@@ -182,6 +240,24 @@ if ! check_command wget; then
     print_success "wget installed"
 else
     print_success "wget is installed"
+fi
+
+echo ""
+
+# Check disk space
+print_info "Checking disk space..."
+if ! check_disk_space; then
+    print_warning "Continuing despite low disk space..."
+fi
+
+# Check if ports 80 and 443 are available (warn if in use)
+print_info "Checking if ports 80 and 443 are available..."
+if ! check_port 80; then
+    print_warning "Port 80 is already in use. SSL certificate installation may fail."
+    print_info "Make sure port 80 is available for Let's Encrypt certificate validation."
+fi
+if ! check_port 443; then
+    print_warning "Port 443 is already in use. HTTPS may not work correctly."
 fi
 
 echo ""
@@ -371,43 +447,17 @@ else
     exit 1
 fi
 
-# Wait for PostgreSQL to be ready
-print_info "Waiting for PostgreSQL to be ready..."
-MAX_WAIT=60
-WAIT_COUNT=0
-while [ $WAIT_COUNT -lt $MAX_WAIT ]; do
-    if docker compose exec -T postgres pg_isready -U meowvpn >> "$LOG_FILE" 2>&1; then
-        print_success "PostgreSQL is ready"
-        break
-    fi
-    WAIT_COUNT=$((WAIT_COUNT + 1))
-    sleep 1
-    echo -n "."
-done
-echo ""
-
-if [ $WAIT_COUNT -eq $MAX_WAIT ]; then
-    print_error "PostgreSQL failed to start within $MAX_WAIT seconds"
+# Wait for PostgreSQL to be ready (increased timeout to 120 seconds)
+if ! wait_for_service "PostgreSQL" "docker compose exec -T postgres pg_isready -U meowvpn" 120 2; then
+    print_error "PostgreSQL failed to start. Check logs: $LOG_FILE"
+    print_info "You can check PostgreSQL logs with: docker compose logs postgres"
     exit 1
 fi
 
-# Wait for Redis to be ready
-print_info "Waiting for Redis to be ready..."
-MAX_WAIT=30
-WAIT_COUNT=0
-while [ $WAIT_COUNT -lt $MAX_WAIT ]; do
-    if docker compose exec -T redis redis-cli ping >> "$LOG_FILE" 2>&1; then
-        print_success "Redis is ready"
-        break
-    fi
-    WAIT_COUNT=$((WAIT_COUNT + 1))
-    sleep 1
-    echo -n "."
-done
-echo ""
-
-if [ $WAIT_COUNT -eq $MAX_WAIT ]; then
-    print_error "Redis failed to start within $MAX_WAIT seconds"
+# Wait for Redis to be ready (increased timeout to 60 seconds)
+if ! wait_for_service "Redis" "docker compose exec -T redis redis-cli ping" 60 2; then
+    print_error "Redis failed to start. Check logs: $LOG_FILE"
+    print_info "You can check Redis logs with: docker compose logs redis"
     exit 1
 fi
 
@@ -427,8 +477,10 @@ else
     exit 1
 fi
 
-# Wait for Laravel to be ready
-sleep 5
+# Wait for Laravel to be ready (increased to 30 seconds with retry)
+if ! wait_for_service "Laravel" "docker compose exec -T laravel php artisan --version" 30 3; then
+    print_warning "Laravel container may not be fully ready, but continuing..."
+fi
 
 # Install Composer dependencies
 print_info "Installing Composer dependencies..."
@@ -462,9 +514,9 @@ else
     exit 1
 fi
 
-# Wait for services to be ready
+# Wait for services to be ready (increased to 30 seconds)
 print_info "Waiting for services to be ready..."
-sleep 10
+sleep 30
 
 echo ""
 

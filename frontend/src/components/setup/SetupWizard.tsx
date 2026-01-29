@@ -6,6 +6,35 @@ import { twMerge } from 'tailwind-merge'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://api.localhost'
 
+// Configure axios defaults with timeout
+axios.defaults.timeout = 30000 // 30 seconds for normal requests
+
+// Retry function for API calls
+const retryRequest = async (
+  fn: () => Promise<any>,
+  retries: number = 3,
+  delay: number = 1000
+): Promise<any> => {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn()
+    } catch (error: any) {
+      if (i === retries - 1) throw error
+      // Don't retry on 4xx errors (client errors)
+      if (error.response && error.response.status >= 400 && error.response.status < 500) {
+        throw error
+      }
+      await new Promise(resolve => setTimeout(resolve, delay * (i + 1)))
+    }
+  }
+}
+
+// Create axios instance with longer timeout for SSL operations
+const sslAxios = axios.create({
+  timeout: 300000, // 5 minutes for SSL installation
+  baseURL: API_URL
+})
+
 interface SetupStep {
   id: number
   title: string
@@ -207,7 +236,7 @@ function DatabaseStep({ onNext, data, errors, setErrors }: SetupStepProps) {
     setTesting(true)
     setTestResult(null)
     try {
-      await axios.post(`${API_URL}/api/setup/database`, form)
+      await retryRequest(() => axios.post(`${API_URL}/api/setup/database`, form))
       setTestResult('success')
     } catch (error: any) {
       setTestResult('error')
@@ -336,7 +365,7 @@ function RedisStep({ onNext, onBack, data, errors, setErrors }: SetupStepProps) 
     setTesting(true)
     setTestResult(null)
     try {
-      await axios.post(`${API_URL}/api/setup/redis`, form)
+      await retryRequest(() => axios.post(`${API_URL}/api/setup/redis`, form))
       setTestResult('success')
     } catch (error: any) {
       setTestResult('error')
@@ -437,6 +466,7 @@ function DomainSSLStep({ onNext, onBack, data, errors, setErrors }: SetupStepPro
   const [domainsSaved, setDomainsSaved] = useState(false)
   const [sslInstalled, setSslInstalled] = useState(false)
   const [sslError, setSslError] = useState<string | null>(null)
+  const [sslProgress, setSslProgress] = useState(0)
 
   const validate = () => {
     const newErrors: Record<string, string> = {}
@@ -471,43 +501,53 @@ function DomainSSLStep({ onNext, onBack, data, errors, setErrors }: SetupStepPro
     setSavingDomains(true)
     setErrors({})
     try {
-      await axios.post(`${API_URL}/api/setup/domains`, {
+      await retryRequest(() => axios.post(`${API_URL}/api/setup/domains`, {
         api_domain: form.api_domain,
         panel_domain: form.panel_domain,
         subscription_domain: form.subscription_domain
-      })
+      }))
       setDomainsSaved(true)
+      
       // Automatically proceed to SSL installation
-      await handleInstallSSL()
+      setInstallingSSL(true)
+      setSslError(null)
+      setSslProgress(0)
+      
+      // Simulate progress (SSL installation can take time)
+      const progressInterval = setInterval(() => {
+        setSslProgress(prev => {
+          if (prev >= 90) return prev // Don't go to 100% until done
+          return prev + 5
+        })
+      }, 2000) // Update every 2 seconds
+      
+      try {
+        const domains = [
+          form.api_domain,
+          form.panel_domain,
+          form.subscription_domain
+        ].filter(Boolean)
+        
+        // Use sslAxios with longer timeout for SSL installation
+        await sslAxios.post('/api/setup/ssl', {
+          email: form.email,
+          domains: domains
+        })
+        clearInterval(progressInterval)
+        setSslProgress(100)
+        setSslInstalled(true)
+      } catch (error: any) {
+        clearInterval(progressInterval)
+        setSslError(error.response?.data?.error || error.message || 'خطا در نصب SSL')
+        // Allow user to retry SSL installation
+        setInstallingSSL(false)
+        setSslProgress(0)
+      }
     } catch (error: any) {
       const errorMessage = error.response?.data?.error || error.message || 'خطا در ذخیره دامنه‌ها'
       setErrors({ domains: errorMessage })
     } finally {
       setSavingDomains(false)
-    }
-  }
-
-  const handleInstallSSL = async () => {
-    if (!domainsSaved) return
-    
-    setInstallingSSL(true)
-    setSslError(null)
-    try {
-      const domains = [
-        form.api_domain,
-        form.panel_domain,
-        form.subscription_domain
-      ].filter(Boolean)
-      
-      await axios.post(`${API_URL}/api/setup/ssl`, {
-        email: form.email,
-        domains: domains
-      })
-      setSslInstalled(true)
-    } catch (error: any) {
-      setSslError(error.response?.data?.error || error.message || 'خطا در نصب SSL')
-    } finally {
-      setInstallingSSL(false)
     }
   }
 
@@ -566,9 +606,18 @@ function DomainSSLStep({ onNext, onBack, data, errors, setErrors }: SetupStepPro
       )}
 
       {installingSSL && (
-        <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-lg flex items-center gap-2">
-          <Loader2 className="w-5 h-5 animate-spin" />
-          <span>در حال نصب SSL با Let's Encrypt. این ممکن است چند دقیقه طول بکشد...</span>
+        <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-lg">
+          <div className="flex items-center gap-2 mb-2">
+            <Loader2 className="w-5 h-5 animate-spin" />
+            <span>در حال نصب SSL با Let's Encrypt. این ممکن است چند دقیقه طول بکشد...</span>
+          </div>
+          <div className="w-full bg-blue-200 rounded-full h-2 mt-2">
+            <div 
+              className="bg-blue-600 h-2 rounded-full transition-all duration-500"
+              style={{ width: `${sslProgress}%` }}
+            />
+          </div>
+          <p className="text-xs mt-1 text-blue-600">{sslProgress}%</p>
         </div>
       )}
 
@@ -949,23 +998,34 @@ function CompleteStep({ onBack, data, errors, setErrors }: SetupStepProps) {
       // Save all configuration step by step with correct endpoints
       // Note: domains and SSL are already saved in DomainSSLStep
       const steps = [
-        { endpoint: '/api/setup/database/save', data: data.database, name: 'دیتابیس', required: true },
-        { endpoint: '/api/setup/redis/save', data: data.redis, name: 'Redis', required: true },
-        { endpoint: '/api/setup/bot', data: data.bot, name: 'ربات تلگرام', required: true },
-        { endpoint: '/api/setup/admin', data: data.admin, name: 'اکانت ادمین', required: true },
-        { endpoint: '/api/setup/complete', data: {}, name: 'تکمیل', required: false }
+        { endpoint: '/api/setup/database/save', data: data.database, name: 'دیتابیس', required: true, skipIfEmpty: false },
+        { endpoint: '/api/setup/redis/save', data: data.redis, name: 'Redis', required: true, skipIfEmpty: false },
+        { endpoint: '/api/setup/bot', data: data.bot, name: 'ربات تلگرام', required: false, skipIfEmpty: true },
+        { endpoint: '/api/setup/admin', data: data.admin, name: 'اکانت ادمین', required: true, skipIfEmpty: false },
+        { endpoint: '/api/setup/complete', data: {}, name: 'تکمیل', required: false, skipIfEmpty: false }
       ]
 
       for (const step of steps) {
+        // Skip if required data is missing
         if (step.required && !step.data && step.endpoint !== '/api/setup/complete') {
           encounteredErrors.push(`${step.name}: تنظیمات وارد نشده`)
           continue
         }
         
+        // Skip if data is empty and skipIfEmpty is true
+        if (step.skipIfEmpty && (!step.data || Object.keys(step.data).length === 0)) {
+          continue
+        }
+        
         setCurrentStep(step.name)
         try {
-          await axios.post(`${API_URL}${step.endpoint}`, step.data || {})
+          // Use retry logic for all API calls
+          await retryRequest(() => axios.post(`${API_URL}${step.endpoint}`, step.data || {}), 3, 1000)
         } catch (error: any) {
+          // Don't fail on 409 (already exists) or similar non-critical errors
+          if (error.response?.status === 409) {
+            continue // Already saved, skip
+          }
           const errorMsg = error.response?.data?.error || error.message || 'خطای نامشخص'
           encounteredErrors.push(`${step.name}: ${errorMsg}`)
         }

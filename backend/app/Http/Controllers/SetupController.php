@@ -110,6 +110,82 @@ class SetupController extends Controller
         return preg_match('/^TELEGRAM_BOT_TOKEN\s*=\s*.+/m', $envContent);
     }
 
+    /**
+     * Validate DNS resolution for domains
+     */
+    private function validateDNS($domains): array
+    {
+        $errors = [];
+        $serverIP = $this->getServerIP();
+        
+        foreach ($domains as $domain) {
+            $resolvedIPs = gethostbyname($domain);
+            
+            // Check if DNS resolution failed
+            if ($resolvedIPs === $domain) {
+                $errors[] = "دامنه {$domain} به درستی resolve نمی‌شود. لطفاً DNS را بررسی کنید.";
+                continue;
+            }
+            
+            // Check if domain resolves to this server (optional check)
+            // Note: This is a soft check as domains might use CDN or load balancer
+            if ($serverIP && $resolvedIPs !== $serverIP) {
+                // Just a warning, not an error
+                \Log::warning("Domain {$domain} resolves to {$resolvedIPs} but server IP is {$serverIP}");
+            }
+        }
+        
+        return $errors;
+    }
+
+    /**
+     * Get server's public IP address
+     */
+    private function getServerIP(): ?string
+    {
+        try {
+            // Try to get IP from HTTP request
+            $ip = request()->server('SERVER_ADDR');
+            if ($ip && $ip !== '127.0.0.1' && $ip !== '::1') {
+                return $ip;
+            }
+            
+            // Try external service
+            $response = Http::timeout(5)->get('https://api.ipify.org?format=json');
+            if ($response->successful()) {
+                return $response->json('ip');
+            }
+        } catch (Exception $e) {
+            \Log::warning('Could not determine server IP: ' . $e->getMessage());
+        }
+        
+        return null;
+    }
+
+    /**
+     * Check if ports are available (80 and 443)
+     */
+    private function checkPorts(): array
+    {
+        $errors = [];
+        $ports = [80, 443];
+        
+        foreach ($ports as $port) {
+            $connection = @fsockopen('127.0.0.1', $port, $errno, $errstr, 1);
+            if ($connection) {
+                fclose($connection);
+                // Port is open, which is good for our use case
+                // We just want to make sure the service can bind to it
+            }
+        }
+        
+        // Note: We can't easily check if ports are available from PHP
+        // This is more of a warning that should be checked manually
+        // The actual check happens when nginx/certbot tries to use the ports
+        
+        return $errors;
+    }
+
     public function testDatabase(Request $request)
     {
         try {
@@ -288,6 +364,14 @@ class SetupController extends Controller
                 'subscription_domain' => 'required|string',
             ]);
 
+            // Validate DNS (warning only, not blocking at this stage)
+            $domainArray = array_values($domains);
+            $dnsErrors = $this->validateDNS($domainArray);
+            if (!empty($dnsErrors)) {
+                \Log::warning('DNS validation warnings: ' . implode(', ', $dnsErrors));
+                // Don't fail, but log the warnings
+            }
+
             // Update root .env
             $rootEnvPath = base_path('../.env');
             if (File::exists($rootEnvPath)) {
@@ -396,15 +480,33 @@ NGINX;
         ]);
 
         try {
-            // Build certbot command for Docker
+            // Validate DNS before attempting SSL installation
+            $dnsErrors = $this->validateDNS($data['domains']);
+            if (!empty($dnsErrors)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'خطا در DNS: ' . implode(' ', $dnsErrors) . ' لطفاً DNS را بررسی کنید و مطمئن شوید که دامنه‌ها به IP سرور شما اشاره می‌کنند.'
+                ], 400);
+            }
+
+            // Check ports (warning only, not blocking)
+            $portErrors = $this->checkPorts();
+            if (!empty($portErrors)) {
+                \Log::warning('Port check warnings: ' . implode(', ', $portErrors));
+            }
+
+            // Build certbot command for Docker with timeout
             $domainsArgs = implode(' -d ', $data['domains']);
             $email = $data['email'];
             
-            // Use Docker Compose to run certbot
+            // Use Docker Compose to run certbot with timeout (5 minutes)
             $projectDir = base_path('..');
-            $command = "cd {$projectDir} && docker compose run --rm certbot certonly --webroot --webroot-path=/var/www/certbot --email {$email} --agree-tos --no-eff-email -d {$domainsArgs} 2>&1";
+            $timeout = 300; // 5 minutes timeout
+            $command = "cd {$projectDir} && timeout {$timeout} docker compose run --rm certbot certonly --webroot --webroot-path=/var/www/certbot --email {$email} --agree-tos --no-eff-email -d {$domainsArgs} 2>&1";
             
+            $startTime = time();
             exec($command, $output, $returnCode);
+            $duration = time() - $startTime;
 
             if ($returnCode === 0) {
                 // Update Nginx configuration to use SSL
@@ -413,19 +515,35 @@ NGINX;
                 // Reload Nginx
                 exec("cd {$projectDir} && docker compose exec -T nginx nginx -s reload 2>&1", $nginxOutput, $nginxReturnCode);
                 
+                if ($nginxReturnCode !== 0) {
+                    \Log::warning('Nginx reload failed: ' . implode("\n", $nginxOutput));
+                }
+                
                 return response()->json([
                     'success' => true, 
                     'message' => 'گواهی SSL با موفقیت نصب شد',
-                    'output' => implode("\n", $output)
+                    'output' => implode("\n", $output),
+                    'duration' => $duration
                 ]);
+            }
+
+            // Check if timeout occurred
+            if ($duration >= $timeout) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'نصب SSL به دلیل timeout متوقف شد. لطفاً DNS و پورت‌های 80 و 443 را بررسی کنید و دوباره تلاش کنید.'
+                ], 400);
             }
 
             return response()->json([
                 'success' => false, 
-                'error' => 'خطا در نصب SSL: ' . implode("\n", $output)
+                'error' => 'خطا در نصب SSL: ' . implode("\n", array_slice($output, -10)) // Last 10 lines
             ], 400);
         } catch (Exception $e) {
-            return response()->json(['success' => false, 'error' => $e->getMessage()], 400);
+            return response()->json([
+                'success' => false,
+                'error' => 'خطا در نصب SSL: ' . $e->getMessage()
+            ], 400);
         }
     }
 
