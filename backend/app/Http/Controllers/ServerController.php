@@ -38,9 +38,10 @@ class ServerController extends Controller
         $servers = $this->serverSelectionService->getAvailableServers();
         $locations = $this->serverSelectionService->getAvailableLocations();
 
+        // Convert Collections to arrays for consistent JSON response
         return response()->json([
-            'servers' => $servers,
-            'locations' => $locations,
+            'servers' => $servers->toArray(),
+            'locations' => $locations->toArray(),
         ]);
     }
 

@@ -40,6 +40,8 @@ class SubscriptionController extends Controller
             $query->where('status', $request->status);
         }
 
+        // Return direct array for bot compatibility (regular user flow expects array)
+        // Reseller code that expects paginated response should be updated in bot
         return response()->json($query->with(['server', 'plan'])->get());
     }
 

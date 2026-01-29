@@ -19,7 +19,18 @@ class UserController extends Controller
             $query->where('parent_id', $request->parent_id);
         }
 
-        return response()->json($query->paginate(50));
+        // Support has_telegram filter for bot compatibility
+        if ($request->has('has_telegram')) {
+            if ($request->boolean('has_telegram')) {
+                $query->whereNotNull('telegram_id');
+            } else {
+                $query->whereNull('telegram_id');
+            }
+        }
+
+        // Support per_page parameter
+        $perPage = $request->get('per_page', 50);
+        return response()->json($query->paginate($perPage));
     }
 
     public function show(User $user)

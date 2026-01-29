@@ -13,10 +13,11 @@ import {
   Copy,
   Check,
   RefreshCw,
-  Eye
+  Eye,
+  Clock
 } from 'lucide-react'
 import { clsx } from 'clsx'
-import { subscriptionsApi, plansApi, usersApi, transactionsApi, resellersApi } from '../../services/api'
+import { subscriptionsApi, plansApi, usersApi, transactionsApi, resellersApi, affiliatesApi } from '../../services/api'
 
 // Sidebar Component
 function ResellerSidebar() {
@@ -27,6 +28,7 @@ function ResellerSidebar() {
     { path: '/users', label: 'کاربران من', icon: Users },
     { path: '/subscriptions', label: 'سرویس‌ها', icon: ShoppingCart },
     { path: '/transactions', label: 'تراکنش‌ها', icon: CreditCard },
+    { path: '/affiliates', label: 'بازاریابی', icon: TrendingUp },
   ]
 
   return (
@@ -534,6 +536,246 @@ function ResellerTransactionsPage() {
   )
 }
 
+// Affiliates Page
+function ResellerAffiliatesPage() {
+  const { user } = useAuthStore()
+  const [stats, setStats] = useState<any>(null)
+  const [link, setLink] = useState<string>('')
+  const [payouts, setPayouts] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [requestingPayout, setRequestingPayout] = useState(false)
+  const [showPayoutForm, setShowPayoutForm] = useState(false)
+  const [payoutForm, setPayoutForm] = useState({ card_number: '', card_holder: '' })
+
+  useEffect(() => {
+    loadData()
+  }, [])
+
+  const loadData = async () => {
+    try {
+      const [statsRes, linkRes, payoutsRes] = await Promise.all([
+        affiliatesApi.stats(),
+        affiliatesApi.link(),
+        affiliatesApi.myPayouts(),
+      ])
+      setStats(statsRes.data)
+      setLink(linkRes.data.link || '')
+      setPayouts(payoutsRes.data.data || payoutsRes.data || [])
+    } catch (error) {
+      console.error('Failed to load data:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(link)
+    alert('لینک کپی شد!')
+  }
+
+  const handleRequestPayout = async () => {
+    if (!payoutForm.card_number || !payoutForm.card_holder) {
+      alert('لطفاً تمام فیلدها را پر کنید')
+      return
+    }
+
+    setRequestingPayout(true)
+    try {
+      await affiliatesApi.requestPayout(payoutForm.card_number, payoutForm.card_holder)
+      alert('درخواست پرداخت با موفقیت ثبت شد')
+      setShowPayoutForm(false)
+      setPayoutForm({ card_number: '', card_holder: '' })
+      loadData()
+    } catch (error: any) {
+      alert(error.response?.data?.error || 'خطا در ثبت درخواست')
+    } finally {
+      setRequestingPayout(false)
+    }
+  }
+
+  const formatCurrency = (amount: number) => {
+    return (amount / 10).toLocaleString() + ' تومان'
+  }
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return <span className="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-700">در انتظار</span>
+      case 'approved':
+        return <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700">تایید شده</span>
+      case 'rejected':
+        return <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-700">رد شده</span>
+      case 'paid':
+        return <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-700">پرداخت شده</span>
+      default:
+        return null
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500"></div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold text-slate-800">بازاریابی</h1>
+
+      {/* Stats */}
+      {stats && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-500">تعداد دعوت شده</p>
+                <p className="text-2xl font-bold text-slate-800">{stats.referrals_count || 0}</p>
+              </div>
+              <div className="p-4 bg-blue-100 rounded-xl">
+                <Users className="w-6 h-6 text-blue-600" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-500">کل درآمد</p>
+                <p className="text-2xl font-bold text-emerald-600">{formatCurrency(stats.total_earnings || 0)}</p>
+              </div>
+              <div className="p-4 bg-emerald-100 rounded-xl">
+                <TrendingUp className="w-6 h-6 text-emerald-600" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-500">در انتظار</p>
+                <p className="text-2xl font-bold text-yellow-600">{formatCurrency(stats.pending_earnings || 0)}</p>
+              </div>
+              <div className="p-4 bg-yellow-100 rounded-xl">
+                <Clock className="w-6 h-6 text-yellow-600" />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Referral Link */}
+      <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
+        <h3 className="text-lg font-semibold text-slate-800 mb-4">لینک دعوت</h3>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={link}
+            readOnly
+            className="flex-1 px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+          />
+          <button
+            onClick={handleCopyLink}
+            className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors flex items-center gap-2"
+          >
+            <Copy className="w-4 h-4" />
+            کپی
+          </button>
+        </div>
+        <p className="text-sm text-slate-500 mt-2">با دعوت کاربران از این لینک، از هر خرید آن‌ها کمیسیون دریافت کنید</p>
+      </div>
+
+      {/* Payout Request */}
+      <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-slate-800">درخواست پرداخت</h3>
+          {!showPayoutForm && (
+            <button
+              onClick={() => setShowPayoutForm(true)}
+              className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors"
+            >
+              درخواست جدید
+            </button>
+          )}
+        </div>
+
+        {showPayoutForm && (
+          <div className="space-y-4 p-4 bg-slate-50 rounded-lg">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">شماره کارت</label>
+              <input
+                type="text"
+                value={payoutForm.card_number}
+                onChange={(e) => setPayoutForm({ ...payoutForm, card_number: e.target.value })}
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                placeholder="6037-XXXX-XXXX-XXXX"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">نام صاحب کارت</label>
+              <input
+                type="text"
+                value={payoutForm.card_holder}
+                onChange={(e) => setPayoutForm({ ...payoutForm, card_holder: e.target.value })}
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                placeholder="نام و نام خانوادگی"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleRequestPayout}
+                disabled={requestingPayout}
+                className="flex-1 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors disabled:opacity-50"
+              >
+                {requestingPayout ? 'در حال ارسال...' : 'ثبت درخواست'}
+              </button>
+              <button
+                onClick={() => {
+                  setShowPayoutForm(false)
+                  setPayoutForm({ card_number: '', card_holder: '' })
+                }}
+                className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors"
+              >
+                انصراف
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Payout History */}
+        {payouts.length > 0 && (
+          <div className="mt-6">
+            <h4 className="text-md font-semibold text-slate-800 mb-3">تاریخچه درخواست‌ها</h4>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-4 py-3 text-right text-sm font-semibold text-slate-600">مبلغ</th>
+                    <th className="px-4 py-3 text-right text-sm font-semibold text-slate-600">شماره کارت</th>
+                    <th className="px-4 py-3 text-right text-sm font-semibold text-slate-600">وضعیت</th>
+                    <th className="px-4 py-3 text-right text-sm font-semibold text-slate-600">تاریخ</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {payouts.map((payout) => (
+                    <tr key={payout.id} className="hover:bg-slate-50">
+                      <td className="px-4 py-3 text-sm">{formatCurrency(payout.amount)}</td>
+                      <td className="px-4 py-3 text-sm">{payout.card_number}</td>
+                      <td className="px-4 py-3">{getStatusBadge(payout.status)}</td>
+                      <td className="px-4 py-3 text-sm">{new Date(payout.created_at).toLocaleDateString('fa-IR')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // Main Dashboard with Routes
 export default function ResellerDashboard() {
   return (
@@ -545,6 +787,7 @@ export default function ResellerDashboard() {
           <Route path="users" element={<ResellerUsersPage />} />
           <Route path="subscriptions" element={<ResellerSubscriptionsPage />} />
           <Route path="transactions" element={<ResellerTransactionsPage />} />
+          <Route path="affiliates" element={<ResellerAffiliatesPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>

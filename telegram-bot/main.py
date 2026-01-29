@@ -162,6 +162,17 @@ def get_admin_keyboard():
         resize_keyboard=True
     )
 
+def get_reseller_keyboard():
+    """Reseller menu keyboard"""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📊 آمار زیرمجموعه"), KeyboardButton(text="👥 کاربران من")],
+            [KeyboardButton(text="🛒 سرویس‌های زیرمجموعه"), KeyboardButton(text="💳 تراکنش‌های زیرمجموعه")],
+            [KeyboardButton(text="🔗 لینک بازاریابی"), KeyboardButton(text="🔙 بازگشت")],
+        ],
+        resize_keyboard=True
+    )
+
 def get_profile_keyboard():
     """Profile menu keyboard"""
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -228,6 +239,21 @@ async def cmd_admin(message: types.Message):
         "👑 پنل ادمین\n\n"
         "لطفاً یکی از گزینه‌ها را انتخاب کنید:",
         reply_markup=get_admin_keyboard()
+    )
+
+@dp.message(Command("reseller"))
+async def cmd_reseller(message: types.Message):
+    """Reseller panel"""
+    user_data = await get_user_data(message.from_user.id)
+    
+    if not user_data or user_data.get('role') != 'reseller':
+        await message.answer("❌ دسترسی ندارید")
+        return
+    
+    await message.answer(
+        "🏢 پنل نماینده\n\n"
+        "لطفاً یکی از گزینه‌ها را انتخاب کنید:",
+        reply_markup=get_reseller_keyboard()
     )
 
 # Purchase Flow
@@ -1128,12 +1154,261 @@ async def admin_broadcast_send(message: types.Message, state: FSMContext):
     )
     await state.clear()
 
+# Reseller: Sub-users Stats
+@dp.message(F.text == "📊 آمار زیرمجموعه")
+async def reseller_sub_stats(message: types.Message):
+    """Show sub-users stats for reseller"""
+    user_data = await get_user_data(message.from_user.id)
+    if not user_data or user_data.get('role') != 'reseller':
+        return
+    
+    token = await get_user_token(message.from_user.id)
+    
+    # Get reseller's sub-users
+    reseller_id = user_data.get('id')
+    users_response = await api_request(
+        'GET', f'resellers/{reseller_id}/users',
+        headers={'Authorization': f'Bearer {token}'}
+    )
+    
+    if not users_response or not users_response.get('data'):
+        await message.answer("📊 آمار زیرمجموعه\n\n❌ هیچ کاربری در زیرمجموعه شما وجود ندارد.")
+        return
+    
+    users = users_response.get('data', [])
+    total_users = len(users)
+    
+    # Get subscriptions count
+    subscriptions_response = await api_request(
+        'GET', 'subscriptions',
+        headers={'Authorization': f'Bearer {token}'}
+    )
+    
+    active_subscriptions = 0
+    if subscriptions_response and subscriptions_response.get('data'):
+        # Count subscriptions of sub-users
+        sub_user_ids = [u['id'] for u in users]
+        for sub in subscriptions_response.get('data', []):
+            if sub.get('user_id') in sub_user_ids and sub.get('status') == 'active':
+                active_subscriptions += 1
+    
+    await message.answer(
+        f"📊 آمار زیرمجموعه\n\n"
+        f"👥 تعداد کاربران: {total_users}\n"
+        f"✅ سرویس‌های فعال: {active_subscriptions}\n"
+        f"💰 موجودی کیف پول: {user_data.get('wallet_balance', 0):,.0f} تومان"
+    )
+
+# Reseller: Sub-users List
+@dp.message(F.text == "👥 کاربران من")
+async def reseller_sub_users(message: types.Message):
+    """Show sub-users list for reseller"""
+    user_data = await get_user_data(message.from_user.id)
+    if not user_data or user_data.get('role') != 'reseller':
+        return
+    
+    token = await get_user_token(message.from_user.id)
+    reseller_id = user_data.get('id')
+    
+    users_response = await api_request(
+        'GET', f'resellers/{reseller_id}/users',
+        headers={'Authorization': f'Bearer {token}'}
+    )
+    
+    if not users_response or not users_response.get('data'):
+        await message.answer("👥 کاربران من\n\n❌ هیچ کاربری در زیرمجموعه شما وجود ندارد.")
+        return
+    
+    users = users_response.get('data', [])
+    text = "👥 کاربران زیرمجموعه شما:\n\n"
+    
+    for i, user in enumerate(users[:20], 1):  # Limit to 20 users
+        username = user.get('username', '-')
+        user_id = user.get('id')
+        text += f"{i}. {username} (ID: {user_id})\n"
+    
+    if len(users) > 20:
+        text += f"\n... و {len(users) - 20} کاربر دیگر"
+    
+    await message.answer(text)
+
+# Reseller: Sub-users Subscriptions
+@dp.message(F.text == "🛒 سرویس‌های زیرمجموعه")
+async def reseller_sub_subscriptions(message: types.Message):
+    """Show sub-users subscriptions for reseller"""
+    user_data = await get_user_data(message.from_user.id)
+    if not user_data or user_data.get('role') != 'reseller':
+        return
+    
+    token = await get_user_token(message.from_user.id)
+    reseller_id = user_data.get('id')
+    
+    # Get sub-users
+    users_response = await api_request(
+        'GET', f'resellers/{reseller_id}/users',
+        headers={'Authorization': f'Bearer {token}'}
+    )
+    
+    if not users_response or not users_response.get('data'):
+        await message.answer("🛒 سرویس‌های زیرمجموعه\n\n❌ هیچ کاربری در زیرمجموعه شما وجود ندارد.")
+        return
+    
+    sub_user_ids = [u['id'] for u in users_response.get('data', [])]
+    
+    # Get all subscriptions
+    subscriptions_response = await api_request(
+        'GET', 'subscriptions',
+        headers={'Authorization': f'Bearer {token}'}
+    )
+    
+    if not subscriptions_response or not subscriptions_response.get('data'):
+        await message.answer("🛒 سرویس‌های زیرمجموعه\n\n❌ هیچ سرویسی یافت نشد.")
+        return
+    
+    # Filter subscriptions of sub-users
+    sub_subscriptions = [
+        sub for sub in subscriptions_response.get('data', [])
+        if sub.get('user_id') in sub_user_ids
+    ]
+    
+    if not sub_subscriptions:
+        await message.answer("🛒 سرویس‌های زیرمجموعه\n\n❌ هیچ سرویسی در زیرمجموعه شما وجود ندارد.")
+        return
+    
+    text = "🛒 سرویس‌های زیرمجموعه:\n\n"
+    
+    for i, sub in enumerate(sub_subscriptions[:10], 1):  # Limit to 10
+        user_id = sub.get('user_id')
+        status = sub.get('status', 'unknown')
+        status_emoji = "✅" if status == 'active' else "⏸" if status == 'paused' else "❌"
+        text += f"{i}. سرویس #{sub.get('id')} - کاربر #{user_id} - {status_emoji} {status}\n"
+    
+    if len(sub_subscriptions) > 10:
+        text += f"\n... و {len(sub_subscriptions) - 10} سرویس دیگر"
+    
+    await message.answer(text)
+
+# Reseller: Sub-users Transactions
+@dp.message(F.text == "💳 تراکنش‌های زیرمجموعه")
+async def reseller_sub_transactions(message: types.Message):
+    """Show sub-users transactions for reseller"""
+    user_data = await get_user_data(message.from_user.id)
+    if not user_data or user_data.get('role') != 'reseller':
+        return
+    
+    token = await get_user_token(message.from_user.id)
+    reseller_id = user_data.get('id')
+    
+    # Get sub-users
+    users_response = await api_request(
+        'GET', f'resellers/{reseller_id}/users',
+        headers={'Authorization': f'Bearer {token}'}
+    )
+    
+    if not users_response or not users_response.get('data'):
+        await message.answer("💳 تراکنش‌های زیرمجموعه\n\n❌ هیچ کاربری در زیرمجموعه شما وجود ندارد.")
+        return
+    
+    sub_user_ids = [u['id'] for u in users_response.get('data', [])]
+    
+    # Get all transactions
+    transactions_response = await api_request(
+        'GET', 'transactions',
+        headers={'Authorization': f'Bearer {token}'}
+    )
+    
+    if not transactions_response or not transactions_response.get('data'):
+        await message.answer("💳 تراکنش‌های زیرمجموعه\n\n❌ هیچ تراکنشی یافت نشد.")
+        return
+    
+    # Filter transactions of sub-users
+    sub_transactions = [
+        tx for tx in transactions_response.get('data', [])
+        if tx.get('user_id') in sub_user_ids
+    ]
+    
+    if not sub_transactions:
+        await message.answer("💳 تراکنش‌های زیرمجموعه\n\n❌ هیچ تراکنشی در زیرمجموعه شما وجود ندارد.")
+        return
+    
+    text = "💳 آخرین تراکنش‌های زیرمجموعه:\n\n"
+    
+    for i, tx in enumerate(sub_transactions[:10], 1):  # Limit to 10
+        status_emoji = "✅" if tx.get('status') == 'completed' else "⏳" if tx.get('status') == 'pending' else "❌"
+        tx_type = tx.get('type', 'unknown')
+        amount = tx.get('amount', 0) / 10  # Convert from Rials to Tomans
+        text += f"{i}. {status_emoji} {tx_type} | {amount:,.0f} تومان | کاربر #{tx.get('user_id')}\n"
+    
+    if len(sub_transactions) > 10:
+        text += f"\n... و {len(sub_transactions) - 10} تراکنش دیگر"
+    
+    await message.answer(text)
+
+# Reseller: Affiliate Link
+@dp.message(F.text == "🔗 لینک بازاریابی")
+async def reseller_affiliate_link(message: types.Message):
+    """Show affiliate link for reseller"""
+    user_data = await get_user_data(message.from_user.id)
+    if not user_data or user_data.get('role') != 'reseller':
+        return
+    
+    token = await get_user_token(message.from_user.id)
+    
+    # Get affiliate link
+    affiliate_response = await api_request(
+        'GET', 'affiliates/link',
+        headers={'Authorization': f'Bearer {token}'}
+    )
+    
+    if not affiliate_response:
+        await message.answer("❌ خطا در دریافت لینک بازاریابی")
+        return
+    
+    bot_username = (await bot.get_me()).username
+    referral_link = f"https://t.me/{bot_username}?start={user_data.get('id')}"
+    
+    # Get affiliate stats
+    stats_response = await api_request(
+        'GET', 'affiliates/stats',
+        headers={'Authorization': f'Bearer {token}'}
+    )
+    
+    stats_text = ""
+    if stats_response:
+        total_earnings = stats_response.get('total_earnings', 0) / 10  # Convert to Tomans
+        pending_earnings = stats_response.get('pending_earnings', 0) / 10
+        referrals_count = stats_response.get('referrals_count', 0)
+        
+        stats_text = (
+            f"\n\n📊 آمار بازاریابی:\n"
+            f"👥 تعداد دعوت شده: {referrals_count}\n"
+            f"💰 کل درآمد: {total_earnings:,.0f} تومان\n"
+            f"⏳ در انتظار: {pending_earnings:,.0f} تومان"
+        )
+    
+    await message.answer(
+        f"🔗 لینک بازاریابی شما:\n\n"
+        f"`{referral_link}`\n\n"
+        f"با دعوت کاربران، از هر خرید آن‌ها کمیسیون دریافت کنید!{stats_text}",
+        parse_mode="Markdown"
+    )
+
 # Back to main menu
 @dp.message(F.text == "🔙 بازگشت")
 async def back_to_main(message: types.Message, state: FSMContext):
     """Back to main menu"""
     await state.clear()
-    await message.answer("منوی اصلی:", reply_markup=get_main_keyboard())
+    user_data = await get_user_data(message.from_user.id)
+    
+    if user_data:
+        if user_data.get('role') == 'admin':
+            await message.answer("منوی اصلی:", reply_markup=get_main_keyboard())
+        elif user_data.get('role') == 'reseller':
+            await message.answer("منوی اصلی:", reply_markup=get_main_keyboard())
+        else:
+            await message.answer("منوی اصلی:", reply_markup=get_main_keyboard())
+    else:
+        await message.answer("منوی اصلی:", reply_markup=get_main_keyboard())
 
 async def main():
     """Main function"""

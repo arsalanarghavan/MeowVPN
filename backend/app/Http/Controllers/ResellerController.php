@@ -67,7 +67,12 @@ class ResellerController extends Controller
 
     public function users(User $reseller)
     {
-        return response()->json($reseller->children()->with('subscriptions')->get());
+        // Return paginated response for consistency with bot expectations
+        $users = $reseller->children()->with('subscriptions')->get();
+        return response()->json([
+            'data' => $users,
+            'total' => $users->count(),
+        ]);
     }
 
     public function invoices(User $reseller)
