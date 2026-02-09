@@ -16,6 +16,9 @@ class GenerateMonthlyInvoices implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    /** @var string Run on central node; use queue:work --queue=sync,default on central. */
+    public string $queue = 'sync';
+
     public function handle(): void
     {
         try {

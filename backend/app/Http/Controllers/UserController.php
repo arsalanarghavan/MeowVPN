@@ -28,18 +28,20 @@ class UserController extends Controller
             }
         }
 
-        // Support per_page parameter
-        $perPage = $request->get('per_page', 50);
+        $perPage = min((int) $request->get('per_page', 50), 100);
         return response()->json($query->paginate($perPage));
     }
 
     public function show(User $user)
     {
+        $this->authorize('view', $user);
         return response()->json($user->load(['parent', 'resellerProfile', 'subscriptions']));
     }
 
     public function update(Request $request, User $user)
     {
+        $this->authorize('update', $user);
+
         $data = $request->validate([
             'username' => 'sometimes|string|unique:users,username,' . $user->id,
             'email' => 'sometimes|email|unique:users,email,' . $user->id,
@@ -47,12 +49,18 @@ class UserController extends Controller
             'credit_limit' => 'sometimes|numeric|min:0',
         ]);
 
+        // Only admin may change role and credit_limit
+        if (!$request->user()->isAdmin()) {
+            $data = collect($data)->except(\App\Policies\UserPolicy::adminOnlyUpdateFields())->all();
+        }
+
         $user->update($data);
         return response()->json($user);
     }
 
     public function destroy(User $user)
     {
+        $this->authorize('delete', $user);
         $user->delete();
         return response()->json(['message' => 'User deleted']);
     }

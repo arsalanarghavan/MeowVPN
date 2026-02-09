@@ -34,9 +34,8 @@ class TicketController extends Controller
             $query->where('user_id', $user->id);
         }
 
-        return response()->json(
-            $query->latest()->paginate($request->input('per_page', 20))
-        );
+        $perPage = min((int) $request->input('per_page', 20), 100);
+        return response()->json($query->latest()->paginate($perPage));
     }
 
     /**
@@ -188,6 +187,9 @@ class TicketController extends Controller
      */
     public function reopen(Request $request, Ticket $ticket)
     {
+        if (!$request->user()->isAdmin()) {
+            abort(403);
+        }
         $ticket->update(['status' => 'open']);
 
         return response()->json([
@@ -201,6 +203,9 @@ class TicketController extends Controller
      */
     public function assign(Request $request, Ticket $ticket)
     {
+        if (!$request->user()->isAdmin()) {
+            abort(403);
+        }
         $data = $request->validate([
             'admin_id' => 'required|exists:users,id',
         ]);
@@ -234,6 +239,9 @@ class TicketController extends Controller
      */
     public function updatePriority(Request $request, Ticket $ticket)
     {
+        if (!$request->user()->isAdmin()) {
+            abort(403);
+        }
         $data = $request->validate([
             'priority' => 'required|in:low,medium,high,urgent',
         ]);

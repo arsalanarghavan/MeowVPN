@@ -364,6 +364,7 @@ APP_ENV=local
 APP_KEY=
 APP_DEBUG=true
 APP_URL=http://localhost
+APP_NODE_ROLE=all
 
 LOG_CHANNEL=stack
 LOG_DEPRECATIONS_CHANNEL=null

@@ -439,4 +439,25 @@ class MarzbanService implements VpnPanelInterface
         $health = $this->getServerHealth($server);
         return $health['online_users'] ?? 0;
     }
+
+    /**
+     * Restart Marzban core (POST /api/core/restart).
+     */
+    public function restartCore(Server $server): bool
+    {
+        $result = $this->makeAuthenticatedRequest($server, 'POST', '/api/core/restart', []);
+        if ($result !== null) {
+            $this->invalidateToken($server);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Restart panel (Marzban core).
+     */
+    public function restartPanel(Server $server): bool
+    {
+        return $this->restartCore($server);
+    }
 }

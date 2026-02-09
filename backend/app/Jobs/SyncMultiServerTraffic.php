@@ -22,6 +22,9 @@ class SyncMultiServerTraffic implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    /** @var string Run on central node; use queue:work --queue=sync,default on central. */
+    public string $queue = 'sync';
+
     /**
      * The number of times the job may be attempted.
      */

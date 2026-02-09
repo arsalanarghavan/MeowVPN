@@ -54,16 +54,27 @@ export const usersApi = {
 
 // Servers
 export const serversApi = {
-  list: (params?: { location_tag?: string; is_active?: boolean; panel_type?: string }) => api.get('/servers', { params }),
-  available: () => api.get('/servers/available'),
+  list: (params?: { location_tag?: string; region?: string; server_category?: string; is_active?: boolean; panel_type?: string }) => api.get('/servers', { params }),
+  available: (params?: { region?: string; server_category?: string; location_tag?: string }) =>
+    api.get('/servers/available', { params }),
   monitoring: () => api.get('/servers/monitoring'),
   panelTypes: () => api.get('/servers/panel-types'),
+  regionCategoryOptions: () => api.get('/servers/region-category-options'),
   get: (id: number) => api.get(`/servers/${id}`),
   create: (data: any) => api.post('/servers', data),
   update: (id: number, data: any) => api.put(`/servers/${id}`, data),
   delete: (id: number) => api.delete(`/servers/${id}`),
   health: (id: number) => api.get(`/servers/${id}/health`),
   testConnection: (id: number) => api.post(`/servers/${id}/test-connection`),
+  restartPanel: (id: number) => api.post(`/servers/${id}/restart-panel`),
+  reboot: (id: number) => api.post(`/servers/${id}/reboot`),
+  suspend: (id: number) => api.post(`/servers/${id}/suspend`),
+  resume: (id: number) => api.post(`/servers/${id}/resume`),
+  reinstall: (id: number, data?: { os?: string; recipe?: string; password?: string }) =>
+    api.post(`/servers/${id}/reinstall`, data ?? {}),
+  changeRootPassword: (id: number, password: string) =>
+    api.post(`/servers/${id}/change-root-password`, { password }),
+  vpsStats: (id: number) => api.get(`/servers/${id}/vps-stats`),
   inbounds: (id: number) => api.get(`/servers/${id}/inbounds`),
   users: (id: number, params?: { offset?: number; limit?: number }) => api.get(`/servers/${id}/users`, { params }),
   syncUserCount: (id: number) => api.post(`/servers/${id}/sync-user-count`),
@@ -142,13 +153,45 @@ export const ticketsApi = {
 
 // Invoices
 export const invoicesApi = {
-  list: (params?: { status?: string; reseller_id?: number }) => api.get('/invoices', { params }),
+  list: (params?: { status?: string; reseller_id?: number; page?: number }) => api.get('/invoices', { params }),
   stats: () => api.get('/invoices/stats'),
   get: (id: number) => api.get(`/invoices/${id}`),
   generate: (id: number) => api.post(`/invoices/${id}/generate`),
   download: (id: number) => `${api.defaults.baseURL}/invoices/${id}/download`,
+  /** URL for opening in new tab (includes token for auth) */
+  getDownloadUrl: (id: number) => {
+    const token = localStorage.getItem('token')
+    return `${api.defaults.baseURL}/invoices/${id}/download${token ? `?token=${token}` : ''}`
+  },
   markPaid: (id: number) => api.post(`/invoices/${id}/mark-paid`),
   transactionReceipt: (transactionId: number) => `${api.defaults.baseURL}/transactions/${transactionId}/receipt`,
+  /** URL for opening receipt in new tab (includes token for auth) */
+  getReceiptDownloadUrl: (transactionId: number) => {
+    const token = localStorage.getItem('token')
+    return `${api.defaults.baseURL}/transactions/${transactionId}/receipt${token ? `?token=${token}` : ''}`
+  },
+}
+
+// AEZA provisioning (admin)
+export const aezaApi = {
+  products: () => api.get('/aeza/products'),
+  os: () => api.get('/aeza/os'),
+  createOrder: (data: { productId: string; term: string; name: string; autoProlong?: boolean }) =>
+    api.post('/aeza/orders', data),
+  getOrder: (orderId: string) => api.get(`/aeza/orders/${orderId}`),
+  registerServer: (data: {
+    order_id: string
+    name: string
+    flag_emoji?: string
+    ip_address: string
+    api_domain: string
+    admin_user: string
+    admin_pass: string
+    capacity: number
+    location_tag: string
+    region: 'iran' | 'foreign'
+    server_category: 'tunnel_entry' | 'tunnel_exit' | 'direct'
+  }) => api.post('/aeza/register-server', data),
 }
 
 export default api

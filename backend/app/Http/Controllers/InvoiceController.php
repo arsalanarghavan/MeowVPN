@@ -35,9 +35,8 @@ class InvoiceController extends Controller
             }
         }
 
-        return response()->json(
-            $query->latest()->paginate($request->input('per_page', 20))
-        );
+        $perPage = min((int) $request->input('per_page', 20), 100);
+        return response()->json($query->latest()->paginate($perPage));
     }
 
     /**
@@ -129,6 +128,7 @@ class InvoiceController extends Controller
      */
     public function markPaid(Request $request, Invoice $invoice)
     {
+        $this->authorize('markPaid', $invoice);
         $invoice->update(['status' => 'paid']);
 
         return response()->json([
@@ -139,15 +139,16 @@ class InvoiceController extends Controller
 
     /**
      * Get invoice stats (admin only)
+     * Schema: status is 'paid' | 'unpaid'
      */
     public function stats()
     {
         return response()->json([
             'total' => Invoice::count(),
-            'pending' => Invoice::where('status', 'pending')->count(),
+            'unpaid' => Invoice::where('status', 'unpaid')->count(),
             'paid' => Invoice::where('status', 'paid')->count(),
-            'overdue' => Invoice::where('status', 'overdue')->count(),
-            'total_pending_amount' => Invoice::where('status', 'pending')->sum('total_amount'),
+            'overdue' => Invoice::where('status', 'unpaid')->where('end_date', '<', now()->toDateString())->count(),
+            'total_unpaid_amount' => Invoice::where('status', 'unpaid')->sum('total_amount'),
             'total_paid_amount' => Invoice::where('status', 'paid')->sum('total_amount'),
         ]);
     }

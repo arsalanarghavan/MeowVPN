@@ -17,13 +17,18 @@ class PlanController extends Controller
         return response()->json(Plan::where('is_active', true)->get());
     }
 
-    public function show(Plan $plan)
+    public function show(Request $request, Plan $plan)
     {
+        // Non-admin may not view inactive plans
+        if (!$request->user()->isAdmin() && !$plan->is_active) {
+            abort(404);
+        }
         return response()->json($plan);
     }
 
     public function store(Request $request)
     {
+        $this->authorize('create', Plan::class);
         $data = $request->validate([
             'name' => 'required|string',
             'price_base' => 'required|numeric|min:0',
@@ -44,6 +49,7 @@ class PlanController extends Controller
 
     public function update(Request $request, Plan $plan)
     {
+        $this->authorize('update', $plan);
         $data = $request->validate([
             'name' => 'sometimes|string',
             'price_base' => 'sometimes|numeric|min:0',
@@ -61,6 +67,7 @@ class PlanController extends Controller
 
     public function destroy(Plan $plan)
     {
+        $this->authorize('delete', $plan);
         $plan->delete();
         return response()->json(['message' => 'Plan deleted']);
     }

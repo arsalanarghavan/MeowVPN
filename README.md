@@ -32,6 +32,61 @@ MeowVPN/
 └── docker-compose.yml    # Main Docker Compose
 ```
 
+## تفکیک سرور اصلی و نود مرکزی
+
+برای جلوگیری از کندی سرور اصلی، می‌توانید سینک و مانیتورینگ را روی یک **نود مرکزی** جدا اجرا کنید.
+
+- **سرور اصلی (web)**: فقط وب و API؛ دیتابیس و Redis با نود مرکزی مشترک است.
+- **نود مرکزی (central)**: فقط Scheduler و Queue برای jobهای سینک و مانیتورینگ؛ به همان DB و Redis متصل است.
+
+### تنظیمات
+
+**سرور اصلی** در `.env` بک‌اند:
+
+```env
+APP_NODE_ROLE=web
+```
+
+اجرای وب (و در صورت نیاز فقط صف سبک):
+
+```bash
+php artisan queue:work --queue=default
+```
+
+**نود مرکزی** در `.env` همان پروژه (با اتصال به همان `DB_*` و `REDIS_*`):
+
+```env
+APP_NODE_ROLE=central
+```
+
+اجرای Scheduler و Queue برای سینک/مانیتورینگ:
+
+```bash
+php artisan schedule:work
+php artisan queue:work --queue=sync,default
+```
+
+**نصب تکی (همه‌چیز روی یک سرور)** — پیش‌فرض:
+
+```env
+APP_NODE_ROLE=all
+```
+
+برای جزئیات بیشتر [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) را ببینید.
+
+## نصب به تفکیک نوع سرور
+
+برای هر نوع سرور (سرور اصلی، نود مرکزی، نود عادی خارج، نود تانل خارج، نود تانل ایران) دستور نصب و پیکربندی در مستند زیر آمده است:
+
+- **[docs/SERVER_INSTALL.md](docs/SERVER_INSTALL.md)** — راهنمای نصب هر مدل سرور
+
+برای **نصب تعاملی تانل** (Rathole، Backhaul، Dokodemo، GOST، HA Proxy، IP Tables و تانل ریورس):
+
+```bash
+chmod +x installer/tunnel.sh
+./installer/tunnel.sh
+```
+
 ## مستندات
 
 برای جزئیات کامل معماری، به فایل [ARCHITECTURE.MD](ARCHITECTURE.MD) مراجعه کنید.

@@ -157,5 +157,13 @@ interface VpnPanelInterface
      * @return array|null Inbound configurations
      */
     public function getInbounds(Server $server): ?array;
+
+    /**
+     * Restart the panel/core service (if supported).
+     *
+     * @param Server $server The server
+     * @return bool True if restart was triggered, false if not supported
+     */
+    public function restartPanel(Server $server): bool;
 }
 

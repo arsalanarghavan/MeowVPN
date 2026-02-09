@@ -36,6 +36,16 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Node Role (web | central | all)
+    |--------------------------------------------------------------------------
+    | web: This node only serves HTTP/API; scheduler does not run sync/monitoring jobs.
+    | central: This node runs scheduler and queue for sync/monitoring only (same DB/Redis).
+    | all: Default; run everything on one node (single-server deployment).
+    */
+    'node_role' => env('APP_NODE_ROLE', 'all'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Frontend URL
     |--------------------------------------------------------------------------
     */

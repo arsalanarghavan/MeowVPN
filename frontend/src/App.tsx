@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { useAuthStore } from './stores/authStore'
 import SetupWizard from './components/setup/SetupWizard'
 import Login from './pages/Login'
 import AdminDashboard from './pages/admin/Dashboard'
 import ResellerDashboard from './pages/reseller/Dashboard'
+import BotOnlyPage from './pages/BotOnlyPage'
 
 function App() {
   const { user, isSetupComplete, checkSetup, checkAuth } = useAuthStore()
@@ -58,7 +59,7 @@ function App() {
         {user.role === 'reseller' && (
           <Route path="/*" element={<ResellerDashboard />} />
         )}
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/*" element={<BotOnlyPage />} />
       </Routes>
     </BrowserRouter>
   )

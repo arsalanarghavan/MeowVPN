@@ -215,7 +215,7 @@ function ResellerUsersPage() {
     try {
       if (user?.id) {
         const response = await resellersApi.users(user.id)
-        setUsers(response.data)
+        setUsers(response.data?.data ?? [])
       }
     } catch (error) {
       console.error('Failed to load users:', error)
@@ -268,6 +268,9 @@ function ResellerUsersPage() {
     </div>
   )
 }
+
+// Base URL for subscription links (must be reachable by V2Ray clients; e.g. https://sub.example.com)
+const SUBSCRIPTION_BASE_URL = (import.meta.env.VITE_SUBSCRIPTION_BASE_URL || window.location.origin).replace(/\/$/, '')
 
 // Subscriptions Page
 function ResellerSubscriptionsPage() {
@@ -389,7 +392,7 @@ function ResellerSubscriptionsPage() {
                     </td>
                     <td className="px-6 py-4">
                       <button 
-                        onClick={() => copyToClipboard(`${window.location.origin}/api/sub/${sub.uuid}`, sub.uuid)}
+                        onClick={() => copyToClipboard(`${SUBSCRIPTION_BASE_URL}/api/sub/${sub.uuid}`, sub.uuid)}
                         className="flex items-center gap-1 text-sm text-purple-600 hover:text-purple-800"
                       >
                         {copied === sub.uuid ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}

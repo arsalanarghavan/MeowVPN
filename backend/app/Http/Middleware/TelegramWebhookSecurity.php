@@ -25,15 +25,16 @@ class TelegramWebhookSecurity
         $clientIp = $request->ip();
         
         if (!$this->isTelegramIp($clientIp)) {
-            // Also check secret token if configured
             $secretToken = config('services.telegram.webhook_secret');
             if ($secretToken) {
                 $headerToken = $request->header('X-Telegram-Bot-Api-Secret-Token');
                 if ($headerToken !== $secretToken) {
                     return response()->json(['error' => 'Unauthorized'], 401);
                 }
+            } elseif (app()->environment('production')) {
+                // In production, reject non-Telegram IPs when secret is not set
+                return response()->json(['error' => 'Unauthorized'], 401);
             } else {
-                // If no secret token is configured, log warning but allow
                 \Log::warning("Telegram webhook request from non-Telegram IP: {$clientIp}");
             }
         }

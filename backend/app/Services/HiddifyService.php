@@ -503,5 +503,13 @@ class HiddifyService implements VpnPanelInterface
 
         return null;
     }
+
+    /**
+     * Restart panel - not supported for Hiddify via this API.
+     */
+    public function restartPanel(Server $server): bool
+    {
+        return false;
+    }
 }
 

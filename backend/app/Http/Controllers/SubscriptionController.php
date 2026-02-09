@@ -8,6 +8,7 @@ use App\Models\SubscriptionLink;
 use App\Models\Plan;
 use App\Models\Server;
 use App\Models\Transaction;
+use App\Models\User;
 use App\Services\ServerSelectionService;
 use App\Services\VpnPanelFactory;
 use App\Services\MultiServerProvisioningService;
@@ -64,6 +65,7 @@ class SubscriptionController extends Controller
         $data = $request->validate([
             'plan_id' => 'required|exists:plans,id',
             'location_tag' => 'nullable|string',
+            'server_category' => 'nullable|string|in:tunnel_entry,tunnel_exit,direct',
             'server_ids' => 'nullable|array',
             'server_ids.*' => 'exists:servers,id',
             'max_devices' => 'nullable|integer|min:1|max:10',
@@ -82,8 +84,12 @@ class SubscriptionController extends Controller
 
         try {
             return DB::transaction(function () use ($user, $plan, $data, $maxDevices) {
-                // Deduct from wallet
-                $user->decrement('wallet_balance', $plan->price_base);
+                $price = $plan->price_base;
+                $lockedUser = User::where('id', $user->id)->lockForUpdate()->first();
+                if (!$lockedUser || $lockedUser->wallet_balance < $price) {
+                    throw new Exception('موجودی کیف پول کافی نیست');
+                }
+                $lockedUser->decrement('wallet_balance', $price);
 
                 // Create transaction record
                 $transaction = Transaction::create([
@@ -104,9 +110,12 @@ class SubscriptionController extends Controller
                         $maxDevices
                     );
                 } else {
-                    // Single server
-                    $server = $this->serverSelectionService->selectBestServer($data['location_tag'] ?? 'DE');
-                    
+                    // Single server: select by location_tag and optionally server_category (direct, tunnel_entry, tunnel_exit)
+                    $server = $this->serverSelectionService->selectBestServer(
+                        $data['location_tag'] ?? 'DE',
+                        $data['server_category'] ?? null
+                    );
+
                     if (!$server) {
                         throw new Exception('سرور در دسترس نیست');
                     }
@@ -292,13 +301,19 @@ class SubscriptionController extends Controller
     {
         $this->authorize('view', $subscription);
 
-        $link = $subscription->subscriptionLinks()->first()?->vless_link 
-            ?? $this->generateSubscriptionLinkForServer(
-                $subscription->server, 
-                $subscription->uuid, 
+        $storedLink = $subscription->subscriptionLinks()->first()?->vless_link;
+        if ($storedLink) {
+            $link = $storedLink;
+        } elseif ($subscription->server) {
+            $link = $this->generateSubscriptionLinkForServer(
+                $subscription->server,
+                $subscription->uuid,
                 $subscription->marzban_username
             );
-        
+        } else {
+            return response()->json(['error' => 'لینک اشتراک در دسترس نیست'], 404);
+        }
+
         $renderer = new ImageRenderer(
             new RendererStyle(300),
             new SvgImageBackEnd()
@@ -338,7 +353,12 @@ class SubscriptionController extends Controller
 
         try {
             return DB::transaction(function () use ($user, $plan, $subscription) {
-                $user->decrement('wallet_balance', $plan->price_base);
+                $price = $plan->price_base;
+                $lockedUser = User::where('id', $user->id)->lockForUpdate()->first();
+                if (!$lockedUser || $lockedUser->wallet_balance < $price) {
+                    throw new Exception('موجودی کیف پول کافی نیست');
+                }
+                $lockedUser->decrement('wallet_balance', $price);
 
                 Transaction::create([
                     'user_id' => $user->id,
@@ -352,7 +372,7 @@ class SubscriptionController extends Controller
 
                 // Calculate new expiry - add days to existing expiry if still active
                 $newExpireDate = $subscription->expire_date && $subscription->expire_date->isFuture()
-                    ? $subscription->expire_date->addDays($plan->duration_days)
+                    ? $subscription->expire_date->copy()->addDays($plan->duration_days)
                     : now()->addDays($plan->duration_days);
 
                 // Calculate new traffic
@@ -424,8 +444,10 @@ class SubscriptionController extends Controller
 
         try {
             return DB::transaction(function () use ($subscription, $data) {
-                $newServer = $this->serverSelectionService->selectBestServer($data['location_tag']);
-                
+                $oldServer = $subscription->server;
+                $serverCategory = $oldServer?->server_category;
+                $newServer = $this->serverSelectionService->selectBestServer($data['location_tag'], $serverCategory);
+
                 if (!$newServer) {
                     return response()->json(['error' => 'سرور در لوکیشن مورد نظر در دسترس نیست'], 400);
                 }
@@ -433,8 +455,6 @@ class SubscriptionController extends Controller
                 if ($newServer->id === $subscription->server_id) {
                     return response()->json(['error' => 'لوکیشن انتخاب شده همان لوکیشن فعلی است'], 400);
                 }
-
-                $oldServer = $subscription->server;
 
                 // Delete from old server
                 if ($oldServer) {

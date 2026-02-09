@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { invoicesApi } from '../../../services/api'
-import { FileText, Download, CheckCircle, Clock, AlertCircle, Eye } from 'lucide-react'
+import { FileText, Download, CheckCircle, Clock, AlertCircle, Eye, ChevronRight, ChevronLeft } from 'lucide-react'
 
 interface Invoice {
   id: number
@@ -8,18 +8,25 @@ interface Invoice {
   start_date: string
   end_date: string
   total_amount: number
-  status: 'pending' | 'paid' | 'overdue'
+  status: 'unpaid' | 'paid'
   file_path: string | null
   created_at: string
 }
 
 interface Stats {
   total: number
-  pending: number
+  unpaid: number
   paid: number
   overdue: number
-  total_pending_amount: number
+  total_unpaid_amount: number
   total_paid_amount: number
+}
+
+interface PaginationMeta {
+  current_page: number
+  last_page: number
+  per_page: number
+  total: number
 }
 
 export default function InvoicesPage() {
@@ -28,19 +35,35 @@ export default function InvoicesPage() {
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState('')
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
+  const [pagination, setPagination] = useState<PaginationMeta>({
+    current_page: 1,
+    last_page: 1,
+    per_page: 20,
+    total: 0,
+  })
 
   useEffect(() => {
-    loadInvoices()
+    loadInvoices(1)
     loadStats()
   }, [statusFilter])
 
-  const loadInvoices = async () => {
+  const loadInvoices = async (page: number = 1) => {
     setLoading(true)
     try {
-      const params: any = {}
+      const params: { status?: string; page?: number } = {}
       if (statusFilter) params.status = statusFilter
+      params.page = page
       const response = await invoicesApi.list(params)
-      setInvoices(response.data.data || response.data)
+      const data = response.data
+      setInvoices(data.data ?? data)
+      if (data.current_page !== undefined) {
+        setPagination({
+          current_page: data.current_page,
+          last_page: data.last_page,
+          per_page: data.per_page,
+          total: data.total,
+        })
+      }
     } catch (error) {
       console.error('Failed to load invoices:', error)
     } finally {
@@ -60,7 +83,7 @@ export default function InvoicesPage() {
   const handleGeneratePdf = async (invoiceId: number) => {
     try {
       await invoicesApi.generate(invoiceId)
-      loadInvoices()
+      loadInvoices(pagination.current_page)
       alert('فاکتور با موفقیت ایجاد شد')
     } catch (error) {
       console.error('Failed to generate PDF:', error)
@@ -73,7 +96,7 @@ export default function InvoicesPage() {
     
     try {
       await invoicesApi.markPaid(invoiceId)
-      loadInvoices()
+      loadInvoices(pagination.current_page)
       loadStats()
     } catch (error) {
       console.error('Failed to mark as paid:', error)
@@ -82,25 +105,25 @@ export default function InvoicesPage() {
   }
 
   const handleDownload = (invoiceId: number) => {
-    const token = localStorage.getItem('token')
-    const url = `${invoicesApi.download(invoiceId)}?token=${token}`
-    window.open(url, '_blank')
+    window.open(invoicesApi.getDownloadUrl(invoiceId), '_blank')
   }
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string, endDate?: string) => {
+    const isOverdue = status === 'unpaid' && endDate && new Date(endDate) < new Date()
+    const displayStatus = isOverdue ? 'overdue' : status
     const styles: Record<string, string> = {
-      pending: 'bg-yellow-100 text-yellow-700',
+      unpaid: 'bg-yellow-100 text-yellow-700',
       paid: 'bg-green-100 text-green-700',
       overdue: 'bg-red-100 text-red-700',
     }
     const labels: Record<string, string> = {
-      pending: 'در انتظار پرداخت',
+      unpaid: 'در انتظار پرداخت',
       paid: 'پرداخت شده',
       overdue: 'معوق',
     }
     return (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium ${styles[status] || styles.pending}`}>
-        {labels[status] || status}
+      <span className={`px-2 py-1 rounded-full text-xs font-medium ${styles[displayStatus] || styles.unpaid}`}>
+        {labels[displayStatus] || status}
       </span>
     )
   }
@@ -132,7 +155,7 @@ export default function InvoicesPage() {
               </div>
               <div>
                 <p className="text-sm text-slate-500">در انتظار</p>
-                <p className="text-xl font-bold text-slate-800">{stats.pending}</p>
+                <p className="text-xl font-bold text-slate-800">{stats.unpaid}</p>
               </div>
             </div>
           </div>
@@ -166,7 +189,7 @@ export default function InvoicesPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-gradient-to-br from-yellow-500 to-orange-500 rounded-xl shadow-sm p-6 text-white">
             <p className="text-sm opacity-80">مبلغ در انتظار پرداخت</p>
-            <p className="text-3xl font-bold mt-2">{stats.total_pending_amount?.toLocaleString() || 0} ﷼</p>
+            <p className="text-3xl font-bold mt-2">{stats.total_unpaid_amount?.toLocaleString() || 0} ﷼</p>
           </div>
           <div className="bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl shadow-sm p-6 text-white">
             <p className="text-sm opacity-80">مبلغ پرداخت شده</p>
@@ -183,9 +206,8 @@ export default function InvoicesPage() {
           className="px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
         >
           <option value="">همه وضعیت‌ها</option>
-          <option value="pending">در انتظار پرداخت</option>
+          <option value="unpaid">در انتظار پرداخت</option>
           <option value="paid">پرداخت شده</option>
-          <option value="overdue">معوق</option>
         </select>
       </div>
 
@@ -229,7 +251,7 @@ export default function InvoicesPage() {
                       <td className="px-6 py-4 text-sm font-medium text-slate-800">
                         {invoice.total_amount?.toLocaleString() || 0} ﷼
                       </td>
-                      <td className="px-6 py-4">{getStatusBadge(invoice.status)}</td>
+                      <td className="px-6 py-4">{getStatusBadge(invoice.status, invoice.end_date)}</td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
                           <button
@@ -274,6 +296,35 @@ export default function InvoicesPage() {
             </table>
           </div>
         )}
+
+        {/* Pagination */}
+        {!loading && pagination.last_page > 1 && (
+          <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200 bg-slate-50">
+            <p className="text-sm text-slate-600">
+              صفحه {pagination.current_page} از {pagination.last_page} (مجموع {pagination.total} فاکتور)
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => loadInvoices(pagination.current_page - 1)}
+                disabled={pagination.current_page <= 1}
+                className="p-2 rounded-lg border border-slate-300 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="صفحه قبل"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => loadInvoices(pagination.current_page + 1)}
+                disabled={pagination.current_page >= pagination.last_page}
+                className="p-2 rounded-lg border border-slate-300 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="صفحه بعد"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Invoice Detail Modal */}
@@ -293,7 +344,7 @@ export default function InvoicesPage() {
                 </div>
                 <div>
                   <p className="text-sm text-slate-500">وضعیت</p>
-                  <div className="mt-1">{getStatusBadge(selectedInvoice.status)}</div>
+                  <div className="mt-1">{getStatusBadge(selectedInvoice.status, selectedInvoice.end_date)}</div>
                 </div>
                 <div>
                   <p className="text-sm text-slate-500">تاریخ شروع</p>

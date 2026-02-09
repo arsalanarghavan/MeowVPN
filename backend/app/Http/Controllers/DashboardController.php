@@ -30,7 +30,8 @@ class DashboardController extends Controller
 
     public function sales(Request $request)
     {
-        $period = $request->get('period', 'month'); // day, week, month
+        $request->validate(['period' => 'sometimes|in:day,week,month']);
+        $period = $request->input('period', 'month');
 
         $query = Transaction::where('type', 'purchase')
             ->where('status', 'completed');

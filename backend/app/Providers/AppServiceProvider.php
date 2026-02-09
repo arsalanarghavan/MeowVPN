@@ -11,7 +11,9 @@ use App\Models\Plan;
 use App\Models\Invoice;
 use App\Models\Ticket;
 use App\Models\PayoutRequest;
+use App\Models\User;
 use App\Policies\SubscriptionPolicy;
+use App\Policies\UserPolicy;
 use App\Policies\TransactionPolicy;
 use App\Policies\ServerPolicy;
 use App\Policies\PlanPolicy;
@@ -42,6 +44,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Invoice::class, InvoicePolicy::class);
         Gate::policy(Ticket::class, TicketPolicy::class);
         Gate::policy(PayoutRequest::class, PayoutRequestPolicy::class);
+        Gate::policy(User::class, UserPolicy::class);
 
         // Register role gate
         Gate::define('admin', function ($user) {

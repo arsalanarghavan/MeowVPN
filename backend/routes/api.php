@@ -14,6 +14,7 @@ use App\Http\Controllers\HealthCheckController;
 use App\Http\Controllers\SetupController;
 use App\Http\Controllers\TicketController;
 use App\Http\Controllers\InvoiceController;
+use App\Http\Controllers\AezaController;
 
 /*
 |--------------------------------------------------------------------------
@@ -73,6 +74,14 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/available', [ServerController::class, 'available']);
         Route::get('/monitoring', [ServerController::class, 'monitoring'])->middleware('role:admin');
         Route::get('/panel-types', [ServerController::class, 'panelTypes']);
+        Route::get('/region-category-options', [ServerController::class, 'regionAndCategoryOptions']);
+        Route::post('/{server}/restart-panel', [ServerController::class, 'restartPanel'])->middleware('role:admin');
+        Route::post('/{server}/reboot', [ServerController::class, 'reboot'])->middleware('role:admin');
+        Route::post('/{server}/suspend', [ServerController::class, 'suspend'])->middleware('role:admin');
+        Route::post('/{server}/resume', [ServerController::class, 'resume'])->middleware('role:admin');
+        Route::post('/{server}/reinstall', [ServerController::class, 'reinstall'])->middleware('role:admin');
+        Route::post('/{server}/change-root-password', [ServerController::class, 'changeRootPassword'])->middleware('role:admin');
+        Route::get('/{server}/vps-stats', [ServerController::class, 'vpsStats'])->middleware('role:admin');
         Route::get('/{server}', [ServerController::class, 'show']);
         Route::post('/', [ServerController::class, 'store'])->middleware('role:admin');
         Route::put('/{server}', [ServerController::class, 'update'])->middleware('role:admin');
@@ -174,6 +183,15 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Transaction receipts
     Route::get('/transactions/{transaction}/receipt', [InvoiceController::class, 'receipt']);
+
+    // AEZA provisioning (admin only)
+    Route::prefix('aeza')->middleware('role:admin')->group(function () {
+        Route::get('/products', [AezaController::class, 'products']);
+        Route::get('/os', [AezaController::class, 'os']);
+        Route::post('/orders', [AezaController::class, 'createOrder']);
+        Route::get('/orders/{orderId}', [AezaController::class, 'getOrder']);
+        Route::post('/register-server', [AezaController::class, 'registerServer']);
+    });
 });
 
 // Payment callbacks (public) - supports both GET and POST for different gateways

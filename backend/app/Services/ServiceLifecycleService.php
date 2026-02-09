@@ -3,7 +3,8 @@
 namespace App\Services;
 
 use App\Models\Subscription;
-use App\Services\MarzbanService;
+use App\Services\VpnPanelFactory;
+use App\Services\MultiServerProvisioningService;
 use App\Jobs\SendTelegramNotification;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
@@ -17,25 +18,31 @@ class ServiceLifecycleService
     private const WARNING_CACHE_TTL = 86400;
 
     public function __construct(
-        private MarzbanService $marzbanService
+        private VpnPanelFactory $panelFactory,
+        private MultiServerProvisioningService $multiServerService
     ) {}
 
     /**
-     * Monitor and update subscription traffic
+     * Monitor and update subscription traffic (single-server subscriptions only)
      */
     public function monitorSubscriptions(): void
     {
         $subscriptions = Subscription::where('status', 'active')
             ->whereNotNull('server_id')
-            ->with('user')
+            ->with(['user', 'server'])
             ->get();
 
         foreach ($subscriptions as $subscription) {
+            if (!$subscription->server) {
+                continue;
+            }
             try {
-                $stats = $this->marzbanService->getUserStats(
-                    $subscription->server,
-                    $subscription->marzban_username
-                );
+                $panelService = $this->panelFactory->make($subscription->server);
+                $identifier = $subscription->server->isHiddify()
+                    ? ($subscription->panel_username ?? $subscription->uuid)
+                    : $subscription->marzban_username;
+
+                $stats = $panelService->getUserStats($subscription->server, $identifier);
 
                 if ($stats) {
                     $subscription->update([
@@ -156,11 +163,14 @@ class ServiceLifecycleService
      */
     public function disableSubscription(Subscription $subscription): void
     {
-        if ($subscription->server) {
-            $this->marzbanService->disableUser(
-                $subscription->server,
-                $subscription->marzban_username
-            );
+        if ($subscription->isMultiServer()) {
+            $this->multiServerService->disableOnAllServers($subscription);
+        } elseif ($subscription->server) {
+            $panelService = $this->panelFactory->make($subscription->server);
+            $identifier = $subscription->server->isHiddify()
+                ? ($subscription->panel_username ?? $subscription->uuid)
+                : $subscription->marzban_username;
+            $panelService->disableUser($subscription->server, $identifier);
         }
 
         $subscription->update(['status' => 'expired']);
@@ -185,11 +195,14 @@ class ServiceLifecycleService
 
         foreach ($subscriptions as $subscription) {
             try {
-                if ($subscription->server) {
-                    $this->marzbanService->deleteUser(
-                        $subscription->server,
-                        $subscription->marzban_username
-                    );
+                if ($subscription->isMultiServer()) {
+                    $this->multiServerService->deleteFromAllServers($subscription);
+                } elseif ($subscription->server) {
+                    $panelService = $this->panelFactory->make($subscription->server);
+                    $identifier = $subscription->server->isHiddify()
+                        ? ($subscription->panel_username ?? $subscription->uuid)
+                        : $subscription->marzban_username;
+                    $panelService->deleteUser($subscription->server, $identifier);
                 }
 
                 // Delete subscription links

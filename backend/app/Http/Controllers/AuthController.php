@@ -70,6 +70,14 @@ class AuthController extends Controller
             'parent_id' => 'nullable|exists:users,id',
         ]);
 
+        // Only allow parent_id when the parent is affiliate or reseller (referral flow)
+        if (!empty($data['parent_id'])) {
+            $parent = User::find($data['parent_id']);
+            if (!$parent || !in_array($parent->role, ['affiliate', 'reseller'], true)) {
+                unset($data['parent_id']);
+            }
+        }
+
         // Hash password before creating user if provided
         if (!empty($data['password'])) {
             $data['password'] = Hash::make($data['password']);

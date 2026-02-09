@@ -21,21 +21,22 @@ class SetupController extends Controller
         }
 
         $envContent = File::get($filePath);
-        
+
         foreach ($data as $key => $value) {
+            $key = (string) $key;
             // Escape special characters but handle empty values
-            if (!empty($value)) {
-                $value = str_contains($value, ' ') ? "\"$value\"" : $value;
-            }
-            $pattern = "/^{$key}=.*/m";
-            
+            $formattedValue = $value !== null && $value !== '' ? (str_contains($value, ' ') ? "\"$value\"" : $value) : '';
+            // Safe for use in preg_replace replacement (escape $ and \ in value only)
+            $safeReplacement = $key . '=' . str_replace(['\\', '$'], ['\\\\', '\\$'], $formattedValue);
+            $pattern = '/^' . preg_quote($key, '/') . '=.*/m';
+
             if (preg_match($pattern, $envContent)) {
-                $envContent = preg_replace($pattern, "{$key}={$value}", $envContent);
+                $envContent = preg_replace($pattern, $safeReplacement, $envContent);
             } else {
-                $envContent .= "\n{$key}={$value}";
+                $envContent .= "\n{$key}={$formattedValue}";
             }
         }
-        
+
         File::put($filePath, $envContent);
     }
 
@@ -477,7 +478,18 @@ NGINX;
         $data = $request->validate([
             'email' => 'required|email',
             'domains' => 'required|array|min:1',
+            'domains.*' => 'required|string|max:253',
         ]);
+
+        // Validate each domain is a safe hostname (prevent command injection)
+        foreach ($data['domains'] as $domain) {
+            if (!preg_match('/^[a-zA-Z0-9]([a-zA-Z0-9.\-]*[a-zA-Z0-9])?$/i', $domain)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'دامنه نامعتبر است: ' . $domain . '. فقط حروف، اعداد، نقطه و خط تیره مجاز است.',
+                ], 400);
+            }
+        }
 
         try {
             // Validate DNS before attempting SSL installation
@@ -495,15 +507,15 @@ NGINX;
                 \Log::warning('Port check warnings: ' . implode(', ', $portErrors));
             }
 
-            // Build certbot command for Docker with timeout
-            $domainsArgs = implode(' -d ', $data['domains']);
-            $email = $data['email'];
-            
-            // Use Docker Compose to run certbot with timeout (5 minutes)
+            // Build certbot command with escaped arguments (prevent command injection)
             $projectDir = base_path('..');
+            $projectDirEsc = escapeshellarg($projectDir);
+            $emailEsc = escapeshellarg($data['email']);
+            $domainsEsc = array_map('escapeshellarg', $data['domains']);
+            $domainsArgsEsc = implode(' -d ', $domainsEsc);
             $timeout = 300; // 5 minutes timeout
-            $command = "cd {$projectDir} && timeout {$timeout} docker compose run --rm certbot certonly --webroot --webroot-path=/var/www/certbot --email {$email} --agree-tos --no-eff-email -d {$domainsArgs} 2>&1";
-            
+            $command = "cd {$projectDirEsc} && timeout {$timeout} docker compose run --rm certbot certonly --webroot --webroot-path=/var/www/certbot --email {$emailEsc} --agree-tos --no-eff-email -d {$domainsArgsEsc} 2>&1";
+
             $startTime = time();
             exec($command, $output, $returnCode);
             $duration = time() - $startTime;
@@ -512,8 +524,8 @@ NGINX;
                 // Update Nginx configuration to use SSL
                 $this->updateNginxSSL($data['domains']);
                 
-                // Reload Nginx
-                exec("cd {$projectDir} && docker compose exec -T nginx nginx -s reload 2>&1", $nginxOutput, $nginxReturnCode);
+                // Reload Nginx (projectDir is under our control; escape for safety)
+                exec("cd {$projectDirEsc} && docker compose exec -T nginx nginx -s reload 2>&1", $nginxOutput, $nginxReturnCode);
                 
                 if ($nginxReturnCode !== 0) {
                     \Log::warning('Nginx reload failed: ' . implode("\n", $nginxOutput));

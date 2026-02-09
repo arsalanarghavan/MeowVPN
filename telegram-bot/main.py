@@ -23,6 +23,8 @@ logger = logging.getLogger(__name__)
 # Configuration
 BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 API_BASE_URL = os.getenv('API_BASE_URL', 'http://laravel:8000')
+# Public URL for subscription links (must be reachable by end users; e.g. https://sub.example.com)
+SUBSCRIPTION_PUBLIC_URL = os.getenv('SUBSCRIPTION_PUBLIC_URL', '').rstrip('/') or API_BASE_URL
 REDIS_HOST = os.getenv('REDIS_HOST', 'redis')
 REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
 REDIS_PASSWORD = os.getenv('REDIS_PASSWORD')
@@ -60,6 +62,15 @@ class AdminStates(StatesGroup):
     broadcasting = State()
     approving_transaction = State()
 
+def _subscriptions_list(response) -> list:
+    """Normalize subscriptions API response: backend may return array or { data: [] }."""
+    if response is None:
+        return []
+    if isinstance(response, list):
+        return response
+    return (response or {}).get('data', [])
+
+
 # API Helper
 async def api_request(method: str, endpoint: str, data: dict = None, headers: dict = None, timeout: int = 30):
     """Make API request to Laravel backend"""
@@ -75,6 +86,27 @@ async def api_request(method: str, endpoint: str, data: dict = None, headers: di
                     return None
     except Exception as e:
         logger.error(f"API request failed: {e}")
+        return None
+
+
+async def api_request_deposit_with_proof(amount_rials: int, proof_image_bytes: bytes, token: str, timeout: int = 30):
+    """POST to transactions/deposit with multipart form (amount, gateway, proof_image file)."""
+    url = f"{API_BASE_URL}/api/transactions/deposit"
+    form = aiohttp.FormData()
+    form.add_field('amount', str(amount_rials))
+    form.add_field('gateway', 'card_to_card')
+    form.add_field('proof_image', proof_image_bytes, filename='proof.jpg', content_type='image/jpeg')
+    headers = {'Authorization': f'Bearer {token}'}
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, data=form, headers=headers, timeout=timeout) as response:
+                if response.status in (200, 201):
+                    return await response.json()
+                error_text = await response.text()
+                logger.error(f"API deposit with proof error {response.status}: {error_text}")
+                return None
+    except Exception as e:
+        logger.error(f"Deposit with proof request failed: {e}")
         return None
 
 # Token Management
@@ -497,7 +529,7 @@ async def get_service_link(callback: CallbackQuery):
         await callback.answer("❌ سرویس یافت نشد")
         return
     
-    sub_link = f"{API_BASE_URL}/api/sub/{subscription['uuid']}"
+    sub_link = f"{SUBSCRIPTION_PUBLIC_URL}/api/sub/{subscription['uuid']}"
     
     await callback.message.answer(
         f"🔗 لینک اشتراک سرویس #{subscription_id}:\n\n"
@@ -522,7 +554,7 @@ async def get_service_qr(callback: CallbackQuery):
         await callback.answer("❌ سرویس یافت نشد")
         return
     
-    sub_link = f"{API_BASE_URL}/api/sub/{subscription['uuid']}"
+    sub_link = f"{SUBSCRIPTION_PUBLIC_URL}/api/sub/{subscription['uuid']}"
     
     # Generate QR code
     qr = qrcode.QRCode(version=1, box_size=10, border=5)
@@ -833,17 +865,30 @@ async def gateway_selected(callback: CallbackQuery, state: FSMContext):
 
 @dp.message(StateFilter(DepositStates.uploading_proof), F.photo)
 async def proof_uploaded(message: types.Message, state: FSMContext):
-    """Handle proof image upload"""
+    """Handle proof image upload: download photo and send to API as multipart."""
     data = await state.get_data()
     amount = data.get('deposit_amount')
     
     token = await get_user_token(message.from_user.id)
-    
-    # Create transaction
-    result = await api_request(
-        'POST', 'transactions/deposit',
-        data={'amount': amount * 10, 'gateway': 'card_to_card'},  # Convert to Rials
-        headers={'Authorization': f'Bearer {token}'}
+    if not token:
+        await message.answer("❌ خطا در احراز هویت. لطفاً /start را بزنید.")
+        await state.clear()
+        return
+
+    # Download largest photo (last in list)
+    try:
+        file = await bot.get_file(message.photo[-1].file_id)
+        bio = await bot.download_file(file)
+        proof_bytes = bio.read() if hasattr(bio, 'read') else bio
+    except Exception as e:
+        logger.warning(f"Failed to download proof image: {e}")
+        await message.answer("❌ خطا در دریافت تصویر. لطفاً دوباره ارسال کنید.")
+        return
+
+    result = await api_request_deposit_with_proof(
+        amount_rials=amount * 10,
+        proof_image_bytes=proof_bytes,
+        token=token,
     )
     
     if result:
@@ -1104,18 +1149,26 @@ async def admin_broadcast_send(message: types.Message, state: FSMContext):
     
     token = await get_user_token(message.from_user.id)
     
-    # Get all users with telegram_id from API
-    users = await api_request(
-        'GET', 'users?has_telegram=1&per_page=1000',
-        headers={'Authorization': f'Bearer {token}'}
-    )
+    # Fetch all users with telegram_id via pagination (backend caps per_page at 100)
+    user_list = []
+    page = 1
+    while True:
+        resp = await api_request(
+            'GET', f'users?has_telegram=1&per_page=100&page={page}',
+            headers={'Authorization': f'Bearer {token}'}
+        )
+        if not resp or not resp.get('data'):
+            break
+        user_list.extend(resp['data'])
+        last_page = resp.get('last_page', 1)
+        if page >= last_page:
+            break
+        page += 1
     
-    if not users or not users.get('data'):
+    if not user_list:
         await message.answer("❌ کاربری برای ارسال پیام یافت نشد.")
         await state.clear()
         return
-    
-    user_list = users.get('data', [])
     total_users = len(user_list)
     sent_count = 0
     failed_count = 0
@@ -1178,19 +1231,17 @@ async def reseller_sub_stats(message: types.Message):
     users = users_response.get('data', [])
     total_users = len(users)
     
-    # Get subscriptions count
+    # Get subscriptions count (API returns array or { data: [] })
     subscriptions_response = await api_request(
         'GET', 'subscriptions',
         headers={'Authorization': f'Bearer {token}'}
     )
-    
-    active_subscriptions = 0
-    if subscriptions_response and subscriptions_response.get('data'):
-        # Count subscriptions of sub-users
-        sub_user_ids = [u['id'] for u in users]
-        for sub in subscriptions_response.get('data', []):
-            if sub.get('user_id') in sub_user_ids and sub.get('status') == 'active':
-                active_subscriptions += 1
+    subs_list = _subscriptions_list(subscriptions_response)
+    sub_user_ids = [u['id'] for u in users]
+    active_subscriptions = sum(
+        1 for sub in subs_list
+        if sub.get('user_id') in sub_user_ids and sub.get('status') == 'active'
+    )
     
     await message.answer(
         f"📊 آمار زیرمجموعه\n\n"
@@ -1255,21 +1306,13 @@ async def reseller_sub_subscriptions(message: types.Message):
     
     sub_user_ids = [u['id'] for u in users_response.get('data', [])]
     
-    # Get all subscriptions
+    # Get all subscriptions (API returns array or { data: [] })
     subscriptions_response = await api_request(
         'GET', 'subscriptions',
         headers={'Authorization': f'Bearer {token}'}
     )
-    
-    if not subscriptions_response or not subscriptions_response.get('data'):
-        await message.answer("🛒 سرویس‌های زیرمجموعه\n\n❌ هیچ سرویسی یافت نشد.")
-        return
-    
-    # Filter subscriptions of sub-users
-    sub_subscriptions = [
-        sub for sub in subscriptions_response.get('data', [])
-        if sub.get('user_id') in sub_user_ids
-    ]
+    subs_list = _subscriptions_list(subscriptions_response)
+    sub_subscriptions = [sub for sub in subs_list if sub.get('user_id') in sub_user_ids]
     
     if not sub_subscriptions:
         await message.answer("🛒 سرویس‌های زیرمجموعه\n\n❌ هیچ سرویسی در زیرمجموعه شما وجود ندارد.")

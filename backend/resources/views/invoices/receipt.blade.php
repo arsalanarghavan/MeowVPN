@@ -135,6 +135,7 @@
             <span class="info-value">
                 @switch($transaction->gateway)
                     @case('zibal') درگاه زیبال @break
+                    @case('card_to_card') کارت به کارت @break
                     @case('card') کارت به کارت @break
                     @case('wallet') کیف پول @break
                     @default {{ $transaction->gateway }}
