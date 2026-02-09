@@ -244,10 +244,9 @@ async def cmd_start(message: types.Message, state: FSMContext):
     args = message.text.split()[1:] if len(message.text.split()) > 1 else []
     referrer_id = args[0] if args else None
     
-    # Register user
     register_data = {'telegram_id': message.from_user.id, 'username': message.from_user.username}
-    if referrer_id:
-        register_data['parent_id'] = referrer_id
+    if referrer_id and isinstance(referrer_id, str) and referrer_id.isdigit() and int(referrer_id) > 0:
+        register_data['parent_id'] = int(referrer_id)
     
     await api_request('POST', 'auth/register', register_data)
     
@@ -1455,6 +1454,9 @@ async def back_to_main(message: types.Message, state: FSMContext):
 
 async def main():
     """Main function"""
+    if not BOT_TOKEN or not str(BOT_TOKEN).strip():
+        logger.error("TELEGRAM_BOT_TOKEN is not set or empty. Cannot start bot.")
+        raise SystemExit(1)
     logger.info("Starting MeowVPN Telegram Bot...")
     await dp.start_polling(bot)
 
