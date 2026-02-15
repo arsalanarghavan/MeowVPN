@@ -22,6 +22,7 @@ class User extends Authenticatable
         'credit_limit',
         'current_debt',
         'parent_id',
+        'telegram_2fa_enabled',
     ];
 
     protected $hidden = [
@@ -37,6 +38,7 @@ class User extends Authenticatable
             'wallet_balance' => 'decimal:2',
             'credit_limit' => 'decimal:2',
             'current_debt' => 'decimal:2',
+            'telegram_2fa_enabled' => 'boolean',
         ];
     }
 

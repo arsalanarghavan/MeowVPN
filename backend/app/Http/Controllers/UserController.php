@@ -47,7 +47,12 @@ class UserController extends Controller
             'email' => 'sometimes|email|unique:users,email,' . $user->id,
             'role' => 'sometimes|in:admin,reseller,affiliate,user',
             'credit_limit' => 'sometimes|numeric|min:0',
+            'telegram_2fa_enabled' => 'sometimes|boolean',
         ]);
+
+        if (isset($data['telegram_2fa_enabled']) && $data['telegram_2fa_enabled'] && !$user->telegram_id) {
+            unset($data['telegram_2fa_enabled']);
+        }
 
         // Only admin may change role and credit_limit
         if (!$request->user()->isAdmin()) {

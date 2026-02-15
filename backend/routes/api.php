@@ -49,6 +49,11 @@ Route::prefix('setup')->middleware('setup.incomplete')->group(function () {
 Route::prefix('auth')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
     Route::post('/register', [AuthController::class, 'register']);
+    Route::post('/app-login', [AuthController::class, 'appLogin']);
+    Route::post('/app-login-email', [AuthController::class, 'appLoginEmail']);
+    Route::get('/login-confirm/{sessionId}', [AuthController::class, 'loginConfirm']);
+    Route::post('/confirm-login-2fa', [AuthController::class, 'confirmLogin2fa'])->middleware('bot.app_login');
+    Route::post('/app-login-token', [AuthController::class, 'createAppLoginToken'])->middleware('bot.app_login');
     Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
     Route::get('/me', [AuthController::class, 'me'])->middleware('auth:sanctum');
     Route::post('/change-password', [AuthController::class, 'changePassword'])->middleware('auth:sanctum');

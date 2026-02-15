@@ -25,6 +25,8 @@ BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 API_BASE_URL = os.getenv('API_BASE_URL', 'http://laravel:8000')
 # Public URL for subscription links (must be reachable by end users; e.g. https://sub.example.com)
 SUBSCRIPTION_PUBLIC_URL = os.getenv('SUBSCRIPTION_PUBLIC_URL', '').rstrip('/') or API_BASE_URL
+# Secret for creating app login tokens (must match backend TELEGRAM_APP_LOGIN_SECRET)
+APP_LOGIN_SECRET = os.getenv('TELEGRAM_APP_LOGIN_SECRET')
 REDIS_HOST = os.getenv('REDIS_HOST', 'redis')
 REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
 REDIS_PASSWORD = os.getenv('REDIS_PASSWORD')
@@ -242,8 +244,40 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
     
     args = message.text.split()[1:] if len(message.text.split()) > 1 else []
-    referrer_id = args[0] if args else None
-    
+    start_param = args[0] if args else None
+
+    # App login: user opened t.me/Bot?start=app_login from the Meow app
+    if start_param == "app_login":
+        if not APP_LOGIN_SECRET:
+            await message.answer(
+                "❌ ورود به اپ در حال حاضر غیرفعال است. لطفاً با پشتیبانی تماس بگیرید."
+            )
+            return
+        headers = {"X-Bot-Secret": APP_LOGIN_SECRET}
+        resp = await api_request(
+            "POST",
+            "auth/app-login-token",
+            data={
+                "telegram_id": message.from_user.id,
+                "username": message.from_user.username,
+            },
+            headers=headers,
+        )
+        if not resp or "token" not in resp:
+            await message.answer("❌ خطا در ایجاد لینک ورود. لطفاً دوباره تلاش کنید.")
+            return
+        one_time_token = resp["token"]
+        deep_link = f"meow://login?token={one_time_token}"
+        await message.answer(
+            "📱 برای ورود به اپ Meow روی دکمه زیر بزنید:\n\n"
+            "⏱ این لینک ۵ دقیقه اعتبار دارد.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔓 باز کردن اپ Meow", url=deep_link)],
+            ]),
+        )
+        return
+
+    referrer_id = start_param
     register_data = {'telegram_id': message.from_user.id, 'username': message.from_user.username}
     if referrer_id and isinstance(referrer_id, str) and referrer_id.isdigit() and int(referrer_id) > 0:
         register_data['parent_id'] = int(referrer_id)
@@ -420,6 +454,37 @@ async def confirm_purchase(callback: CallbackQuery, state: FSMContext):
     )
     await state.clear()
     await callback.answer("✅ سرویس ایجاد شد")
+
+@dp.callback_query(F.data.startswith("login_2fa:"))
+async def login_2fa_callback(callback: CallbackQuery):
+    """Handle Allow/End Session for app login 2FA confirmation."""
+    if not APP_LOGIN_SECRET:
+        await callback.answer("❌ تنظیمات غیرفعال است.", show_alert=True)
+        return
+    parts = callback.data.split(":", 2)
+    if len(parts) != 3:
+        await callback.answer("❌ خطا", show_alert=True)
+        return
+    _, action, session_id = parts
+    if action not in ("allow", "reject"):
+        await callback.answer("❌ عملیات نامعتبر", show_alert=True)
+        return
+    headers = {"X-Bot-Secret": APP_LOGIN_SECRET}
+    resp = await api_request(
+        "POST",
+        "auth/confirm-login-2fa",
+        data={"session_id": session_id, "action": action},
+        headers=headers,
+    )
+    if resp and resp.get("status") in ("approved", "rejected"):
+        if resp["status"] == "approved":
+            await callback.message.edit_text("✅ ورود به اپ تایید شد.")
+        else:
+            await callback.message.edit_text("❌ ورود لغو شد.")
+        await callback.answer()
+    else:
+        await callback.answer("❌ خطا در پردازش. لطفاً دوباره تلاش کنید.", show_alert=True)
+
 
 @dp.callback_query(F.data == "cancel_purchase")
 async def cancel_purchase(callback: CallbackQuery, state: FSMContext):

@@ -21,6 +21,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'verified' => \App\Http\Middleware\EnsureEmailIsVerified::class,
             'rate.limit' => \App\Http\Middleware\RateLimiter::class,
             'telegram.webhook' => \App\Http\Middleware\TelegramWebhookSecurity::class,
+            'bot.app_login' => \App\Http\Middleware\VerifyBotAppLoginSecret::class,
             'role' => \App\Http\Middleware\CheckRole::class,
             'setup.incomplete' => \App\Http\Middleware\EnsureSetupNotComplete::class,
         ]);

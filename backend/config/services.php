@@ -35,6 +35,7 @@ return [
         'bot_token' => env('TELEGRAM_BOT_TOKEN'),
         'bot_username' => env('TELEGRAM_BOT_USERNAME'),
         'webhook_secret' => env('TELEGRAM_WEBHOOK_SECRET'),
+        'app_login_secret' => env('TELEGRAM_APP_LOGIN_SECRET'),
         'admin_ids' => array_filter(
             array_map('trim', explode(',', env('TELEGRAM_ADMIN_IDS', '')))
         ),
