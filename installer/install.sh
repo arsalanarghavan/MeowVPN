@@ -104,15 +104,15 @@ cleanup_on_error() {
 
 trap cleanup_on_error ERR
 
-# Check if running as root
-if [ "$EUID" -eq 0 ]; then 
-    print_error "Please do not run as root. Run as a regular user with sudo privileges."
-    exit 1
-fi
-
-# Check sudo access
-if ! sudo -n true 2>/dev/null; then
-    print_info "This script requires sudo privileges. You may be prompted for your password."
+# If running as root, sudo is not needed
+if [ "$EUID" -eq 0 ]; then
+    sudo() { "$@"; }
+    export -f sudo
+else
+    # Check sudo access
+    if ! sudo -n true 2>/dev/null; then
+        print_info "This script requires sudo privileges. You may be prompted for your password."
+    fi
 fi
 
 # Banner
