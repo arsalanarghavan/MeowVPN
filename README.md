@@ -16,7 +16,7 @@
 کافیست روی سرور اوبونتو ۲۰+ یا دبیان ۱۱+ دستور زیر را اجرا کنید تا همه چیز به‌طور خودکار از گیت‌هاب دانلود و نصب شود:
 
 ```bash
-bash <(curl -sSL https://raw.githubusercontent.com/arsalanarghavan/MeowVPN/main/installer/install.sh)
+curl -sSL https://raw.githubusercontent.com/arsalanarghavan/MeowVPN/main/installer/bootstrap.sh | bash
 ```
 
 یا اگر ترجیح می‌دهید ابتدا مخزن را کلون کنید:
@@ -29,22 +29,18 @@ git clone https://github.com/arsalanarghavan/MeowVPN.git && cd MeowVPN && bash i
 
 پس از نصب، به آدرس `https://panel.yourdomain.com` مراجعه کنید و Setup Wizard را تکمیل کنید.
 
-### آپدیت خودکار
+### آپدیت
+
+اگر قبلاً نصب کرده‌اید (پوشه `/opt/MeowVPN` موجود است):
 
 ```bash
-bash <(curl -sSL https://raw.githubusercontent.com/arsalanarghavan/MeowVPN/main/installer/update.sh)
-```
-
-یا از داخل پوشه پروژه:
-
-```bash
-bash installer/update.sh
+cd /opt/MeowVPN && git pull && bash installer/update.sh
 ```
 
 ### نصب تانل (تعاملی)
 
 ```bash
-bash <(curl -sSL https://raw.githubusercontent.com/arsalanarghavan/MeowVPN/main/installer/tunnel.sh)
+cd /opt/MeowVPN && bash installer/tunnel.sh
 ```
 
 ## ساختار پروژه

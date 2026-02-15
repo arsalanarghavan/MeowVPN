@@ -132,38 +132,6 @@ echo "User: $(whoami)" >> "$LOG_FILE"
 echo "OS: $(uname -a)" >> "$LOG_FILE"
 echo "" >> "$LOG_FILE"
 
-# ============================================
-# Auto-clone from GitHub if running via curl/pipe
-# ============================================
-GITHUB_REPO="https://github.com/arsalanarghavan/MeowVPN.git"
-DEFAULT_INSTALL_DIR="/opt/MeowVPN"
-
-if [ ! -f "$(dirname "${BASH_SOURCE[0]:-$0}")/../docker-compose.yml" ] 2>/dev/null; then
-    print_info "Repository not found locally. Cloning from GitHub..."
-    
-    # Install git if not available
-    if ! command -v git &> /dev/null; then
-        print_info "Installing git..."
-        sudo apt-get update -qq && sudo apt-get install -y git >> "$LOG_FILE" 2>&1
-    fi
-    
-    if [ -d "$DEFAULT_INSTALL_DIR" ]; then
-        print_info "Existing installation found at $DEFAULT_INSTALL_DIR, pulling latest..."
-        cd "$DEFAULT_INSTALL_DIR"
-        git pull >> "$LOG_FILE" 2>&1 || true
-    else
-        print_info "Cloning MeowVPN to $DEFAULT_INSTALL_DIR..."
-        sudo git clone "$GITHUB_REPO" "$DEFAULT_INSTALL_DIR" >> "$LOG_FILE" 2>&1
-        sudo chown -R "$(whoami):$(id -gn)" "$DEFAULT_INSTALL_DIR"
-        cd "$DEFAULT_INSTALL_DIR"
-    fi
-    
-    print_success "Repository ready at $DEFAULT_INSTALL_DIR"
-    
-    # Re-execute from the cloned repo
-    exec bash "$DEFAULT_INSTALL_DIR/installer/install.sh"
-fi
-
 # Get project directory
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_DIR"
