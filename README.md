@@ -11,14 +11,41 @@
 - **Cache/Queue**: Redis
 - **VPN Core**: Marzban Panel
 
-## نصب سریع
+## نصب خودکار (یک دستور)
+
+کافیست روی سرور اوبونتو ۲۰+ یا دبیان ۱۱+ دستور زیر را اجرا کنید تا همه چیز به‌طور خودکار از گیت‌هاب دانلود و نصب شود:
 
 ```bash
-chmod +x installer/install.sh
-./installer/install.sh
+bash <(curl -sSL https://raw.githubusercontent.com/arsalanarghavan/MeowVPN/main/installer/install.sh)
 ```
 
+یا اگر ترجیح می‌دهید ابتدا مخزن را کلون کنید:
+
+```bash
+git clone https://github.com/arsalanarghavan/MeowVPN.git && cd MeowVPN && bash installer/install.sh
+```
+
+> **نکته:** اسکریپت نصب به‌صورت خودکار Docker، Docker Compose و تمام وابستگی‌ها را نصب می‌کند. نیازی به نصب دستی پیش‌نیازها نیست.
+
 پس از نصب، به آدرس `https://panel.yourdomain.com` مراجعه کنید و Setup Wizard را تکمیل کنید.
+
+### آپدیت خودکار
+
+```bash
+bash <(curl -sSL https://raw.githubusercontent.com/arsalanarghavan/MeowVPN/main/installer/update.sh)
+```
+
+یا از داخل پوشه پروژه:
+
+```bash
+bash installer/update.sh
+```
+
+### نصب تانل (تعاملی)
+
+```bash
+bash <(curl -sSL https://raw.githubusercontent.com/arsalanarghavan/MeowVPN/main/installer/tunnel.sh)
+```
 
 ## ساختار پروژه
 
@@ -90,13 +117,6 @@ chmod +x installer/tunnel.sh
 ## مستندات
 
 برای جزئیات کامل معماری، به فایل [ARCHITECTURE.MD](ARCHITECTURE.MD) مراجعه کنید.
-
-## آپدیت
-
-```bash
-chmod +x installer/update.sh
-./installer/update.sh
-```
 
 ## لایسنس
 
