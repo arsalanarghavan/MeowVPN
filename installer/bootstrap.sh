@@ -15,10 +15,10 @@ GITHUB_REPO="https://github.com/arsalanarghavan/MeowVPN.git"
 INSTALL_DIR="/opt/MeowVPN"
 
 echo -e "${BLUE}"
-echo "╔══════════════════════════════════════════════════════════╗"
-echo "║           MeowVPN Bootstrap Installer                     ║"
-echo "║           Downloading & Installing...                      ║"
-echo "╚══════════════════════════════════════════════════════════╝"
+echo "╔══════════════════════════════════════════════════╗"
+echo "║       MeowVPN Bootstrap Installer               ║"
+echo "║       Downloading & Installing...                ║"
+echo "╚══════════════════════════════════════════════════╝"
 echo -e "${NC}"
 echo ""
 
@@ -32,7 +32,20 @@ fi
 # Install git if not available
 if ! command -v git &> /dev/null; then
     echo -e "${YELLOW}ℹ Installing git...${NC}"
-    $SUDO apt-get update -qq && $SUDO apt-get install -y git > /dev/null 2>&1
+    if command -v apt-get &> /dev/null; then
+        $SUDO apt-get update -qq && $SUDO apt-get install -y git > /dev/null 2>&1
+    elif command -v yum &> /dev/null; then
+        $SUDO yum install -y git > /dev/null 2>&1
+    elif command -v dnf &> /dev/null; then
+        $SUDO dnf install -y git > /dev/null 2>&1
+    elif command -v pacman &> /dev/null; then
+        $SUDO pacman -Sy --noconfirm git > /dev/null 2>&1
+    elif command -v apk &> /dev/null; then
+        $SUDO apk add --no-cache git > /dev/null 2>&1
+    else
+        echo -e "${RED}✗ Cannot install git automatically. Please install git manually.${NC}"
+        exit 1
+    fi
 fi
 
 # Clone or update repo

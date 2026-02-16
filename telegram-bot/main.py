@@ -31,8 +31,8 @@ REDIS_HOST = os.getenv('REDIS_HOST', 'redis')
 REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
 REDIS_PASSWORD = os.getenv('REDIS_PASSWORD')
 
-# Initialize
-bot = Bot(token=BOT_TOKEN)
+# Initialize (bot is created in main() after token validation)
+bot: Bot = None  # type: ignore
 dp = Dispatcher()
 
 # Redis connection pool
@@ -1519,9 +1519,11 @@ async def back_to_main(message: types.Message, state: FSMContext):
 
 async def main():
     """Main function"""
+    global bot
     if not BOT_TOKEN or not str(BOT_TOKEN).strip():
         logger.error("TELEGRAM_BOT_TOKEN is not set or empty. Cannot start bot.")
         raise SystemExit(1)
+    bot = Bot(token=BOT_TOKEN)
     logger.info("Starting MeowVPN Telegram Bot...")
     await dp.start_polling(bot)
 

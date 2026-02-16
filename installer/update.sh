@@ -62,10 +62,10 @@ trap cleanup_on_error ERR
 # Banner
 clear
 echo -e "${BLUE}"
-echo "╔══════════════════════════════════════════════════════════╗"
-echo "║           MeowVPN Updater Script v1.0                    ║"
-echo "║           Professional Update System                      ║"
-echo "╚══════════════════════════════════════════════════════════╝"
+echo "╔══════════════════════════════════════════════════════╗"
+echo "║     MeowVPN Updater Script v1.0                      ║"
+echo "║     Professional Update System                        ║"
+echo "╚══════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 echo ""
 
@@ -113,7 +113,9 @@ print_info "Backup location: $BACKUP_BASE"
 # Backup database
 print_info "Backing up database..."
 DB_BACKUP_FILE="$BACKUP_BASE/database.sql"
-if docker compose exec -T postgres pg_dump -U meowvpn meowvpn > "$DB_BACKUP_FILE" 2>>"$LOG_FILE"; then
+DB_USERNAME=$(grep '^DB_USERNAME=' "$PROJECT_DIR/.env" 2>/dev/null | cut -d'=' -f2 || echo "meowvpn")
+DB_DATABASE=$(grep '^DB_DATABASE=' "$PROJECT_DIR/.env" 2>/dev/null | cut -d'=' -f2 || echo "meowvpn")
+if docker compose exec -T postgres pg_dump -U "${DB_USERNAME:-meowvpn}" "${DB_DATABASE:-meowvpn}" > "$DB_BACKUP_FILE" 2>>"$LOG_FILE"; then
     # Compress database backup
     gzip "$DB_BACKUP_FILE" 2>/dev/null || true
     print_success "Database backed up to: ${DB_BACKUP_FILE}.gz"
@@ -294,28 +296,29 @@ else
     HEALTH_CHECK_FAILED=1
 fi
 
-# Check Redis
+# Check Redis (with auth)
 print_info "Checking Redis..."
-if docker compose exec -T redis redis-cli ping >> "$LOG_FILE" 2>&1; then
+REDIS_PASSWORD=$(grep '^REDIS_PASSWORD=' "$PROJECT_DIR/.env" 2>/dev/null | cut -d'=' -f2 || echo "changeme")
+if docker compose exec -T redis redis-cli -a "${REDIS_PASSWORD:-changeme}" ping >> "$LOG_FILE" 2>&1; then
     print_success "Redis health check passed"
 else
     print_error "Redis health check failed"
     HEALTH_CHECK_FAILED=1
 fi
 
-# Check Laravel API
+# Check Laravel API (via Host header to match nginx server_name)
 print_info "Checking Laravel API..."
 sleep 5
-if curl -f http://localhost/api/health >> "$LOG_FILE" 2>&1; then
+if curl -sf -H "Host: api.localhost" http://localhost/api/health >> "$LOG_FILE" 2>&1; then
     print_success "Laravel API health check passed"
 else
     print_warning "Laravel API health check failed (may be normal)"
 fi
 
-# Check Frontend
+# Check Frontend (via Host header to match nginx server_name)
 print_info "Checking Frontend..."
 sleep 3
-if curl -f http://localhost:3000 >> "$LOG_FILE" 2>&1; then
+if curl -sf -H "Host: panel.localhost" http://localhost >> "$LOG_FILE" 2>&1; then
     print_success "Frontend health check passed"
 else
     print_warning "Frontend health check failed (may be normal if not configured)"
@@ -337,9 +340,9 @@ UPDATE_END_TIME=$(date +%s)
 UPDATE_DURATION=$((UPDATE_END_TIME - UPDATE_START_TIME))
 
 echo ""
-echo -e "${GREEN}╔══════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║           Update Completed Successfully!                   ║${NC}"
-echo -e "${GREEN}╚══════════════════════════════════════════════════════════╝${NC}"
+echo -e "${GREEN}╔══════════════════════════════════════════════════════╗${NC}"
+echo -e "${GREEN}║     Update Completed Successfully!                    ║${NC}"
+echo -e "${GREEN}╚══════════════════════════════════════════════════════╝${NC}"
 echo ""
 print_success "Update completed in $UPDATE_DURATION seconds"
 echo ""

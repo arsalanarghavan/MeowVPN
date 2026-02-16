@@ -10,7 +10,7 @@
         "barryvdh/laravel-dompdf": "^2.0",
         "guzzlehttp/guzzle": "^7.8",
         "laravel/framework": "^11.0",
-        "laravel/horizon": "^5.23",
+        "laravel/horizon": "^6.0",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^2.9",
         "morilog/jalali": "^3.0",

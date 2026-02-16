@@ -39,8 +39,6 @@ interface MonitoringServer extends ServerData {
   health: ServerHealth
   usage_percentage: number
   available_slots: number
-  region?: string
-  server_category?: string
   is_central?: boolean
   provider?: string | null
   aeza_server_id?: string | null

@@ -29,10 +29,10 @@ print_warning() {
 # Banner
 clear
 echo -e "${RED}"
-echo "╔══════════════════════════════════════════════════════════╗"
-echo "║           MeowVPN Rollback Script v1.0                   ║"
-echo "║           Restore from Backup                            ║"
-echo "╚══════════════════════════════════════════════════════════╝"
+echo "╔══════════════════════════════════════════════════════╗"
+echo "║     MeowVPN Rollback Script v1.0                   ║"
+echo "║     Restore from Backup                            ║"
+echo "╚══════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 echo ""
 

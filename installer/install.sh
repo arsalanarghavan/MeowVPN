@@ -107,7 +107,6 @@ trap cleanup_on_error ERR
 # If running as root, sudo is not needed
 if [ "$EUID" -eq 0 ]; then
     sudo() { "$@"; }
-    export -f sudo
 else
     # Check sudo access
     if ! sudo -n true 2>/dev/null; then
@@ -118,10 +117,10 @@ fi
 # Banner
 clear
 echo -e "${BLUE}"
-echo "╔══════════════════════════════════════════════════════════╗"
-echo "║           MeowVPN Installation Script v1.0                 ║"
-echo "║           Professional VPN Management System              ║"
-echo "╚══════════════════════════════════════════════════════════╝"
+echo "╔══════════════════════════════════════════════════════╗"
+echo "║     MeowVPN Installation Script v1.0                ║"
+echo "║     Professional VPN Management System              ║"
+echo "╚══════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 echo ""
 
@@ -144,9 +143,9 @@ echo ""
 if [ -f "$PROJECT_DIR/backend/.env" ]; then
     if grep -q "^SETUP_COMPLETE\s*=\s*true" "$PROJECT_DIR/backend/.env" 2>/dev/null; then
         echo ""
-        echo -e "${GREEN}╔══════════════════════════════════════════════════════════╗${NC}"
-        echo -e "${GREEN}║        Setup Already Completed!                          ║${NC}"
-        echo -e "${GREEN}╚══════════════════════════════════════════════════════════╝${NC}"
+        echo -e "${GREEN}╔══════════════════════════════════════════════════════╗${NC}"
+        echo -e "${GREEN}║       Setup Already Completed!                       ║${NC}"
+        echo -e "${GREEN}╚══════════════════════════════════════════════════════╝${NC}"
         echo ""
         print_info "Setup wizard has already been completed."
         print_info "If you need to reinstall, please remove SETUP_COMPLETE=true from backend/.env"
@@ -403,11 +402,10 @@ fi
 
 # Generate APP_KEY for Laravel if not set
 if [ -f "$PROJECT_DIR/backend/.env" ]; then
-    if ! grep -q "APP_KEY=base64:" "$PROJECT_DIR/backend/.env" || grep -q "^APP_KEY=$" "$PROJECT_DIR/backend/.env"; then
+    if ! grep -q "APP_KEY=base64:" "$PROJECT_DIR/backend/.env"; then
         print_info "Generating Laravel APP_KEY..."
-        cd "$PROJECT_DIR/backend"
-        docker run --rm -v "$(pwd)":/app -w /app php:8.2-cli php -r "echo 'APP_KEY=base64:' . base64_encode(random_bytes(32)) . PHP_EOL;" >> .env 2>>"$LOG_FILE"
-        cd "$PROJECT_DIR"
+        NEW_APP_KEY=$(docker run --rm php:8.2-cli php -r "echo 'base64:' . base64_encode(random_bytes(32));" 2>>"$LOG_FILE")
+        sed -i "s|^APP_KEY=.*|APP_KEY=${NEW_APP_KEY}|" "$PROJECT_DIR/backend/.env"
         print_success "APP_KEY generated"
     else
         print_info "APP_KEY already exists"
@@ -456,7 +454,8 @@ if ! wait_for_service "PostgreSQL" "docker compose exec -T postgres pg_isready -
 fi
 
 # Wait for Redis to be ready (increased timeout to 60 seconds)
-if ! wait_for_service "Redis" "docker compose exec -T redis redis-cli ping" 60 2; then
+REDIS_PASSWORD=$(grep '^REDIS_PASSWORD=' "$PROJECT_DIR/.env" 2>/dev/null | cut -d'=' -f2 || echo "changeme")
+if ! wait_for_service "Redis" "docker compose exec -T redis redis-cli -a '${REDIS_PASSWORD:-changeme}' ping" 60 2; then
     print_error "Redis failed to start. Check logs: $LOG_FILE"
     print_info "You can check Redis logs with: docker compose logs redis"
     exit 1
@@ -537,17 +536,24 @@ else
     HEALTH_CHECK_FAILED=1
 fi
 
-# Check Redis
-if docker compose exec -T redis redis-cli ping >> "$LOG_FILE" 2>&1; then
+# Check Redis (with auth)
+if docker compose exec -T redis redis-cli -a "${REDIS_PASSWORD:-changeme}" ping >> "$LOG_FILE" 2>&1; then
     print_success "Redis health check passed"
 else
     print_error "Redis health check failed"
     HEALTH_CHECK_FAILED=1
 fi
 
-# Check Laravel (if API is accessible)
+# Check Laravel (via nginx default_server health endpoint)
 sleep 5
-if curl -f http://localhost/api/health >> "$LOG_FILE" 2>&1; then
+if curl -sf http://localhost/health >> "$LOG_FILE" 2>&1; then
+    print_success "Nginx health check passed"
+else
+    print_warning "Nginx health check failed (may be normal if setup is not complete)"
+fi
+
+# Check Laravel API (via Host header)
+if curl -sf -H "Host: api.localhost" http://localhost/api/health >> "$LOG_FILE" 2>&1; then
     print_success "Laravel API health check passed"
 else
     print_warning "Laravel API health check failed (may be normal if setup is not complete)"
@@ -568,9 +574,9 @@ INSTALL_END_TIME=$(date +%s)
 INSTALL_DURATION=$((INSTALL_END_TIME - INSTALL_START_TIME))
 
 echo ""
-echo -e "${GREEN}╔══════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║           Installation Completed Successfully!            ║${NC}"
-echo -e "${GREEN}╚══════════════════════════════════════════════════════════╝${NC}"
+echo -e "${GREEN}╔══════════════════════════════════════════════════════╗${NC}"
+echo -e "${GREEN}║     Installation Completed Successfully!              ║${NC}"
+echo -e "${GREEN}╚══════════════════════════════════════════════════════╝${NC}"
 echo ""
 print_success "Installation completed in $INSTALL_DURATION seconds"
 echo ""

@@ -6,6 +6,8 @@ interface User {
   username: string
   email: string
   role: 'admin' | 'reseller' | 'affiliate' | 'user'
+  credit_limit?: number
+  current_debt?: number
 }
 
 interface AuthState {
