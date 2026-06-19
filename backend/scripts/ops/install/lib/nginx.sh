@@ -191,9 +191,9 @@ render_nginx_site() {
 }
 
 ensure_nginx() {
+  apt_install nginx 2>/dev/null || true
   if ! command -v nginx >/dev/null 2>&1; then
-    apt-get update -qq
-    DEBIAN_FRONTEND=noninteractive apt-get install -y nginx
+    die "nginx installation failed"
   fi
   nginx -t
   systemctl enable nginx

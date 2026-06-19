@@ -18,6 +18,24 @@ sudo bash backend/scripts/ops/install.sh
 
 Install state and secrets: `backend/.install/state.env` (gitignored).
 
+Install log: `backend/.install/install.log` (full transcript via `tee`).
+
+### Host prerequisites (auto-installed)
+
+The installer is **Docker-only** on the host: no PHP or Node.js is installed on the OS.
+
+| Step | Action |
+|------|--------|
+| Preflight | OS/arch check, internet, disk ≥5GB, swap if RAM <2GB, time sync, port warnings |
+| apt | `update` + base packages (`git`, `curl`, `jq`, `rsync`, `whiptail`, …) — no `full-upgrade` |
+| Docker | official repo → `get.docker.com` → `docker.io` fallback; verify daemon + compose |
+| nginx | installed before vhost render |
+| Frontend build | `node:22-alpine` container → `frontend/dist` (no host npm) |
+| DB wait | `mysqladmin ping` before `migrate` |
+| Errors | ERR trap, apt lock wait (300s), retries on network/compose |
+
+Safe to **re-run**; already-installed Docker/nginx are skipped.
+
 Compose override used by the installer (localhost bind):
 
 `backend/scripts/ops/install/docker-compose.install.override.yml`

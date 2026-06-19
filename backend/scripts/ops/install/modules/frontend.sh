@@ -33,6 +33,7 @@ module_frontend() {
   dash_url="$(public_url_for_host "$DASHBOARD_HOST" "$(host_use_ssl "$DASHBOARD_HOST" && echo 1 || echo 0)")"
   smoke_curl "dashboard" "${dash_url}/"
   print_ssl_renew_hint
+  verify_install
   log "Install Dashboard Frontend complete."
 }
 

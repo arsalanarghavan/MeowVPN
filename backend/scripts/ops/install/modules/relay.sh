@@ -4,6 +4,7 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/prompts.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/ssl.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/backend.sh"
 
 module_relay() {
   load_domain_state
@@ -25,6 +26,7 @@ module_relay() {
 
   log "Running relay-server install..."
   bash "$relay_install" "${args[@]}"
+  verify_install
   log "Install Relay complete."
 }
 

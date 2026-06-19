@@ -2,6 +2,10 @@
 # MeowVPN install — shared helpers.
 set -euo pipefail
 
+_INSTALL_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=system.sh
+source "$_INSTALL_LIB/system.sh"
+
 INSTALL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_ROOT="$(cd "$INSTALL_ROOT/../../.." && pwd)"
 BACKEND_DIR="$REPO_ROOT/backend"

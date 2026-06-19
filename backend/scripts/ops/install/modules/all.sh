@@ -44,6 +44,7 @@ module_all() {
   smoke_curl "bale bot" "${bale_url}/health"
   print_admin_credentials
   print_ssl_renew_hint
+  verify_install
   log "Install All complete."
 }
 

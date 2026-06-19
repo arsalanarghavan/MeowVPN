@@ -25,6 +25,7 @@ module_backend() {
   run_smoke_tests "$core_url"
   print_admin_credentials
   print_ssl_renew_hint
+  verify_install
   log "Install Dashboard Backend complete."
 }
 

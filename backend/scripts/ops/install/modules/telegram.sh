@@ -32,6 +32,7 @@ module_telegram() {
   tg_url="$(public_url_for_host "$TELEGRAM_HOST" "$(host_use_ssl "$TELEGRAM_HOST" && echo 1 || echo 0)")"
   smoke_curl "telegram bot" "${tg_url}/health"
   print_ssl_renew_hint
+  verify_install
   log "Install Telegram Bot complete. Point relay forward URL to: ${tg_url}"
 }
 

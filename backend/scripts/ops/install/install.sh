@@ -6,9 +6,14 @@ INSTALL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/common.sh
 source "$INSTALL_ROOT/lib/common.sh"
 source "$INSTALL_ROOT/lib/prompts.sh"
-source "$INSTALL_ROOT/lib/docker.sh"
 
+# Parse --help before logging / root / apt (no side effects).
 parse_cli_args "$@"
+
+install_err_trap
+setup_logging
+
+source "$INSTALL_ROOT/lib/docker.sh"
 
 ensure_prereqs
 

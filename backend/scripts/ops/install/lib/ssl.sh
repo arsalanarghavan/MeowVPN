@@ -2,6 +2,7 @@
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/system.sh"
 
 cert_paths_certbot() {
   local domain="$1"
@@ -15,21 +16,21 @@ cert_paths_acme() {
 }
 
 ensure_certbot() {
-  if ! command -v certbot >/dev/null 2>&1; then
-    log "Installing certbot..."
-    apt-get update -qq
-    DEBIAN_FRONTEND=noninteractive apt-get install -y certbot python3-certbot-nginx
+  if command -v certbot >/dev/null 2>&1; then
+    return 0
   fi
+  log "Installing certbot..."
+  apt_install certbot python3-certbot-nginx
 }
 
 ensure_acme() {
   local home="${HOME:-/root}"
-  if [[ ! -x "${home}/.acme.sh/acme.sh" ]]; then
-    log "Installing acme.sh..."
-  apt-get update -qq
-  DEBIAN_FRONTEND=noninteractive apt-get install -y curl socat
-    curl -fsSL https://get.acme.sh | sh -s email="${SSL_EMAIL:-admin@localhost}"
+  if [[ -x "${home}/.acme.sh/acme.sh" ]]; then
+    return 0
   fi
+  log "Installing acme.sh..."
+  apt_install curl socat
+  retry 3 10 -- curl -fsSL https://get.acme.sh | sh -s email="${SSL_EMAIL:-admin@localhost}"
 }
 
 issue_ssl_cert() {

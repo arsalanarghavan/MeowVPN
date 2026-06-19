@@ -31,6 +31,7 @@ module_bale() {
   bale_url="$(public_url_for_host "$BALE_HOST" "$(host_use_ssl "$BALE_HOST" && echo 1 || echo 0)")"
   smoke_curl "bale bot" "${bale_url}/health"
   print_ssl_renew_hint
+  verify_install
   log "Install Bale Bot complete. Bale webhook base: ${bale_url}"
 }
 
