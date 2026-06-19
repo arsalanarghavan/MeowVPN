@@ -1,0 +1,5 @@
+/vendor/
+archive/wp-plugin-root/vendor/
+telegram_bot/vendor/
+bale_bot/vendor/
+backend/.install/

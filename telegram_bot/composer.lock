@@ -1,0 +1,48 @@
+{
+    "_readme": [
+        "This file locks the dependencies of your project to a known state",
+        "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
+        "This file is @generated automatically"
+    ],
+    "content-hash": "244a4e8e1277e242115a73bb46eca2f4",
+    "packages": [
+        {
+            "name": "meowvpn/svp-bot-core",
+            "version": "dev-v28-spec-completion",
+            "dist": {
+                "type": "path",
+                "url": "../backend/packages/svp-bot-core",
+                "reference": "8a5c84d7f3273bdf5852a8171ebe824773f4388e"
+            },
+            "require": {
+                "php": "^8.2"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "Svp\\Bot\\Core\\": "src/"
+                }
+            },
+            "license": [
+                "proprietary"
+            ],
+            "description": "Shared bot worker client for MeowVPN telegram_bot and bale_bot services",
+            "transport-options": {
+                "relative": true
+            }
+        }
+    ],
+    "packages-dev": [],
+    "aliases": [],
+    "minimum-stability": "dev",
+    "stability-flags": {
+        "meowvpn/svp-bot-core": 20
+    },
+    "prefer-stable": true,
+    "prefer-lowest": false,
+    "platform": {
+        "php": "^8.2"
+    },
+    "platform-dev": [],
+    "plugin-api-version": "2.6.0"
+}

@@ -1,0 +1,6 @@
+# Template — replace with real output from:
+# SVP_MYSQL_DSN=... backend/scripts/ops/import-verify.sh
+#
+# Date: YYYY-MM-DD
+# Operator:
+# Result: PASS | FAIL

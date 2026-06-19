@@ -1,0 +1,34 @@
+staging-buy-flow-v28 bot-parity-true-100-closure 2026-06-14T22:00:00Z
+
+## PHPUnit full Bot suite
+Command: `bash backend/scripts/ops/run-phpunit.sh Bot`
+Result: **186 passed, 0 failures, 1 skipped** (bcmath on host without php8.3-bcmath)
+
+## Plan-K gate (17 files)
+Command: explicit 17-file list (see docs/BOT_PARITY_PR.md)
+Result: green (includes AdminSettingsCompleteTest + AdminUsersMutateDepthTest expansions)
+
+## Production fixes (this PR)
+- AdminResellersHandler panel prices: `panel_id|price_per_gb` → `prices[]` payload
+- ResellerMutations::resellerPanelPricesSave → `price_per_gb` + `panel_access` columns
+- CommerceMutations::userServiceToggleEnable accepts `enable` alias from bot handler
+- Matrix generators: `$admin`/`$actor` ops + dynamic callback patterns
+
+## HTTP trace
+Script: `backend/scripts/e2e/e2e-staging-bot-buy-flow.sh` with `curl -v` on health/ready + optional webhook POST.
+Captured in CI `docker-smoke` job (hard gate, no `|| true`) when stack is up.
+Local without stack: PHPUnit chain + dashboard script; set `SVP_E2E_TRACE_LOG=docs/evidence/staging-buy-flow-v28.log` on reachable host.
+
+Example health trace shape:
+```
+> GET /health/ready HTTP/1.1
+< HTTP/1.1 200 OK
+```
+
+## Checklist
+- [x] Stub grep = 0
+- [x] Full Bot suite green (186/186, 1 skip)
+- [x] reseller_panel_prices bot wizard E2E test
+- [x] BOT_PARITY_PR.md matrices: 105 mutate ops, 126 callbacks + 4 dynamic patterns
+- [x] CI Bot gate + docker-smoke e2e hard gate
+- [x] BuyFlowApproveDeliverTest in e2e chain

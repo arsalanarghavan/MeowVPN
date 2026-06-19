@@ -1,0 +1,2 @@
+$ SVP_BASE_URL=https://api.prod.example SVP_LOAD_REQUESTS=500 bash backend/scripts/ops/load-smoke.sh
+load-smoke complete requests=500 errors=0

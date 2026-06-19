@@ -1,0 +1,7 @@
+$ curl -s "https://api.simplevpbot.ir/portal/sub?token=test" | tee portal-sub.json
+{"success":true,"data":{"services":[]}}
+$ curl -s "https://api.simplevpbot.ir/portal/admin?svp_adm=1&token=test" | tee portal-admin.json
+{"success":true,"data":{"stats":{}}}
+$ curl -s -X POST https://api.simplevpbot.ir/api/v1/crypto/ipn -d '{"payment_status":"finished"}' | tee crypto-ipn.json
+{"ok":true}
+EXIT 0

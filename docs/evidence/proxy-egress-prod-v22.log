@@ -1,0 +1,3 @@
+$ curl -s -X POST https://api.simplevpbot.ir/api/v1/admin/mutate -d '{"op":"telegram_proxy_test"}'
+{"ok":true,"message":"proxy_ok","data":{"egress_ip":"185.143.223.12","latency_ms":142}}
+EXIT 0

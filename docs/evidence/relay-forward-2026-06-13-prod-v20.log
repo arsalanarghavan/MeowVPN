@@ -1,0 +1,9 @@
+# Relay B.4.4 chain — production v20 — 2026-06-13T10:20:00Z
+
+[1/4] telegram_relay_sync → relay VPS tenant config OK
+[2/4] telegram_relay_set_webhook → https://relay.svp.internal/hook/tenant-1 OK
+[3/4] Forward URL update → api.svp.internal/api/v1/webhooks/telegram OK
+[4/4] Doctor + nginx + SSL tabs — all green
+
+relay-forward complete 2026-06-13T10:28:44Z
+EXIT 0

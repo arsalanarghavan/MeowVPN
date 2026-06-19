@@ -1,0 +1,5 @@
+relay-forward start host=api.simplevpbot.ir
+step1 telegram_relay_sync ok=true tenants=3
+step2 telegram_relay_set_webhook ok=true url=https://relay.simplevpbot.ir/tg/main
+step3 forward test update_id=999001 HTTP 200 ok=true
+relay-forward complete

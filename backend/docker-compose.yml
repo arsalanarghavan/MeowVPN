@@ -1,0 +1,219 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    volumes:
+      - .:/var/www/html
+      - svp_storage:/var/www/html/storage
+      - svp_backups:/var/www/html/storage/app/backups
+    environment:
+      APP_ENV: ${APP_ENV:-local}
+      APP_KEY: ${APP_KEY}
+      DB_HOST: mysql
+      DB_DATABASE: ${DB_DATABASE:-simplevpbot}
+      DB_USERNAME: ${DB_USERNAME:-svp}
+      DB_PASSWORD: ${DB_PASSWORD:-secret}
+      REDIS_HOST: redis
+      CACHE_STORE: redis
+      QUEUE_CONNECTION: redis
+      SESSION_DRIVER: redis
+      SVP_BOT_SERVICE_SECRET: ${SVP_BOT_SERVICE_SECRET:-change-me-bot-service-secret}
+      SVP_LEGACY_WEBHOOK_ON_BACKEND: ${SVP_LEGACY_WEBHOOK_ON_BACKEND:-false}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - svp
+
+  web:
+    image: nginx:1.27-alpine
+    ports:
+      - "${SVP_HTTP_PORT:-8080}:80"
+      - "${SVP_HTTPS_PORT:-8443}:443"
+    volumes:
+      - .:/var/www/html:ro
+      - ../frontend/dist:/var/www/dashboard:ro
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - app
+    networks:
+      - svp
+
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-simplevpbot}
+      MYSQL_USER: ${DB_USERNAME:-svp}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-secret}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootsecret}
+    volumes:
+      - svp_mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u${DB_USERNAME:-svp}", "-p${DB_PASSWORD:-secret}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - svp
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - svp_redis:/data
+    networks:
+      - svp
+
+  queue-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    command: php artisan queue:work redis --sleep=1 --tries=3
+    volumes:
+      - .:/var/www/html
+      - svp_storage:/var/www/html/storage
+    environment:
+      APP_ENV: ${APP_ENV:-local}
+      APP_KEY: ${APP_KEY}
+      DB_HOST: mysql
+      DB_DATABASE: ${DB_DATABASE:-simplevpbot}
+      DB_USERNAME: ${DB_USERNAME:-svp}
+      DB_PASSWORD: ${DB_PASSWORD:-secret}
+      REDIS_HOST: redis
+      QUEUE_CONNECTION: redis
+    depends_on:
+      - app
+      - redis
+    networks:
+      - svp
+    profiles:
+      - workers
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    command: php artisan schedule:work
+    volumes:
+      - .:/var/www/html
+    environment:
+      APP_ENV: ${APP_ENV:-local}
+      APP_KEY: ${APP_KEY}
+      DB_HOST: mysql
+      DB_DATABASE: ${DB_DATABASE:-simplevpbot}
+      DB_USERNAME: ${DB_USERNAME:-svp}
+      DB_PASSWORD: ${DB_PASSWORD:-secret}
+      REDIS_HOST: redis
+    depends_on:
+      - app
+    networks:
+      - svp
+
+  relay:
+    build:
+      context: ../relay-server
+      dockerfile: Dockerfile
+    profiles:
+      - relay
+      - full
+    ports:
+      - "127.0.0.1:${RELAY_PORT:-8787}:8787"
+    environment:
+      RELAY_MASTER_SECRET: ${RELAY_MASTER_SECRET:-changeme}
+      RELAY_DATA_DIR: /data
+      BIND_HOST: 0.0.0.0
+    volumes:
+      - svp_relay:/data
+    networks:
+      - svp
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE: ${VITE_API_BASE:-/api/v1}
+    profiles:
+      - frontend
+      - full
+    ports:
+      - "${FRONTEND_HTTP_PORT:-3001}:80"
+    networks:
+      - svp
+
+  telegram-bot:
+    build:
+      context: ..
+      dockerfile: telegram_bot/Dockerfile
+    profiles:
+      - telegram
+      - full
+    ports:
+      - "${TELEGRAM_BOT_PORT:-8091}:8091"
+    environment:
+      BACKEND_URL: ${BACKEND_URL:-http://web}
+      SVP_BOT_SERVICE_SECRET: ${SVP_BOT_SERVICE_SECRET:-change-me-bot-service-secret}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+      TELEGRAM_SECRET_HEADER: ${TELEGRAM_SECRET_HEADER:-}
+    depends_on:
+      - web
+    networks:
+      - svp
+
+  bale-bot:
+    build:
+      context: ..
+      dockerfile: bale_bot/Dockerfile
+    profiles:
+      - bale
+      - full
+    ports:
+      - "${BALE_BOT_PORT:-8092}:8092"
+    environment:
+      BACKEND_URL: ${BACKEND_URL:-http://web}
+      SVP_BOT_SERVICE_SECRET: ${SVP_BOT_SERVICE_SECRET:-change-me-bot-service-secret}
+      BALE_WEBHOOK_SECRET: ${BALE_WEBHOOK_SECRET:-}
+    depends_on:
+      - web
+    networks:
+      - svp
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    profiles:
+      - observability
+    volumes:
+      - ./docker/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    networks:
+      - svp
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    profiles:
+      - observability
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    volumes:
+      - ./docker/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    networks:
+      - svp
+
+volumes:
+  svp_mysql:
+  svp_redis:
+  svp_storage:
+  svp_backups:
+  svp_relay:
+
+networks:
+  svp:
+    driver: bridge

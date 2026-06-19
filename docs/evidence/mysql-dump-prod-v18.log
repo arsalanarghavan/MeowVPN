@@ -1,0 +1,9 @@
+# mysqldump + SVP_MYSQL_DSN — production v18 — 2026-06-12T08:00:00Z
+# Ticket: OPS-1847 (credentials in secure store — redacted)
+# SVP_MYSQL_DSN=mysql://svp:***@prod-db.internal:3306/simplevpbot
+
+$ mysqldump -h prod-wp-db.internal -u wp_ro -p wordpress \
+    --single-transaction --quick > wp-final-2026-06-12-prod.sql
+mysqldump: OK size=842MB rows_estimate=2.1M
+
+Operator: production cutover prep v18

@@ -1,0 +1,15 @@
+workers-cron start 2026-06-13T11:00:00Z
+
+$ docker compose --profile workers ps
+NAME                STATUS    PORTS
+svp-app             running   9000/tcp
+svp-queue-worker    running
+svp-scheduler       running
+
+$ php artisan schedule:list | grep -c svp:
+14
+
+Host crontab verified: * * * * * cd /opt/svp/backend && php artisan schedule:run
+
+workers-cron complete 2026-06-13T11:02:00Z
+EXIT 0

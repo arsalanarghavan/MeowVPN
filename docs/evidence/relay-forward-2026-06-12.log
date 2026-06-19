@@ -1,0 +1,7 @@
+# relay-forward sample (v16 template — replace with live operator run)
+# Date: 2026-06-12
+
+curl -sS -X POST "https://relay.example/webhook/telegram/SECRET" -d '{"update_id":1}' 
+HTTP/2 200 {"ok":true}
+forwarded_to: https://api.example/api/v1/webhook/telegram/SECRET
+exit 0

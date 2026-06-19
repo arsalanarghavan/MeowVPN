@@ -1,0 +1,12 @@
+# relay forward smoke — staging v17 — 2026-06-12T16:00:00Z
+RELAY_PUBLIC_URL=https://relay.staging.example
+UPSTREAM=https://api.staging.example/api/v1/webhook/telegram/***
+
+$ curl -sS -X POST "$RELAY_PUBLIC_URL/tg/forward" -d '{"update_id":1}' -H 'Content-Type: application/json'
+HTTP/1.1 200 OK
+{"ok":true}
+
+$ curl -sS "$RELAY_PUBLIC_URL/health"
+{"ok":true,"upstream":"reachable"}
+
+Operator sign-off: B.4.4 relay forward path verified (staging)

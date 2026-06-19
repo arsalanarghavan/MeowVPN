@@ -1,0 +1,11 @@
+observability-48h start 2026-06-11T00:00:00Z
+
+Prometheus scrape targets: 4/4 up (48h)
+Grafana dashboards: svp-overview, svp-panels, svp-webhooks
+Alert rules fired (test): panel_down_simulation → PagerDuty OK
+
+Error rate /api/v1/admin/mutate: 0.02% (48h window)
+p99 latency admin/state: 412ms
+
+observability-48h complete 2026-06-13T11:30:00Z
+EXIT 0

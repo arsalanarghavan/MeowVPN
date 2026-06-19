@@ -1,0 +1,6 @@
+# Template — real 24h soak evidence:
+# SVP_SOAK_DURATION_SEC=86400 SVP_BASE_URL=https://staging.example.com backend/scripts/ops/soak-24h.sh
+#
+# Date: YYYY-MM-DD
+# Duration: 86400s
+# Failures: 0

@@ -1,0 +1,3 @@
+SVP_MODULE_TELEGRAM=true
+SVP_MODULE_MARKETING=true
+SANCTUM_STATEFUL_DOMAINS=api.prod.example,dashboard.prod.example

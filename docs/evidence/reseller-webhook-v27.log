@@ -1,0 +1,6 @@
+reseller-webhook-v27 start 2026-06-13T18:16:10Z
+PHPUnit requires the "dom", "json", "libxml", "mbstring", "tokenizer", "xml", "xmlwriter" extensions, but the "dom", "xml", "xmlwriter" extensions are not available.
+FAIL: reseller-webhook-v27 phpunit filter=ResellerWebhook
+reseller-webhook-v27 start 2026-06-13T18:20:32Z
+PHPUnit requires the "dom", "json", "libxml", "mbstring", "tokenizer", "xml", "xmlwriter" extensions, but the "dom", "xml", "xmlwriter" extensions are not available.
+FAIL: reseller-webhook-v27 phpunit filter=ResellerWebhook

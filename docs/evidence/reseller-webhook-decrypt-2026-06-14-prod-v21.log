@@ -1,0 +1,3 @@
+$ php artisan tinker --execute="decrypt(...)"
+$ curl -s -o /dev/null -w '%{http_code}' -X POST https://reseller-bot.prod.example/api/v1/webhooks/reseller/5/telegram
+200

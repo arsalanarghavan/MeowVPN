@@ -1,0 +1,14 @@
+operator-prereqs-v27 start 2026-06-13T18:16:10Z
+FAIL: php ext dom missing
+FAIL: php ext xml missing
+FAIL: php ext xmlwriter missing
+FAIL: php ext redis missing
+FAIL: gh not installed
+operator-prereqs-v27 complete failures=5
+operator-prereqs-v27 start 2026-06-13T18:20:32Z
+FAIL: php ext dom missing
+FAIL: php ext xml missing
+FAIL: php ext xmlwriter missing
+FAIL: php ext redis missing
+FAIL: gh not installed
+operator-prereqs-v27 complete failures=5

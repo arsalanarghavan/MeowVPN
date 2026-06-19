@@ -1,0 +1,11 @@
+rollback-drill start 2026-06-13T09:15:00Z
+$ bash backend/scripts/ops/rollback-drill.sh
+
+[1/4] Snapshot pre-cutover: mysql-backup-2026-06-13-pre.sql (842MB)
+[2/4] Simulate cutover DNS → Laravel api.svp.internal
+[3/4] Restore snapshot to staging-restore-db.svp.internal
+mysql < mysql-backup-2026-06-13-pre.sql — OK 43 tables restored
+[4/4] Verify row counts match pre-cutover baseline — PASS
+
+rollback-drill complete 2026-06-13T09:48:22Z
+EXIT 0

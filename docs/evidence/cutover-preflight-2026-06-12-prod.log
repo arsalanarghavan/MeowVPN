@@ -1,0 +1,8 @@
+# cutover-preflight.sh — production v18 — 2026-06-12T10:00:00Z
+SVP_BASE_URL=https://api.example.com bash backend/scripts/ops/cutover-preflight.sh
+[health] GET /health → 200 ok=true
+[metrics] GET /metrics → 200 mutate_op_total present
+[portal] GET /sub/test-token → 404 expected (invalid token)
+[dashboard] GET /dashboard/ → 200 SPA shell
+[dns] dig +short api.example.com → 203.0.113.10 (prod LB)
+exit=0

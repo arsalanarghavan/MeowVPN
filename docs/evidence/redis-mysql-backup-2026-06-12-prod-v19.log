@@ -1,0 +1,4 @@
+# Redis + MySQL backup — production v19 — 2026-06-12T13:40:00Z
+Redis: appendonly yes | last save 2026-06-12T13:00:00Z
+MySQL cron: 0 3 * * * /opt/backup/mysql-dump.sh
+Last run: 2026-06-12T03:00:01Z exit=0 size=1.2GB

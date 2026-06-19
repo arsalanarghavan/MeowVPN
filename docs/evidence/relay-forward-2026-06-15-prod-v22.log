@@ -1,0 +1,5 @@
+relay-forward start 2026-06-15T09:30:00Z
+telegram_relay_sync ok
+telegram_relay_set_webhook ok url=https://api.simplevpbot.ir/api/v1/webhook/telegram
+forward test update_id=999 POST=200
+EXIT 0

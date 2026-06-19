@@ -1,0 +1,2 @@
+$ WP_PATH=/var/www/wp bash backend/scripts/ops/wp-disable-staging.sh
+wp-disable: maintenance mode ON redirect=api.simplevpbot.ir

@@ -1,0 +1,24 @@
+soak start base=https://api.simplevpbot.ir interval=300s duration=120s
+soak start base=https://api.simplevpbot.ir interval=300s duration=120s
+2026-06-13T18:16:14Z FAIL /health http=000000
+2026-06-13T18:16:14Z FAIL /health http=000000
+2026-06-13T18:16:14Z FAIL /health/ready http=000000
+2026-06-13T18:16:14Z FAIL /health/ready http=000000
+soak start base=https://api.simplevpbot.ir interval=5s duration=10s
+soak start base=https://api.simplevpbot.ir interval=5s duration=10s
+2026-06-13T18:20:34Z FAIL /health http=000000
+2026-06-13T18:20:34Z FAIL /health http=000000
+2026-06-13T18:20:34Z FAIL /health/ready http=000000
+2026-06-13T18:20:34Z FAIL /health/ready http=000000
+2026-06-13T18:20:41Z FAIL /health http=000000
+2026-06-13T18:20:41Z FAIL /health http=000000
+2026-06-13T18:20:41Z FAIL /health/ready http=000000
+2026-06-13T18:20:41Z FAIL /health/ready http=000000
+soak complete FAIL count: 4
+soak complete FAIL count: 4
+FAIL: soak failures (duration=10s)
+FAIL: soak duration 10s not 86400
+soak complete FAIL count: 2
+soak complete FAIL count: 2
+FAIL: soak failures (duration=120s)
+FAIL: soak duration 120s not 86400

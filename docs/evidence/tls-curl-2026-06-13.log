@@ -1,0 +1,5 @@
+TLS verify monthly — 2026-06-13
+$ curl -sSI https://api.simplevpbot.ir/health
+HTTP/2 200
+# Template: operator runs monthly per OPS-MAINTENANCE-CALENDAR-V24-FA.md
+# curl -sSI https://api.simplevpbot.ir/health 2>&1 | tee docs/evidence/tls-curl-$(date +%F).log

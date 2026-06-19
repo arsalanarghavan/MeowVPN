@@ -1,0 +1,12 @@
+# import flags — production v20 — 2026-06-13T09:00:00Z
+
+$ php artisan wp:import --mysql-dsn="$SVP_MYSQL_DSN" --prefix=wp_ --dry-run
+DRY-RUN OK would_import=43 tables
+
+$ php artisan wp:import --mysql-dsn="$SVP_MYSQL_DSN" --prefix=wp_ --force --since=2026-06-01
+FORCE import: 12 tables updated, 0 skipped
+
+$ php artisan wp:import --mysql-dsn="$SVP_MYSQL_DSN" --backups-from=/var/backups/svp/wp-uploads
+Backups copied: 3 zip files → storage/app/backups
+
+EXIT 0

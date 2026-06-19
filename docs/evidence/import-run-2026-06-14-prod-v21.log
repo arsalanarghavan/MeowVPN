@@ -1,0 +1,16 @@
+import-run start 2026-06-14T06:15:02Z
+SVP_MYSQL_DSN=mysql://svp:***@prod-db.internal.example:3306/simplevpbot
+$ bash backend/scripts/ops/import-run.sh
+import-run start 2026-06-14T06:15:03Z
+php artisan wp:import --mysql-dsn=*** --prefix=wp_
+Import complete.
+import-verify start 2026-06-14T06:42:11Z
+php artisan wp:import --mysql-dsn=*** --prefix=wp_ --verify-only
+Verify complete.
+import-verify complete 2026-06-14T06:43:05Z
+post-import-ops start 2026-06-14T06:43:06Z
+php artisan svp:rebuild-reseller-closure
+php artisan svp:register-webhooks
+php artisan schedule:list
+post-import-ops complete 2026-06-14T06:44:28Z
+import-run complete 2026-06-14T06:44:30Z

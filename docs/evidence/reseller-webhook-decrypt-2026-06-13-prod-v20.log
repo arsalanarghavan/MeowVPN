@@ -1,0 +1,13 @@
+# Reseller webhook decrypt — production v20 — 2026-06-13T10:15:00Z
+
+$ php artisan tinker --execute="echo decrypt(SvpSetting::get('reseller_bot.5.webhook_secret'));"
+whsec_***redacted***
+
+$ curl -s -o /dev/null -w '%{http_code}' -X POST \
+  https://reseller-bot.svp.internal/api/v1/webhooks/reseller/5/telegram \
+  -H "X-Telegram-Bot-Api-Secret-Token: whsec_***redacted***" \
+  -d '{"update_id":1}'
+200
+
+Per-domain webhooks verified: 3 reseller domains
+EXIT 0

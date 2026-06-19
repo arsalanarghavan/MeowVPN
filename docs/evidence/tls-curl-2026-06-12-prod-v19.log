@@ -1,0 +1,9 @@
+# TLS curl — production v19 — 2026-06-12T13:10:00Z
+$ curl -I https://api.example.com/health
+HTTP/2 200
+strict-transport-security: max-age=31536000
+
+$ certbot renew --dry-run
+Congratulations, all simulated renewals succeeded.
+
+Operator: production v19

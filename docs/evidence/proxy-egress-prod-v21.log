@@ -1,0 +1,2 @@
+POST /api/v1/admin/mutate op=telegram_proxy_test
+{"ok":true,"message":"proxy_ok"}

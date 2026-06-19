@@ -1,0 +1,2 @@
+$ bash backend/scripts/ops/admin-alerts-fire-smoke.sh
+admin-alerts-fire: job dispatched alerts_sent=1

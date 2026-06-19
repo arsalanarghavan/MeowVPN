@@ -1,0 +1,9 @@
+=== quarterly-signoff 2026-09-16 (v25 scheduled) ===
+BASE=https://api.simplevpbot.ir
+Due date: 2026-09-16 per OPS-MAINTENANCE-CALENDAR-V24-FA.md
+Manual items (operator on 2026-09-16):
+  [ ] Portal admin ?svp_adm=1
+  [ ] Portal sub plain + HTML
+  [ ] Bot webhook direct + relay
+  [ ] Crypto IPN test transaction
+Run: SVP_BASE_URL=https://api.simplevpbot.ir backend/scripts/ops/quarterly-signoff.sh

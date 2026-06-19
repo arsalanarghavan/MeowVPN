@@ -1,0 +1,8 @@
+# getWebhookInfo — production v18 — 2026-06-12T10:10:00Z (redacted)
+$ curl "https://api.telegram.org/bot***/getWebhookInfo"
+{"ok":true,"result":{"url":"https://api.example.com/api/v1/webhook/telegram/***","has_custom_certificate":false,"pending_update_count":0}}
+
+$ curl "https://tapi.bale.ai/bot***/getWebhookInfo"
+{"ok":true,"result":{"url":"https://api.example.com/api/v1/webhook/bale/***","pending_update_count":0}}
+
+Operator: production v18

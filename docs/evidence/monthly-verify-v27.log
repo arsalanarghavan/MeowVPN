@@ -1,0 +1,58 @@
+=== monthly-verify 2026-06-13T21:50:49+03:30 ===
+BASE=http://localhost:8080
+--- schedule:list (14 svp jobs) ---
+
+   Error 
+
+  Class "Redis" not found
+
+  at vendor/laravel/framework/src/Illuminate/Redis/Connectors/PhpRedisConnector.php:79
+     75▕      * @throws \LogicException
+     76▕      */
+     77▕     protected function createClient(array $config)
+     78▕     {
+  ➜  79▕         return tap(new Redis, function ($client) use ($config) {
+     80▕             if ($client instanceof RedisFacade) {
+     81▕                 throw new LogicException(
+     82▕                     extension_loaded('redis')
+     83▕                         ? 'Please remove or rename the Redis facade alias in your "app" configuration file in order to avoid collision with the PHP Redis extension.'
+
+      [2m+9 vendor frames [22m
+
+  10  [internal]:0
+      Illuminate\Console\Scheduling\ScheduleListCommand::Illuminate\Console\Scheduling\{closure}()
+      [2m+3 vendor frames [22m
+
+  14  [internal]:0
+      Illuminate\Console\Scheduling\ScheduleListCommand::Illuminate\Console\Scheduling\{closure}()
+
+FAIL: monthly-verify
+=== monthly-verify 2026-06-13T21:51:17+03:30 ===
+BASE=http://localhost:8080
+--- schedule:list (14 svp jobs) ---
+
+   Error 
+
+  Class "Redis" not found
+
+  at vendor/laravel/framework/src/Illuminate/Redis/Connectors/PhpRedisConnector.php:79
+     75▕      * @throws \LogicException
+     76▕      */
+     77▕     protected function createClient(array $config)
+     78▕     {
+  ➜  79▕         return tap(new Redis, function ($client) use ($config) {
+     80▕             if ($client instanceof RedisFacade) {
+     81▕                 throw new LogicException(
+     82▕                     extension_loaded('redis')
+     83▕                         ? 'Please remove or rename the Redis facade alias in your "app" configuration file in order to avoid collision with the PHP Redis extension.'
+
+      [2m+9 vendor frames [22m
+
+  10  [internal]:0
+      Illuminate\Console\Scheduling\ScheduleListCommand::Illuminate\Console\Scheduling\{closure}()
+      [2m+3 vendor frames [22m
+
+  14  [internal]:0
+      Illuminate\Console\Scheduling\ScheduleListCommand::Illuminate\Console\Scheduling\{closure}()
+
+FAIL: monthly-verify

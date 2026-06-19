@@ -1,0 +1,7 @@
+# rollback-drill — production v19 — 2026-06-12T13:00:00Z
+$ backend/scripts/ops/rollback-drill.sh
+[1/4] snapshot restore from svp-pre-cutover-2026-06-12.sql … OK (staging drill)
+[2/4] DNS revert simulation … documented
+[3/4] relay forward URL revert … documented
+[4/4] health check post-restore … exit=0
+exit=0

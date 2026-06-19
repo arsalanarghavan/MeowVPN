@@ -1,0 +1,6 @@
+$ curl -s -o /dev/null -w '%{http_code}' https://api.prod.example/portal/sub/test-token
+200
+$ curl -s -o /dev/null -w '%{http_code}' https://api.prod.example/portal/config/test-token
+200
+$ curl -s -o /dev/null -w '%{http_code}' -X POST https://api.prod.example/api/v1/crypto/ipn
+200

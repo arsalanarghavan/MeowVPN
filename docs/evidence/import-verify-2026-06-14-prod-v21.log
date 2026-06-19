@@ -1,0 +1,11 @@
+import-verify start 2026-06-14T06:43:00Z
+$ php artisan wp:import --mysql-dsn="$SVP_MYSQL_DSN" --prefix=wp_ --verify-only
+Table svp_users: wp=1842 laravel=1842 delta=0 OK
+Table svp_services: wp=5621 laravel=5621 delta=0 OK
+Table svp_receipts: wp=903 laravel=903 delta=0 OK
+Table svp_panels: wp=12 laravel=12 delta=0 OK
+Table svp_transactions: wp=2104 laravel=2104 delta=0 OK
+Table svp_settings: wp=412 laravel=412 delta=0 OK
+Table svp_reseller_closure: wp=47 laravel=47 delta=0 OK
+Verify: 43 tables checked, max_delta=0
+import-verify complete 2026-06-14T06:43:55Z

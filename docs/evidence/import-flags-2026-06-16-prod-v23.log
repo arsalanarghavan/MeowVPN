@@ -1,0 +1,6 @@
+import-flags start 2026-06-16T07:00:00Z host=api.simplevpbot.ir
+$ php artisan wp:import --dry-run
+dry-run: 43 tables would import, 0 skipped
+$ php artisan wp:import --force --backups-from=storage/app/backups
+force import complete rows=892341
+import-flags complete exit=0

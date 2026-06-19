@@ -1,0 +1,47 @@
+---
+description: Dashboard FA/EN RTL-LTR contract — use DashLocaleProvider helpers, not physical alignment
+globs: frontend/src/**/*.{ts,tsx}
+---
+
+# Dashboard RTL/LTR contract
+
+Locale source: `DashLocaleProvider` in `App.tsx` — use `useDashLocale()` in admin components; do not pass `isFa` as props.
+
+| Locale | Document `dir` | UI alignment | Sheet side | URLs / codes / mono | Date pickers |
+|--------|----------------|--------------|------------|---------------------|--------------|
+| **FA** | `rtl` | `text-start` (not `text-right`) | `left` | `dashLtrCell()` or `dir="ltr"` on cell | Jalali + `dir=rtl` via `DashboardDatePicker` / `DashboardDateTimePicker` |
+| **EN** | `ltr` | `text-start` | `right` | same | Gregorian + `dir=ltr` (same facades) |
+
+## Date pickers
+
+- **Always** use `DashboardDatePicker` or `DashboardDateTimePicker` from `@/components/dashboard-datetime-picker` — never import `JalaliDateTimePicker` / `GregorianDateTimePicker` in admin pages.
+- Calendar kind: `dashDatePickerCalendar(isFa)` → `jalali` | `gregorian`.
+- Root + popover use `useDashLocale().dir`; stored API values stay **Gregorian ISO** (`datetime-api`).
+
+## New pages
+
+- Root: `<DashPage>` from `@/components/dash-page`
+- Sheets: `<DashSheetContent>` from `@/components/dash-sheet-content`
+- Dialogs: `<DashDialogContent>` / `DashDialogHeader` / `DashDialogFooter`
+- Avoid: `text-right`, `text-left`, `flex-row-reverse` for RTL-only layout
+
+## Example
+
+```tsx
+import { useDashLocale } from "@/lib/dash-locale-context"
+import { DashPage } from "@/components/dash-page"
+import { DashSheetContent } from "@/components/dash-sheet-content"
+
+export function MyNewAdmin() {
+  const { isFa, ltrCell } = useDashLocale()
+  return (
+    <DashPage>
+      <DashSheetContent>...</DashSheetContent>
+    </DashPage>
+  )
+}
+```
+
+Helpers: [`frontend/src/lib/dash-locale.ts`](frontend/src/lib/dash-locale.ts)
+
+**Audit checklist (per tab / FA+EN manual test):** [`frontend/docs/dashboard-rtl-ltr-checklist.md`](frontend/docs/dashboard-rtl-ltr-checklist.md)

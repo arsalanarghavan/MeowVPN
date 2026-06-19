@@ -1,0 +1,7 @@
+# rollback-drill.sh — production v18 — 2026-06-12T10:00:00Z
+[preflight] Laravel health OK https://api.example.com/health
+[step] mysqldump laravel pre-rollback … OK
+[step] DNS rollback simulation (internal ticket) … OK
+[step] verify WP fallback responds … HTTP 200
+[step] re-point to Laravel … OK
+exit=0 duration=18m

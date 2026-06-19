@@ -1,0 +1,6 @@
+$ SVP_BASE_URL=https://api.simplevpbot.ir bash backend/scripts/ops/cutover-preflight.sh
+GET https://api.simplevpbot.ir/health -> 200
+GET https://api.simplevpbot.ir/health/ready -> 200
+GET https://api.simplevpbot.ir/api/v1/bootstrap -> 200
+cutover-preflight complete
+EXIT 0

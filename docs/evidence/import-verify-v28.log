@@ -1,0 +1,2 @@
+import-verify-v28 SKIP: set SVP_MYSQL_DSN
+FAIL: import-verify requires SVP_MYSQL_DSN

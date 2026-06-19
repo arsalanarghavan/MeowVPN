@@ -1,0 +1,62 @@
+* Uses proxy env variable no_proxy == 'localhost,127.0.0.1,::1,*.ir,*.local'
+* Uses proxy env variable https_proxy == 'http://127.0.0.1:10808'
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0*   Trying 127.0.0.1:10808...
+* Connected to 127.0.0.1 (127.0.0.1) port 10808
+* CONNECT tunnel: HTTP/1.1 negotiated
+* allocate connect buffer
+* Establish HTTP proxy tunnel to api.simplevpbot.ir:443
+> CONNECT api.simplevpbot.ir:443 HTTP/1.1
+> Host: api.simplevpbot.ir:443
+> User-Agent: curl/8.5.0
+> Proxy-Connection: Keep-Alive
+> 
+< HTTP/1.1 200 Connection established
+< 
+* CONNECT phase completed
+* CONNECT tunnel established, response 200
+* ALPN: curl offers h2,http/1.1
+} [5 bytes data]
+* TLSv1.3 (OUT), TLS handshake, Client hello (1):
+} [512 bytes data]
+*  CAfile: /etc/ssl/certs/ca-certificates.crt
+*  CApath: /etc/ssl/certs
+  0     0    0     0    0     0      0      0 --:--:--  0:00:01 --:--:--     0* OpenSSL SSL_connect: SSL_ERROR_SYSCALL in connection to api.simplevpbot.ir:443 
+  0     0    0     0    0     0      0      0 --:--:--  0:00:01 --:--:--     0
+* Closing connection
+curl: (35) OpenSSL SSL_connect: SSL_ERROR_SYSCALL in connection to api.simplevpbot.ir:443 
+HTTP/1.1 200 Connection established
+
+FAIL: tls-curl
+* Uses proxy env variable no_proxy == 'localhost,127.0.0.1,::1,*.ir,*.local'
+* Uses proxy env variable https_proxy == 'http://127.0.0.1:10808'
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0*   Trying 127.0.0.1:10808...
+* Connected to 127.0.0.1 (127.0.0.1) port 10808
+* CONNECT tunnel: HTTP/1.1 negotiated
+* allocate connect buffer
+* Establish HTTP proxy tunnel to api.simplevpbot.ir:443
+> CONNECT api.simplevpbot.ir:443 HTTP/1.1
+> Host: api.simplevpbot.ir:443
+> User-Agent: curl/8.5.0
+> Proxy-Connection: Keep-Alive
+> 
+< HTTP/1.1 200 Connection established
+< 
+* CONNECT phase completed
+* CONNECT tunnel established, response 200
+* ALPN: curl offers h2,http/1.1
+} [5 bytes data]
+* TLSv1.3 (OUT), TLS handshake, Client hello (1):
+} [512 bytes data]
+*  CAfile: /etc/ssl/certs/ca-certificates.crt
+*  CApath: /etc/ssl/certs
+* OpenSSL SSL_connect: SSL_ERROR_SYSCALL in connection to api.simplevpbot.ir:443 
+  0     0    0     0    0     0      0      0 --:--:--  0:00:01 --:--:--     0
+* Closing connection
+curl: (35) OpenSSL SSL_connect: SSL_ERROR_SYSCALL in connection to api.simplevpbot.ir:443 
+HTTP/1.1 200 Connection established
+
+FAIL: tls-curl

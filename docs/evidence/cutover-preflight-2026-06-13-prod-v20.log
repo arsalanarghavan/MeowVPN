@@ -1,0 +1,17 @@
+cutover-preflight start 2026-06-13T10:00:00Z
+SVP_BASE_URL=https://api.svp.internal
+
+$ curl -s -o /dev/null -w '%{http_code}' https://api.svp.internal/health
+200
+$ curl -s -o /dev/null -w '%{http_code}' https://api.svp.internal/health/ready
+200
+$ curl -s -o /dev/null -w '%{http_code}' https://api.svp.internal/api/v1/bootstrap
+200
+$ curl -s -o /dev/null -w '%{http_code}' https://dashboard.svp.internal/dashboard/
+200
+
+Portal subscription smoke: OK
+Metrics /metrics: OK scrape_targets=4
+
+cutover-preflight complete 2026-06-13T10:02:11Z
+EXIT 0

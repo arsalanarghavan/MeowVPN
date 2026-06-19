@@ -1,0 +1,5 @@
+soak start base=http://127.0.0.1:8080 interval=60s duration=86400s
+# Full 24h soak — run on staging:
+# SVP_BASE_URL=https://staging.example.com SVP_SOAK_DURATION_SEC=86400 SVP_SOAK_INTERVAL_SEC=60 \
+#   backend/scripts/ops/soak-24h.sh
+# Output: docs/evidence/soak-24h-YYYY-MM-DD.log

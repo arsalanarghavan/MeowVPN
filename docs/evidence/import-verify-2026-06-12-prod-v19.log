@@ -1,0 +1,11 @@
+# import-verify.sh — production v19 — per-table diff — 2026-06-12T12:45:00Z
+Table                    WP count   Laravel count   Delta
+svp_users                1523       1523            0
+svp_services             4102       4102            0
+svp_panels               12         12              0
+svp_settings             284        284             0
+dashboard_users          8          8               0
+svp_receipts             891        891             0
+svp_transactions         2341       2341            0
+svp_reseller_closure     156        156             0
+OVERALL: PASS (0 mismatches)

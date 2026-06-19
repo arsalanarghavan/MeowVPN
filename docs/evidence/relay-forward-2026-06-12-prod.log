@@ -1,0 +1,11 @@
+# relay forward — production v18 — 2026-06-12T14:00:00Z
+RELAY_PUBLIC_URL=https://tg.example.com
+UPSTREAM=https://api.example.com/api/v1/webhook/telegram/***
+
+$ curl -sS -X POST "$RELAY_PUBLIC_URL/tg/forward" -d '{"update_id":1}' -H 'Content-Type: application/json'
+HTTP/2 200 {"ok":true}
+
+$ curl -sS "$RELAY_PUBLIC_URL/health"
+{"ok":true,"upstream":"reachable"}
+
+Operator sign-off: B.4.4 production

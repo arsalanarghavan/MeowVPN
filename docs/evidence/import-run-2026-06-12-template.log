@@ -1,0 +1,4 @@
+# Template — replace with real staging run (do not commit DSN/secrets)
+import-run start 2026-06-12T00:00:00Z
+# SVP_MYSQL_DSN=... SVP_BASE_URL=... backend/scripts/ops/import-run.sh
+import-run complete 2026-06-12T00:00:00Z

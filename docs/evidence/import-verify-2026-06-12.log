@@ -1,0 +1,9 @@
+# import-verify sample (v16 template — replace with live operator run)
+# Command: SVP_MYSQL_DSN=... backend/scripts/ops/import-verify.sh
+# Date: 2026-06-12 (template)
+
+[import-verify] DSN ok (redacted)
+[import-verify] users: wp=1234 laravel=1234 OK
+[import-verify] services: wp=5678 laravel=5678 OK
+[import-verify] transactions: wp=910 laravel=910 OK
+[import-verify] exit 0

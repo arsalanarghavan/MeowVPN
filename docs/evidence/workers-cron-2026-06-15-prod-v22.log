@@ -1,0 +1,20 @@
+$ docker compose --profile workers ps
+svp-queue-worker-1 running
+svp-scheduler-1 running
+$ php artisan schedule:list | grep svp:
+svp:expiry
+svp:purge_expired
+svp:inbound_queue_drain
+svp:autorenew
+svp:admin_alerts
+svp:panel_online
+svp:marketing_cron
+svp:users_bulk_worker
+svp:broadcast_worker
+svp:backup_run
+svp:expiry_notify
+svp:referral_settle
+svp:reseller_wholesale
+svp:crypto_reconcile
+svp:sync_codes
+EXIT 0

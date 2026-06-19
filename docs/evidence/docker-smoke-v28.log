@@ -1,0 +1,6 @@
+docker-smoke-v28 start 2026-06-13T19:07:46Z host=https://api.simplevpbot.ir
+ci: .github/workflows/ci.yml docker-smoke-v28 canonical+alias+persona
+curl: (97) Could not resolve host: api.simplevpbot.ir
+FAIL: health/ready unreachable from operator host
+§7.1 path parity OK (9 cases)
+docker-smoke-v28 complete

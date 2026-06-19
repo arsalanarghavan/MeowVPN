@@ -1,0 +1,4 @@
+reseller-webhook-decrypt start host=api.simplevpbot.ir
+domain=reseller1.simplevpbot.ir POST /api/v1/webhook/reseller/100 HTTP/1.1 200 OK body={"ok":true}
+domain=reseller2.simplevpbot.ir POST /api/v1/webhook/reseller/101 HTTP/1.1 200 OK body={"ok":true}
+reseller-webhook-decrypt complete

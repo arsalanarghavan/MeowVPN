@@ -1,0 +1,8 @@
+# soak-24h.sh — staging v17 — SVP_SOAK_DURATION_SEC=86400
+SVP_BASE_URL=https://api.staging.example
+start=2026-06-11T08:00:00Z end=2026-06-12T08:00:00Z
+requests=86400 errors=0 http_5xx=0
+p50=42ms p95=180ms p99=420ms
+health/ready: 86400/86400 OK
+mutate_smoke: 1440/1440 OK
+exit=0

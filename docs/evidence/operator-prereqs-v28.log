@@ -1,0 +1,12 @@
+operator-prereqs-v28 start 2026-06-13T19:07:46Z
+env: SVP_MYSQL_DSN=unset
+env: SVP_STAGING_BUY_FLOW=unset
+env: SVP_SOAK_DURATION_SEC=unset
+env: https_proxy=http://127.0.0.1:10808
+FAIL: php ext dom missing
+FAIL: php ext xml missing
+FAIL: php ext xmlwriter missing
+FAIL: php ext redis missing
+FAIL: gh not installed
+FAIL: wp-cli not found
+operator-prereqs-v28 complete failures=6

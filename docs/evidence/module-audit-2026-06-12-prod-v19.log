@@ -1,0 +1,4 @@
+# module audit — production v19 — 2026-06-12T13:45:00Z
+SVP_MODULE_* all true (telegram,bale,xui_panel,crypto,relay,reseller,l2tp,backup,marketing)
+SANCTUM_STATEFUL_DOMAINS=api.example.com,dashboard.example.com
+APP_KEY rotated 2026-05-01 ticket OPS-1801

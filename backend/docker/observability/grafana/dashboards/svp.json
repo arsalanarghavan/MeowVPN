@@ -1,0 +1,17 @@
+{
+  "title": "SimpleVPBot",
+  "timezone": "browser",
+  "panels": [
+    {
+      "title": "Webhook received",
+      "type": "stat",
+      "targets": [{ "expr": "svp_webhook_received_total" }]
+    },
+    {
+      "title": "Active services",
+      "type": "stat",
+      "targets": [{ "expr": "svp_services_active" }]
+    }
+  ],
+  "schemaVersion": 39
+}

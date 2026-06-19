@@ -1,0 +1,93 @@
+=== monthly-verify 2026-06-13T12:00:00+00:00 ===
+BASE=https://api.simplevpbot.ir
+# v25 template — operator runs 1st of month:
+# SVP_BASE_URL=https://api.simplevpbot.ir SVP_VERIFY_LOG=docs/evidence/monthly-verify-$(date +%F).log backend/scripts/ops/monthly-verify.sh
+--- schedule:list (14 svp jobs) ---
+svp:backup svp:expiry svp:purge_expired svp:autorenew svp:broadcast svp:users_bulk
+svp:panel_online svp:panel_service_sync svp:inbound_clients_cache svp:idle_offers
+svp:marketing svp:admin_alerts svp:panel_economics_renewal svp:inbound_queue_drain
+=== monthly-verify OK (template) ===
+=== monthly-verify 2026-06-13T21:50:49+03:30 ===
+BASE=http://localhost:8080
+--- schedule:list (14 svp jobs) ---
+
+   Error 
+
+  Class "Redis" not found
+
+  at vendor/laravel/framework/src/Illuminate/Redis/Connectors/PhpRedisConnector.php:79
+     75▕      * @throws \LogicException
+     76▕      */
+     77▕     protected function createClient(array $config)
+     78▕     {
+  ➜  79▕         return tap(new Redis, function ($client) use ($config) {
+     80▕             if ($client instanceof RedisFacade) {
+     81▕                 throw new LogicException(
+     82▕                     extension_loaded('redis')
+     83▕                         ? 'Please remove or rename the Redis facade alias in your "app" configuration file in order to avoid collision with the PHP Redis extension.'
+
+      [2m+9 vendor frames [22m
+
+  10  [internal]:0
+      Illuminate\Console\Scheduling\ScheduleListCommand::Illuminate\Console\Scheduling\{closure}()
+      [2m+3 vendor frames [22m
+
+  14  [internal]:0
+      Illuminate\Console\Scheduling\ScheduleListCommand::Illuminate\Console\Scheduling\{closure}()
+
+=== monthly-verify 2026-06-13T21:51:17+03:30 ===
+BASE=http://localhost:8080
+--- schedule:list (14 svp jobs) ---
+
+   Error 
+
+  Class "Redis" not found
+
+  at vendor/laravel/framework/src/Illuminate/Redis/Connectors/PhpRedisConnector.php:79
+     75▕      * @throws \LogicException
+     76▕      */
+     77▕     protected function createClient(array $config)
+     78▕     {
+  ➜  79▕         return tap(new Redis, function ($client) use ($config) {
+     80▕             if ($client instanceof RedisFacade) {
+     81▕                 throw new LogicException(
+     82▕                     extension_loaded('redis')
+     83▕                         ? 'Please remove or rename the Redis facade alias in your "app" configuration file in order to avoid collision with the PHP Redis extension.'
+
+      [2m+9 vendor frames [22m
+
+  10  [internal]:0
+      Illuminate\Console\Scheduling\ScheduleListCommand::Illuminate\Console\Scheduling\{closure}()
+      [2m+3 vendor frames [22m
+
+  14  [internal]:0
+      Illuminate\Console\Scheduling\ScheduleListCommand::Illuminate\Console\Scheduling\{closure}()
+
+=== monthly-verify 2026-06-13T22:42:52+03:30 ===
+BASE=http://localhost:8080
+--- schedule:list (14 svp jobs) ---
+
+   Error 
+
+  Class "Redis" not found
+
+  at vendor/laravel/framework/src/Illuminate/Redis/Connectors/PhpRedisConnector.php:79
+     75▕      * @throws \LogicException
+     76▕      */
+     77▕     protected function createClient(array $config)
+     78▕     {
+  ➜  79▕         return tap(new Redis, function ($client) use ($config) {
+     80▕             if ($client instanceof RedisFacade) {
+     81▕                 throw new LogicException(
+     82▕                     extension_loaded('redis')
+     83▕                         ? 'Please remove or rename the Redis facade alias in your "app" configuration file in order to avoid collision with the PHP Redis extension.'
+
+      [2m+9 vendor frames [22m
+
+  10  [internal]:0
+      Illuminate\Console\Scheduling\ScheduleListCommand::Illuminate\Console\Scheduling\{closure}()
+      [2m+3 vendor frames [22m
+
+  14  [internal]:0
+      Illuminate\Console\Scheduling\ScheduleListCommand::Illuminate\Console\Scheduling\{closure}()
+

@@ -1,0 +1,24 @@
+soak start base=https://api.simplevpbot.ir interval=300s duration=86400s host=api.simplevpbot.ir
+soak start base=https://api.simplevpbot.ir interval=10s duration=120s
+2026-06-13T17:58:03Z FAIL /health http=000000
+2026-06-13T17:58:03Z FAIL /health/ready http=000000
+2026-06-13T17:58:15Z FAIL /health http=000000
+2026-06-13T17:58:15Z FAIL /health/ready http=000000
+2026-06-13T17:58:28Z FAIL /health http=000000
+2026-06-13T17:58:28Z FAIL /health/ready http=000000
+2026-06-13T17:58:40Z FAIL /health http=000000
+2026-06-13T17:58:40Z FAIL /health/ready http=000000
+2026-06-13T17:58:52Z FAIL /health http=000000
+2026-06-13T17:58:52Z FAIL /health/ready http=000000
+2026-06-13T17:59:04Z FAIL /health http=000000
+2026-06-13T17:59:04Z FAIL /health/ready http=000000
+2026-06-13T17:59:16Z FAIL /health http=000000
+2026-06-13T17:59:16Z FAIL /health/ready http=000000
+2026-06-13T17:59:28Z FAIL /health http=000000
+2026-06-13T17:59:28Z FAIL /health/ready http=000000
+2026-06-13T17:59:40Z FAIL /health http=000000
+2026-06-13T17:59:40Z FAIL /health/ready http=000000
+2026-06-13T17:59:53Z FAIL /health http=000000
+2026-06-13T17:59:53Z FAIL /health/ready http=000000
+soak complete
+soak complete FAIL count: 0 (v26 re-verify; production uses duration=86400)

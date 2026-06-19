@@ -1,0 +1,19 @@
+module-audit start 2026-06-13T11:10:00Z
+
+SVP_MODULE_TELEGRAM=true
+SVP_MODULE_BALE=true
+SVP_MODULE_XUI_PANEL=true
+SVP_MODULE_RELAY=true
+SVP_MODULE_CRYPTO=true
+SVP_MODULE_MARKETING=true
+SVP_MODULE_BACKUP=true
+SVP_MODULE_L2TP=true
+SVP_MODULE_RESELLER=true
+
+SANCTUM_STATEFUL_DOMAINS=dashboard.svp.internal,api.svp.internal
+APP_KEY=base64:***redacted*** (rotated 2026-06-01)
+
+Rotation calendar next: TLS 2026-09-13, APP_KEY 2026-12-13
+
+module-audit complete 2026-06-13T11:12:00Z
+EXIT 0

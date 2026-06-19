@@ -1,0 +1,7 @@
+# workers + cron — production v19 — 2026-06-12T13:35:00Z
+Decision: workers profile required (documented in RUNBOOK) — not default-on in compose.
+$ docker compose --profile workers ps
+queue-worker   running
+scheduler      running
+$ php artisan schedule:list | grep -c svp:
+14

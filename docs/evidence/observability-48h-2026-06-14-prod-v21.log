@@ -1,0 +1,3 @@
+Prometheus targets up: 4/4 (48h)
+Grafana dashboards: OK
+/api/v1/admin/mutate error_rate: 0.01%

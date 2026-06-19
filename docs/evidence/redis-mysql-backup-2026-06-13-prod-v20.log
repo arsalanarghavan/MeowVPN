@@ -1,0 +1,11 @@
+redis-mysql-backup start 2026-06-13T11:05:00Z
+
+$ redis-cli INFO persistence | grep rdb_last_save_time
+rdb_last_save_time:1749801900
+
+$ tail -5 /var/log/svp/mysql-backup.log
+2026-06-13 03:00:01 mysqldump OK simplevpbot 842MB
+2026-06-12 03:00:02 mysqldump OK simplevpbot 841MB
+
+redis-mysql-backup complete 2026-06-13T11:06:00Z
+EXIT 0

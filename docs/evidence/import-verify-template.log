@@ -1,0 +1,4 @@
+import-verify start YYYY-MM-DDTHH:MM:SSZ
+Tables verified: N
+match=yes for all svp_* tables
+import-verify complete YYYY-MM-DDTHH:MM:SSZ

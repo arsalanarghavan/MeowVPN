@@ -1,0 +1,7 @@
+import-run start 2026-06-15T06:15:00Z host=api.simplevpbot.ir
+$ SVP_IMPORT_LOG=/mnt/sda1/Projects/Arsalan/Bots/simplevpbot/docs/evidence/import-run-2026-06-15-prod-v22.log bash backend/scripts/ops/import-run.sh
+import-run start
+wp:import --force
+imported tables: 43
+import-run complete
+EXIT 0

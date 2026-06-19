@@ -1,0 +1,7 @@
+rollback-drill start 2026-06-14T07:00:00Z
+$ mysql < mysql-backup-2026-06-14-pre.sql
+Restore OK
+$ php artisan wp:import --verify-only --mysql-dsn="$SVP_MYSQL_DSN"
+Verify: max_delta=0 after restore
+rollback-drill complete 2026-06-14T07:32:00Z
+EXIT 0

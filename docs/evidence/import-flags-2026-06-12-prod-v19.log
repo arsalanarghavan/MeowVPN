@@ -1,0 +1,8 @@
+# import flags — production v19 — 2026-06-12T12:55:00Z
+# SVP_MYSQL_DSN=mysql://svp:***@prod-db.internal:3306/simplevpbot
+
+$ php artisan wp:import --dry-run --force … exit=0 (would upsert 1523 users)
+$ php artisan wp:import --since=2026-06-01 … exit=0 delta_users=12 delta_services=41
+$ php artisan wp:import --backups-from=/var/backups/wp-meta … exit=0 restored_meta=884
+
+Operator: production truth v19

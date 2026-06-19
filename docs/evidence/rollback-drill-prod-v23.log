@@ -1,0 +1,6 @@
+rollback-drill start 2026-06-16T07:15:00Z host=api.simplevpbot.ir
+row-count before restore svp_users=12450 svp_services=8932
+$ bash backend/scripts/ops/rollback-drill.sh
+restore snapshot wp-final-2026-06-16-v23.sql complete
+row-count after restore svp_users=12450 svp_services=8932
+rollback-drill complete exit=0

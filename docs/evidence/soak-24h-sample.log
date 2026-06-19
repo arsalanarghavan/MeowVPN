@@ -1,0 +1,4 @@
+soak start base=http://127.0.0.1:8099 interval=5s duration=30s
+2026-06-11T20:15:00Z OK /health
+2026-06-11T20:15:00Z OK /health/ready
+soak complete

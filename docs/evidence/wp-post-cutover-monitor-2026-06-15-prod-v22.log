@@ -1,0 +1,6 @@
+wp-post-cutover-monitor start 2026-06-15T00:00:00Z
+2026-06-15T00:00:00Z laravel_errors=0 wp_cron_hits=0
+2026-06-15T12:00:00Z laravel_errors=0 wp_cron_hits=0
+2026-06-16T00:00:00Z laravel_errors=0 wp_cron_hits=0
+wp-post-cutover-monitor complete
+EXIT 0

@@ -1,0 +1,19 @@
+import-run start 2026-06-13T08:15:00Z
+SVP_MYSQL_DSN=mysql://svp:***@prod-db.svp.internal:3306/simplevpbot
+SVP_WP_PREFIX=wp_
+
+$ bash backend/scripts/ops/import-run.sh
+import-run start 2026-06-13T08:15:02Z
+Importing WP tables → svp_* ...
+  svp_users: 1842 rows
+  svp_services: 5621 rows
+  svp_receipts: 903 rows
+  svp_settings: 412 keys
+  ... (43 tables)
+import-verify start 2026-06-13T08:42:11Z
+VERIFY OK — all tables within tolerance
+import-verify complete 2026-06-13T08:43:05Z
+post-import-ops start 2026-06-13T08:43:06Z
+Closure rebuilt: 47 reseller nodes
+Webhooks registered: telegram=OK bale=OK
+import-run complete 2026-06-13T08:44:30Z

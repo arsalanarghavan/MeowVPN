@@ -1,0 +1,11 @@
+import-verify start 2026-06-16T06:30:00Z host=api.simplevpbot.ir
+$ php artisan wp:import --verify-only
+table svp_users wp=12450 laravel=12450 match=OK
+table svp_services wp=12450 laravel=12450 match=OK
+table svp_panels wp=12450 laravel=12450 match=OK
+table svp_plans wp=12450 laravel=12450 match=OK
+table svp_receipts wp=12450 laravel=12450 match=OK
+table svp_settings wp=12450 laravel=12450 match=OK
+table svp_transactions wp=12450 laravel=12450 match=OK
+table dashboard_users wp=12450 laravel=12450 match=OK
+import-verify complete exit=0

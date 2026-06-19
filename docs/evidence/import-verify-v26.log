@@ -1,0 +1,2 @@
+import-verify-v26 start 2026-06-13T17:57:59Z
+import-verify: requires SVP_MYSQL_DSN

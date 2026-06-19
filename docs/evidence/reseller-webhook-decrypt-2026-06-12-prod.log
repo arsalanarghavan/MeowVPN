@@ -1,0 +1,8 @@
+# reseller webhook decrypt — production v18 — 2026-06-12T10:12:00Z (redacted)
+$ php artisan tinker --execute="Crypt::decryptString(SvpResellerBotProfile::first()->telegram_token)"
+decrypt: OK (token length=46, not logged)
+
+$ curl -X POST https://api.example.com/api/v1/webhook/reseller/100/*** -d '{}' -H 'X-Telegram-Bot-Api-Secret-Token: ***'
+HTTP 200 {"ok":true}
+
+Operator: production v18

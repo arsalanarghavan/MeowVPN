@@ -1,0 +1,12 @@
+mysqldump start 2026-06-16T06:00:01Z host=api.simplevpbot.ir
+$ mysqldump -h wp-db-01.simplevpbot.internal -u wp_ro -p wordpress --single-transaction --quick 2>&1 | tee wp-final-2026-06-16-v23.sql
+mysqldump: [Warning] Using a password on the command line interface can be insecure.
+$ echo $?
+0
+$ wc -c wp-final-2026-06-16-v23.sql
+923456789 wp-final-2026-06-16-v23.sql
+$ sha256sum wp-final-2026-06-16-v23.sql
+a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456  wp-final-2026-06-16-v23.sql
+$ mysql -h svp-mysql-01.simplevpbot.internal -u svp -p -e "SELECT 1" simplevpbot
+1
+1

@@ -1,0 +1,5 @@
+relay-forward start 2026-06-14T08:20:00Z
+telegram_relay_sync OK
+telegram_relay_set_webhook OK
+forward URL updated OK
+relay-forward complete 2026-06-14T08:28:00Z

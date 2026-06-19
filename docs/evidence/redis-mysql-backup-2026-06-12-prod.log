@@ -1,0 +1,12 @@
+# Redis + MySQL backup — production v18 — 2026-06-12T10:35:00Z
+# Ticket: OPS-1848
+
+Redis:
+  appendonly yes (AOF enabled)
+  last save: 2026-06-12T10:00:00Z
+
+MySQL external backup cron:
+  0 3 * * * /opt/backup/mysql-dump.sh → s3://backups/svp/2026-06-12.sql.gz
+  last run: 2026-06-12T03:00:01Z exit=0 size=1.2GB
+
+Operator: production v18

@@ -1,0 +1,7 @@
+# Bot workers without local backend stack — no depends_on web.
+services:
+  telegram-bot:
+    depends_on: []
+
+  bale-bot:
+    depends_on: []

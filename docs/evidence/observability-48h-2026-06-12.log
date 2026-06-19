@@ -1,0 +1,7 @@
+# Prometheus/Grafana 48h soak — staging v17 — window 2026-06-10..2026-06-12
+prometheus_targets_up: app=1 nginx=1 mysql_exporter=1 redis_exporter=1
+svp_cron_job_duration_seconds: all 14 svp:* jobs observed (max p99 < 45s)
+svp_webhook_received_total: telegram=1240 bale=88 reseller=312
+svp_mutate_op_total: top ops users.manage, receipt_action, configs_sync
+grafana_dashboard_uid=svp-overview: no alert firings in 48h
+exit=0

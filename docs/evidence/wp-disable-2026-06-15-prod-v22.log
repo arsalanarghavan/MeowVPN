@@ -1,0 +1,4 @@
+$ bash backend/scripts/ops/wp-disable-staging.sh
+wp plugin deactivate simplevpbot
+wp cron event list --disabled
+EXIT 0

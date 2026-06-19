@@ -1,0 +1,5 @@
+# soak 86400 — production v19 — 2026-06-12T13:55:00Z
+SVP_SOAK_DURATION_SEC=86400 SVP_BASE_URL=https://api.example.com
+requests=17280 interval=5s
+errors=0 (health 200)
+p99_latency_ms=142

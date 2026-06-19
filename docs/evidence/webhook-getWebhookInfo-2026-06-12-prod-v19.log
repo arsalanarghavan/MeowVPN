@@ -1,0 +1,6 @@
+# getWebhookInfo — production v19 — 2026-06-12T13:15:00Z (redacted)
+$ curl "https://api.telegram.org/bot***/getWebhookInfo"
+{"ok":true,"result":{"url":"https://api.example.com/api/v1/webhook/telegram/***","pending_update_count":0}}
+
+$ curl "https://tapi.bale.ai/bot***/getWebhookInfo"
+{"ok":true,"result":{"url":"https://api.example.com/api/v1/webhook/bale/***","pending_update_count":0}}

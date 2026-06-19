@@ -1,0 +1,5 @@
+$ bash backend/scripts/ops/post-import-ops.sh
+php artisan schedule:list | grep -c svp:
+14
+post-import-ops complete
+EXIT 0

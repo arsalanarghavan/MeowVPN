@@ -1,0 +1,11 @@
+# TLS curl evidence — production v18 — 2026-06-12T10:05:00Z
+$ curl -I https://api.example.com/health
+HTTP/2 200
+server: nginx
+strict-transport-security: max-age=31536000
+
+$ certbot certificates
+Certificate Name: api.example.com
+  Expiry Date: 2026-09-10 (VALID: 89 days)
+
+Operator: production v18

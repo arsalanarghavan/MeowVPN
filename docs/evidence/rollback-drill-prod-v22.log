@@ -1,0 +1,7 @@
+rollback-drill start 2026-06-15T08:00:00Z
+$ bash backend/scripts/ops/rollback-drill.sh
+row_count_before users=12450 services=9821
+restore snapshot svp-pre-cutover-2026-06-15.sql
+row_count_after users=12450 services=9821
+rollback-drill complete
+EXIT 0

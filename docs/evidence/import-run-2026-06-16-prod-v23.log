@@ -1,0 +1,5 @@
+import-run start 2026-06-16T06:15:00Z host=api.simplevpbot.ir
+$ SVP_IMPORT_LOG=docs/evidence/import-run-2026-06-16-prod-v23.log bash backend/scripts/ops/import-run.sh
+import-run: wp:import starting
+import-run: verify-only skipped (full import)
+import-run complete exit=0 host=api.simplevpbot.ir

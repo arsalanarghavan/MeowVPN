@@ -1,0 +1,17 @@
+post-import-ops start 2026-06-16T06:45:00Z host=api.simplevpbot.ir
+$ php artisan schedule:list
+  * * * * *  svp:expiry
+  * * * * *  svp:autorenew
+  * * * * *  svp:purge_expired
+  * * * * *  svp:inbound_queue_drain
+  * * * * *  svp:panel_online
+  * * * * *  svp:broadcast
+  * * * * *  svp:users_bulk
+  * * * * *  svp:marketing
+  * * * * *  svp:idle_offers
+  * * * * *  svp:backup
+  * * * * *  svp:admin_alerts
+  * * * * *  svp:reseller_wholesale
+  * * * * *  svp:referral
+  * * * * *  svp:logs_rotate
+post-import-ops complete exit=0

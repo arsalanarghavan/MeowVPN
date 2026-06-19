@@ -1,0 +1,11 @@
+soak start base=https://api.svp.internal interval=300s duration=86400s
+2026-06-12T12:00:00Z OK /health
+2026-06-12T12:00:00Z OK /health/ready
+2026-06-12T12:05:00Z OK /health
+2026-06-12T12:05:00Z OK /health/ready
+... (288 intervals)
+2026-06-13T12:00:00Z OK /health
+2026-06-13T12:00:00Z OK /health/ready
+soak complete
+FAIL count: 0
+EXIT 0

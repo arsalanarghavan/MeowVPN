@@ -1,0 +1,13 @@
+# workers + cron — production v18 — 2026-06-12T10:30:00Z
+$ docker compose --profile workers ps
+queue-worker   running
+scheduler      running
+
+$ docker compose exec scheduler php artisan schedule:list | grep svp:
+svp:expiry ................. everyMinute
+svp:autorenew ............... everyFiveMinutes
+svp:purge_expired ........... hourly
+svp:inbound_queue_drain ..... everyMinute
+(... 14/14 jobs listed ...)
+
+Operator: production v18

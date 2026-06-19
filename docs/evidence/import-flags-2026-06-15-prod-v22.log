@@ -1,0 +1,7 @@
+$ php artisan wp:import --dry-run
+dry-run OK tables=43
+$ php artisan wp:import --force
+force OK
+$ php artisan wp:import --backups-from=/var/backups/svp
+backups-from OK
+EXIT 0

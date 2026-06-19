@@ -1,0 +1,10 @@
+$ docker compose --profile workers ps
+NAME                STATUS    PORTS
+svp-mysql-1         running   3306/tcp
+svp-redis-1         running   6379/tcp
+svp-app-1           running   9000/tcp
+svp-web-1           running   0.0.0.0:443->443/tcp
+svp-scheduler-1     running
+svp-queue-worker-1  running
+$ docker compose exec scheduler php artisan schedule:list | grep -c svp:
+14

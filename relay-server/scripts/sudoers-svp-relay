@@ -1,0 +1,8 @@
+# Install to /etc/sudoers.d/svp-relay — limited NOPASSWD for relay admin ops
+svp-relay ALL=(root) NOPASSWD: /usr/sbin/nginx -t
+svp-relay ALL=(root) NOPASSWD: /bin/systemctl reload nginx
+svp-relay ALL=(root) NOPASSWD: /bin/systemctl restart svp-relay
+svp-relay ALL=(root) NOPASSWD: /bin/systemctl start svp-relay
+svp-relay ALL=(root) NOPASSWD: /bin/systemctl stop svp-relay
+svp-relay ALL=(root) NOPASSWD: /usr/bin/certbot *
+svp-relay ALL=(root) NOPASSWD: /usr/bin/bash /opt/svp-relay/scripts/update-from-github.sh

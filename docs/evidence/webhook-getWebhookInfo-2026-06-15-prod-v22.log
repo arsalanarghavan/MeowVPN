@@ -1,0 +1,5 @@
+$ curl -s "https://api.telegram.org/bot<REDACTED>/getWebhookInfo"
+{"ok":true,"result":{"url":"https://api.simplevpbot.ir/api/v1/webhook/telegram","has_custom_certificate":false,"pending_update_count":0}}
+$ curl -s "https://tapi.bale.ai/v1/bots/<REDACTED>/getWebhookInfo"
+{"ok":true,"result":{"url":"https://api.simplevpbot.ir/api/v1/webhook/bale","pending_update_count":0}}
+EXIT 0

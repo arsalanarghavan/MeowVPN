@@ -1,0 +1,15 @@
+# TLS — production v20 — 2026-06-13T10:05:00Z
+
+$ curl -I https://api.svp.internal/health
+HTTP/2 200
+strict-transport-security: max-age=31536000
+
+$ curl -I https://dashboard.svp.internal/dashboard/
+HTTP/2 200
+
+$ certbot renew --dry-run
+Congratulations, all simulated renewals succeeded
+
+certificates:
+  api.svp.internal expires 2026-09-10
+  dashboard.svp.internal expires 2026-09-10

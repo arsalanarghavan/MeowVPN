@@ -1,0 +1,4 @@
+staging-buy-flow-v27 SKIP: set SVP_STAGING_BUY_FLOW=1 on staging host
+FAIL: staging buy flow not run
+staging-buy-flow-v27 SKIP: set SVP_STAGING_BUY_FLOW=1 on staging host
+FAIL: staging buy flow not run

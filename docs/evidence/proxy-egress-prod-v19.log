@@ -1,0 +1,5 @@
+# B.3.2 proxy egress — production v19 — 2026-06-12T13:30:00Z
+$ mutate telegram_proxy_test from dashboard … ok=true
+$ bot getMe via socks5://proxy.internal:1080 … ok=true latency=412ms
+
+Operator: production v19 (complements TelegramProxyEgressTest)

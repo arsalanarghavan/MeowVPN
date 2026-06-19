@@ -1,0 +1,12 @@
+docker-smoke-v27 start 2026-06-13T18:16:10Z host=https://api.simplevpbot.ir
+ci: .github/workflows/ci.yml docker-smoke-v27 canonical+alias parity
+curl: (35) OpenSSL SSL_connect: SSL_ERROR_SYSCALL in connection to api.simplevpbot.ir:443 
+FAIL: health/ready unreachable from operator host
+§7.1 path parity OK (6 cases)
+docker-smoke-v27 complete exit=6
+docker-smoke-v27 start 2026-06-13T18:20:32Z host=https://api.simplevpbot.ir
+ci: .github/workflows/ci.yml docker-smoke-v27 canonical+alias parity
+curl: (35) OpenSSL SSL_connect: SSL_ERROR_SYSCALL in connection to api.simplevpbot.ir:443 
+FAIL: health/ready unreachable from operator host
+§7.1 path parity OK (6 cases)
+docker-smoke-v27 complete exit=6

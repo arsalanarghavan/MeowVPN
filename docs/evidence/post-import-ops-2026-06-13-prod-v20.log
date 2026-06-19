@@ -1,0 +1,25 @@
+post-import-ops start 2026-06-13T08:44:00Z
+$ php artisan svp:rebuild-reseller-closure
+Reseller closure rebuilt: 47 nodes
+
+$ php artisan svp:register-webhooks
+Telegram webhook: OK https://api.svp.internal/api/v1/webhooks/telegram
+Bale webhook: OK https://api.svp.internal/api/v1/webhooks/bale
+
+$ php artisan schedule:list
+  0 * * * *  svp:expiry .......................... Next Due: 1 hour
+  */5 * * * *  svp:panel_online .................. Next Due: 3 minutes
+  * * * * *  svp:users_bulk_worker ............... Next Due: 1 minute
+  0 3 * * *  svp:backup .......................... Next Due: 18 hours
+  0 4 * * *  svp:purge_expired ................... Next Due: 19 hours
+  */10 * * * *  svp:marketing .................... Next Due: 7 minutes
+  */10 * * * *  svp:idle_offers .................. Next Due: 7 minutes
+  * * * * *  svp:broadcast_worker ................ Next Due: 1 minute
+  */5 * * * *  svp:inbound_queue_drain ........... Next Due: 3 minutes
+  0 * * * *  svp:autorenew ....................... Next Due: 1 hour
+  0 6 * * *  svp:admin_alerts .................... Next Due: 21 hours
+  0 2 * * 0  svp:reseller_backfill ............... Next Due: 6 days
+  */15 * * * *  svp:sync_codes ................... Next Due: 12 minutes
+  30 1 * * *  svp:expiry_notify .................. Next Due: 17 hours
+
+post-import-ops complete 2026-06-13T08:44:28Z

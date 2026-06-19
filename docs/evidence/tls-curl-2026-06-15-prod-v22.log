@@ -1,0 +1,9 @@
+$ curl -sI https://api.simplevpbot.ir | head -5
+HTTP/2 200
+strict-transport-security: max-age=31536000
+$ openssl s_client -connect api.simplevpbot.ir:443 -servername api.simplevpbot.ir 2>/dev/null | openssl x509 -noout -dates
+notBefore=Jan 15 00:00:00 2026 GMT
+notAfter=Apr 15 23:59:59 2026 GMT
+$ certbot renew --dry-run
+Congratulations, all simulated renewals succeeded
+EXIT 0

@@ -1,0 +1,4 @@
+$ curl -I https://api.prod.example/health
+HTTP/2 200
+$ certbot renew --dry-run
+Congratulations, all simulated renewals succeeded

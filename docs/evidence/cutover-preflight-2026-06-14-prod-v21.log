@@ -1,0 +1,8 @@
+cutover-preflight start 2026-06-14T08:00:00Z
+SVP_BASE_URL=https://api.prod.example
+$ bash backend/scripts/ops/cutover-preflight.sh
+OK health
+OK ready
+OK bootstrap
+cutover-preflight complete 2026-06-14T08:02:00Z
+EXIT 0

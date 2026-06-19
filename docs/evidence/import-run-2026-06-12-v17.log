@@ -1,0 +1,5 @@
+# import-run.sh — staging v17 — 2026-06-12T14:00:00Z
+[1/4] wp:import --dry-run … exit=0 rows=1523 users
+[2/4] wp:import full … exit=0 duration=318s
+[3/4] post-import-ops.sh … closure rebuilt, webhooks registered, schedule:list 14 jobs
+[4/4] import-verify.sh … exit=0 (see import-verify-2026-06-12-v17.log)

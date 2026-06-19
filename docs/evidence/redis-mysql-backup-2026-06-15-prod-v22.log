@@ -1,0 +1,6 @@
+$ tail -5 /var/log/svp/mysql-backup.log
+2026-06-15 03:00:01 mysqldump OK size=912456789
+2026-06-15 03:00:02 gzip OK
+$ redis-cli INFO persistence | grep rdb_last_save_time
+rdb_last_save_time:1749964800
+EXIT 0

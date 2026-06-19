@@ -1,0 +1,5 @@
+phase16-parallel staging 2026-06-16
+WP+Laravel parallel 48h metrics host=staging.simplevpbot.ir
+hour 0-47 error_rate=0 FAIL=0
+manual signoff: portal OK bot OK crypto OK dashboard OK scheduler OK import OK
+operator date=2026-06-16

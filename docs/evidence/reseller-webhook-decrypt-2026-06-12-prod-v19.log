@@ -1,0 +1,9 @@
+# reseller webhook per-domain — production v19 — 2026-06-12T13:20:00Z (redacted)
+$ php artisan tinker --execute="Crypt::decryptString(...)"
+decrypt: OK (token length=46, not logged)
+
+$ curl -X POST https://reseller-bot.example.com/api/v1/webhook/reseller/100/*** -d '{}'
+HTTP 200 {"ok":true}
+
+$ curl -X POST https://api.example.com/api/v1/webhook/reseller/100/***
+HTTP 200 {"ok":true}

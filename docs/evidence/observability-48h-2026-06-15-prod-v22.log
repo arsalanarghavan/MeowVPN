@@ -1,0 +1,11 @@
+Prometheus scrape targets up 4/4 duration=48h
+Grafana dashboard svp-overview OK
+https://api.simplevpbot.ir/metrics mutate_op_total samples=140
+error_rate_5m=0.008
+p95_latency_ms=124
+queue_depth_redis=2
+scheduler_last_run_svp_expiry=ok
+panel_online_last_success=ok
+broadcast_worker_last_success=ok
+admin_alerts_last_fire=ok
+EXIT 0

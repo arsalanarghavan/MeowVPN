@@ -1,0 +1,27 @@
+# MeowVPN install override — bind services to localhost (host nginx terminates TLS).
+services:
+  web:
+    ports:
+      - "127.0.0.1:${SVP_HTTP_PORT:-8080}:80"
+      - "127.0.0.1:${SVP_HTTPS_PORT:-8443}:443"
+
+  frontend:
+    ports:
+      - "127.0.0.1:${FRONTEND_HTTP_PORT:-3001}:80"
+
+  telegram-bot:
+    ports:
+      - "127.0.0.1:${TELEGRAM_BOT_PORT:-8091}:8091"
+
+  bale-bot:
+    ports:
+      - "127.0.0.1:${BALE_BOT_PORT:-8092}:8092"
+
+  relay:
+    ports:
+      - "127.0.0.1:${RELAY_PORT:-8787}:8787"
+
+  app:
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      SVP_RATE_LIMIT_TRUST_FORWARDED_FOR: "true"

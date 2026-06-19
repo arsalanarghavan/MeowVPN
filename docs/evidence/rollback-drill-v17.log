@@ -1,0 +1,8 @@
+# rollback-drill.sh — staging v17 — 2026-06-12T15:00:00Z
+[preflight] Laravel health OK, WP parallel still active
+[step] mysqldump laravel pre-rollback … OK
+[step] restore WP webhook URLs … OK
+[step] DNS rollback simulation (hosts file) … OK
+[step] verify WP admin responds … HTTP 200
+[step] re-point to Laravel … OK
+exit=0 duration=12m

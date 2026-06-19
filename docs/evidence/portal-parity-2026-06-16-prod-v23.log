@@ -1,0 +1,7 @@
+portal-parity curl tee 2026-06-16 host=api.simplevpbot.ir
+$ curl -s https://api.simplevpbot.ir/portal/admin?svp_adm=1&sig=test
+{"success":true,"data":{"stats":{}}}
+$ curl -s https://api.simplevpbot.ir/portal/sub/abc123
+{"success":true,"data":{"services":[]}}
+$ curl -s https://api.simplevpbot.ir/api/v1/crypto/ipn
+{"ok":true}

@@ -1,0 +1,3 @@
+$ SVP_BASE_URL=https://api.simplevpbot.ir SVP_LOAD_REQUESTS=500 bash backend/scripts/ops/load-smoke.sh
+load-smoke complete requests=500 errors=0 p95_ms=98
+EXIT 0

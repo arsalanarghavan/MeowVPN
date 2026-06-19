@@ -1,0 +1,15 @@
+# import-verify.sh — production v18 — 2026-06-12T09:30:00Z
+exit=0
+
+== WpImportVerifier ==
+users: wp=1523 laravel=1523 OK
+services: wp=4102 laravel=4102 OK
+transactions: wp=8910 laravel=8910 OK
+receipts: wp=312 laravel=312 OK
+dashboard_users: wp=4 laravel=4 OK
+settings_keys: wp=87 laravel=87 OK
+
+== diff summary ==
+0 mismatches
+
+Operator: production cutover v18

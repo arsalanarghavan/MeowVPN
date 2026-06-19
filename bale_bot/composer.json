@@ -1,0 +1,22 @@
+{
+  "name": "meowvpn/bale-bot",
+  "description": "MeowVPN Bale bot webhook worker (stateless)",
+  "type": "project",
+  "require": {
+    "php": "^8.2",
+    "meowvpn/svp-bot-core": "@dev"
+  },
+  "repositories": [
+    {
+      "type": "path",
+      "url": "../backend/packages/svp-bot-core"
+    }
+  ],
+  "autoload": {
+    "psr-4": {
+      "MeowVpn\\BaleBot\\": "src/"
+    }
+  },
+  "minimum-stability": "dev",
+  "prefer-stable": true
+}

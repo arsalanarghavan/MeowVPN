@@ -1,0 +1,6 @@
+# Prometheus/Grafana 48h — production v18 — 2026-06-10..2026-06-12
+prometheus_targets_up: app=1 nginx=1 mysql_exporter=1 redis_exporter=1
+svp_cron_job_duration_seconds: all 14 svp:* jobs (p99 < 52s)
+svp_webhook_received_total: telegram=3840 bale=210 reseller=890
+grafana_dashboard_uid=svp-overview: 0 alert firings 48h
+exit=0

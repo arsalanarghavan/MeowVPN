@@ -1,0 +1,11 @@
+* Uses proxy env variable no_proxy == 'localhost,127.0.0.1,::1,*.ir,*.local'
+* Uses proxy env variable ALL_PROXY == 'socks5://127.0.0.1:10808'
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0*   Trying 127.0.0.1:10808...
+* Connected to 127.0.0.1 (127.0.0.1) port 10808
+* Could not resolve host: api.simplevpbot.ir
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+* Closing connection
+curl: (97) Could not resolve host: api.simplevpbot.ir
+FAIL: tls-curl

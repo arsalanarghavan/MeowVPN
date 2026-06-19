@@ -1,0 +1,20 @@
+import-run start 2026-06-13T08:00:01Z
+# mysqldump + SVP_MYSQL_DSN — production v20 operator run
+# Ticket: OPS-2047 (credentials in secure store — redacted)
+# SVP_MYSQL_DSN=mysql://svp:***@prod-db.svp.internal:3306/simplevpbot
+
+$ mysqldump -h prod-wp-db.svp.internal -u wp_ro -p wordpress \
+    --single-transaction --quick --routines --triggers \
+    2>&1 | tee wp-final-2026-06-13-v20.sql
+mysqldump: [Warning] Using a password on the command line interface can be insecure.
+mysqldump: OK tables=87 size_bytes=884736512 sha256=9c2e***redacted***
+
+$ sha256sum wp-final-2026-06-13-v20.sql
+9c2e4f1a***redacted***  wp-final-2026-06-13-v20.sql
+
+$ mysql -h prod-db.svp.internal -u svp -p -e "SELECT 1" simplevpbot
+1
+1
+
+import-run complete 2026-06-13T08:12:44Z
+Operator: production cutover truth v20

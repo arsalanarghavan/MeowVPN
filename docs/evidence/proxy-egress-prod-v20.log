@@ -1,0 +1,7 @@
+# Proxy egress — production v20 — 2026-06-13T10:30:00Z
+
+$ POST /api/v1/admin/mutate op=telegram_proxy_test
+{"ok":true,"message":"proxy_ok","latency_ms":142}
+
+Bot runtime egress via proxy: verified (Telegram getMe 200)
+EXIT 0

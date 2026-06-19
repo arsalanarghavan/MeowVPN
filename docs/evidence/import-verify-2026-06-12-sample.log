@@ -1,0 +1,4 @@
+import-verify start 2026-06-12T00:00:00Z
+NOTE: Sample evidence file for CI/docs — replace with real staging run:
+  SVP_MYSQL_DSN='...' backend/scripts/ops/import-verify.sh
+import-verify complete 2026-06-12T00:00:01Z

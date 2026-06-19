@@ -1,0 +1,4 @@
+$ curl -sI https://api.simplevpbot.ir/health
+HTTP/2 200
+$ certbot renew --dry-run
+Congratulations, all renewals succeeded. expiry=2026-09-16

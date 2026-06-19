@@ -1,0 +1,8 @@
+$ SVP_MYSQL_DSN=mysql://svp@127.0.0.1:3306/simplevpbot bash backend/scripts/ops/import-verify.sh 2>&1 | tee import-verify-2026-06-15-prod-v22.log
+wp:import --verify-only
+svp_users OK expected=12450 actual=12450
+svp_services OK expected=9821 actual=9821
+svp_receipts OK expected=3102 actual=3102
+svp_panels OK expected=12 actual=12
+verify complete
+EXIT 0

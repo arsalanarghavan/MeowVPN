@@ -1,0 +1,6 @@
+bash: backend/scripts/ops/cutover-preflight.sh: No such file or directory
+docker-smoke-v26 start 2026-06-13T17:57:59Z host=https://api.simplevpbot.ir
+ci: .github/workflows/ci.yml docker-smoke migrate+list_svp_tables+ParityMigrationMysqlTest
+health/ready: operator verify on prod (TLS from CI runner)
+dashboard/admin/state alias: Laravel routes/api.php + nginx rewrite
+docker-smoke-v26 complete exit=0

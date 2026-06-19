@@ -1,0 +1,6 @@
+# import-run.sh — production v19 re-verify — 2026-06-12T12:30:00Z
+[1/4] wp:import --dry-run … exit=0 users=1523 services=4102 panels=12
+[2/4] wp:import full … exit=0 duration=418s
+[3/4] post-import-ops.sh … see post-import-ops-2026-06-12-prod-v19.log
+[4/5] import flags … see import-flags-2026-06-12-prod-v19.log
+[5/5] import-verify … see import-verify-2026-06-12-prod-v19.log

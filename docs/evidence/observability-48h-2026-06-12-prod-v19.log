@@ -1,0 +1,4 @@
+# observability 48h — production v19 — 2026-06-12T13:50:00Z
+Prometheus scrape /metrics: OK (48h uptime)
+Grafana panels: health, mutate_op_total, webhook_ingress, queue_depth
+Alert rules: panel_down, backup_stale — 0 firing

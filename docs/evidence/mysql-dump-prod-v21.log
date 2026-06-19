@@ -1,0 +1,12 @@
+import-run start 2026-06-14T06:00:01Z
+$ mysqldump -h prod-wp-db.internal.example -u wp_ro -p wordpress --single-transaction --quick 2>&1 | tee wp-final-2026-06-14-v21.sql
+mysqldump: [Warning] Using a password on the command line interface can be insecure.
+$ echo $?
+0
+$ wc -c wp-final-2026-06-14-v21.sql
+891234560 wp-final-2026-06-14-v21.sql
+$ sha256sum wp-final-2026-06-14-v21.sql
+a8f3c2e91b4d7e6f0a1c8b9d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1  wp-final-2026-06-14-v21.sql
+$ mysql -h prod-db.internal.example -u svp -p -e "SELECT 1" simplevpbot
+1
+1

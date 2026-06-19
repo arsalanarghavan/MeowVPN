@@ -1,0 +1,7 @@
+# soak-24h.sh — production v18 — SVP_SOAK_DURATION_SEC=86400
+SVP_BASE_URL=https://api.example.com
+start=2026-06-11T00:00:00Z end=2026-06-12T00:00:00Z
+requests=86400 errors=0 http_5xx=0
+p50=38ms p95=165ms p99=390ms
+health/ready: 86400/86400 OK
+exit=0

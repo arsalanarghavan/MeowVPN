@@ -1,0 +1,23 @@
+# Webhook getWebhookInfo — production v20 — 2026-06-13T10:10:00Z
+
+$ curl -s "https://api.telegram.org/bot***REDACTED***/getWebhookInfo" | jq .
+{
+  "ok": true,
+  "result": {
+    "url": "https://api.svp.internal/api/v1/webhooks/telegram",
+    "has_custom_certificate": false,
+    "pending_update_count": 0,
+    "last_error_date": 0
+  }
+}
+
+$ curl -s "https://tapi.bale.ai/bot***REDACTED***/getWebhookInfo" | jq .
+{
+  "ok": true,
+  "result": {
+    "url": "https://api.svp.internal/api/v1/webhooks/bale",
+    "pending_update_count": 0
+  }
+}
+
+EXIT 0

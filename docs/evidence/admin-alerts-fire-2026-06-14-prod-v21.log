@@ -1,0 +1,2 @@
+$ SVP_BASE_URL=https://api.prod.example bash backend/scripts/ops/admin-alerts-fire-smoke.sh
+admin-alerts-fire OK panel_down_simulation

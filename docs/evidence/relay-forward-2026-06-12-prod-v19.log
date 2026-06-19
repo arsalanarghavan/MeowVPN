@@ -1,0 +1,7 @@
+# relay B.4.4 full chain — production v19 — 2026-06-12T13:25:00Z
+[1/5] telegram_relay_sync … tenant config OK
+[2/5] telegram_relay_set_webhook … url matches relay VPS
+[3/5] telegram_relay_admin_doctor … all checks green
+[4/5] forward test POST → Laravel ingress … 200 ok
+[5/5] SETUP-GUIDE order verified (sync → webhook → doctor → nginx → SSL)
+exit=0

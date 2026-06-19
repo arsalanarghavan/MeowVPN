@@ -1,0 +1,21 @@
+post-import-ops start 2026-06-14T06:44:00Z
+$ php artisan svp:rebuild-reseller-closure
+Reseller closure rebuilt.
+$ php artisan svp:register-webhooks
+Webhooks registered.
+$ php artisan schedule:list | grep svp:
+  0 * * * *  svp:expiry
+  */5 * * * *  svp:panel_online
+  * * * * *  svp:users_bulk_worker
+  0 3 * * *  svp:backup
+  0 4 * * *  svp:purge_expired
+  */10 * * * *  svp:marketing
+  */10 * * * *  svp:idle_offers
+  * * * * *  svp:broadcast_worker
+  */5 * * * *  svp:inbound_queue_drain
+  0 * * * *  svp:autorenew
+  0 6 * * *  svp:admin_alerts
+  0 2 * * 0  svp:reseller_backfill
+  */15 * * * *  svp:sync_codes
+  30 1 * * *  svp:expiry_notify
+post-import-ops complete 2026-06-14T06:44:28Z

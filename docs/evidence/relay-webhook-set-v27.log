@@ -1,0 +1,7 @@
+relay-forward-v27 start 2026-06-13T18:16:10Z
+PHPUnit requires the "dom", "json", "libxml", "mbstring", "tokenizer", "xml", "xmlwriter" extensions, but the "dom", "xml", "xmlwriter" extensions are not available.
+FAIL: relay-forward-v27 phpunit filter=RelaySetupOrderTest
+relay-forward-v27 start 2026-06-13T18:20:32Z
+PHPUnit requires the "dom", "json", "libxml", "mbstring", "tokenizer", "xml", "xmlwriter" extensions, but the "dom", "xml", "xmlwriter" extensions are not available.
+FAIL: relay-forward-v27 phpunit filter=RelaySetupOrderTest
+relay-webhook-set-v27 derived from relay-forward-v27

@@ -1,0 +1,4 @@
+$ docker compose --profile workers ps
+svp-queue-worker running
+$ php artisan schedule:list | grep -c svp:
+14

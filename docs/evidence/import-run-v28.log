@@ -1,0 +1,2 @@
+import-run-v28 SKIP: set SVP_MYSQL_DSN
+FAIL: import-run requires SVP_MYSQL_DSN

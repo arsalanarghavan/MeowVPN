@@ -1,0 +1,7 @@
+$ php artisan wp:import --mysql-dsn="$SVP_MYSQL_DSN" --prefix=wp_ --dry-run
+Dry-run OK
+$ php artisan wp:import --mysql-dsn="$SVP_MYSQL_DSN" --prefix=wp_ --force --since=2026-06-01
+Force import complete
+$ php artisan wp:import --mysql-dsn="$SVP_MYSQL_DSN" --backups-from=/var/backups/svp/wp-uploads
+Backups copied: 3 files
+EXIT 0

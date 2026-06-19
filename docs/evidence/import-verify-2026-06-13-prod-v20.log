@@ -1,0 +1,16 @@
+import-verify start 2026-06-13T08:43:00Z
+$ php artisan wp:import --mysql-dsn="$SVP_MYSQL_DSN" --prefix=wp_ --verify-only
+
+| table                  | wp_count | laravel_count | delta |
+|------------------------|----------|---------------|-------|
+| svp_users              |     1842 |          1842 |     0 |
+| svp_services           |     5621 |          5621 |     0 |
+| svp_receipts           |      903 |           903 |     0 |
+| svp_panels             |       12 |            12 |     0 |
+| svp_transactions       |     2104 |          2104 |     0 |
+| svp_settings           |      412 |           412 |     0 |
+| svp_reseller_closure   |       47 |            47 |     0 |
+| ...                    |      ... |           ... |   ... |
+
+VERIFY: PASS (43/43 tables, max_delta=0)
+import-verify complete 2026-06-13T08:43:55Z
