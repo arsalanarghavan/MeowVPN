@@ -263,10 +263,11 @@ build_frontend() {
     -v "$REPO_ROOT/frontend:/app" \
     -w /app \
     -e VITE_API_BASE="$api_base" \
+    -e NODE_OPTIONS=--max-old-space-size=1536 \
     -e npm_config_fund=false \
     -e npm_config_audit=false \
     node:22-alpine \
-    sh -lc "npm ci && npm run build"
+    sh -lc "rm -rf node_modules && npm install --no-audit --no-fund && npm run build"
   log "Frontend built: $REPO_ROOT/frontend/dist"
 }
 

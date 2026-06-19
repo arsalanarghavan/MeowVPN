@@ -1,0 +1,17 @@
+# Bootstrap install — expose panel+API on a random host port; bots/relay localhost only.
+services:
+  web:
+    ports:
+      - "0.0.0.0:${SVP_HTTP_PORT}:80"
+
+  telegram-bot:
+    ports:
+      - "127.0.0.1:${TELEGRAM_BOT_PORT:-8091}:8091"
+
+  bale-bot:
+    ports:
+      - "127.0.0.1:${BALE_BOT_PORT:-8092}:8092"
+
+  relay:
+    ports:
+      - "127.0.0.1:${RELAY_PORT:-8787}:8787"

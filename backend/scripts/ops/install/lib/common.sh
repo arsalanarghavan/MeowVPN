@@ -94,6 +94,54 @@ public_url_for_host() {
   fi
 }
 
+public_url_for_service() {
+  local host="$1"
+  local port="$2"
+  local use_ssl="${3:-0}"
+  if [[ -n "$port" ]]; then
+    echo "http://${host}:${port}"
+    return
+  fi
+  public_url_for_host "$host" "$use_ssl"
+}
+
+pick_free_port() {
+  local port attempt=0
+  while (( attempt < 200 )); do
+    port=$((15000 + RANDOM % 30000))
+    if ! ss -tln 2>/dev/null | grep -qE ":${port} "; then
+      echo "$port"
+      return 0
+    fi
+    attempt=$((attempt + 1))
+  done
+  die "Could not find a free TCP port in range 15000-45000"
+}
+
+assign_bootstrap_ports() {
+  SVP_HTTP_PORT="$(pick_free_port)"
+  export SVP_HTTP_PORT
+  save_state_kv "SVP_HTTP_PORT" "$SVP_HTTP_PORT"
+  log "Bootstrap install port: ${SERVER_IP}:${SVP_HTTP_PORT} (panel + API)"
+}
+
+clear_domain_state() {
+  local key
+  for key in CORE_HOST DASHBOARD_HOST TELEGRAM_HOST BALE_HOST RELAY_HOST \
+    CORE_DOMAIN DASHBOARD_DOMAIN TELEGRAM_DOMAIN BALE_DOMAIN RELAY_DOMAIN \
+    SSL_EMAIL CORE_URL; do
+    if [[ -f "$STATE_FILE" ]]; then
+      sed -i "/^${key}=/d" "$STATE_FILE" 2>/dev/null || true
+    fi
+    unset "$key" 2>/dev/null || true
+  done
+}
+
+defer_domains_enabled() {
+  [[ "${MEOWVPN_DEFER_DOMAINS:-0}" == "1" || "${DEFER_DOMAINS:-0}" == "1" ]] && return 0
+  [[ -f "${STATE_FILE:-}" ]] && grep -q '^MEOWVPN_DEFER_DOMAINS=1' "$STATE_FILE" 2>/dev/null
+}
+
 apex_domain() {
   local host="$1"
   if is_ip_address "$host"; then
@@ -150,6 +198,9 @@ compose_cmd() {
   local -a extra=()
   if [[ "${SVP_INSTALL_BOTS_STANDALONE:-0}" == "1" ]]; then
     extra+=(-f "$INSTALL_ROOT/docker-compose.install.bots-standalone.override.yml")
+  fi
+  if defer_domains_enabled; then
+    extra+=(-f "$INSTALL_ROOT/docker-compose.install.bootstrap.override.yml")
   fi
   docker compose -f "$BACKEND_DIR/docker-compose.yml" \
     -f "$INSTALL_ROOT/docker-compose.install.override.yml" \

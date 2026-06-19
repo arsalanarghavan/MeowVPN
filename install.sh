@@ -615,6 +615,9 @@ fi
 chmod +x "$INNER_INSTALL" 2>/dev/null || true
 if [[ -n "$SELECTED_MODE" ]]; then
   FINAL_ARGS=(--mode "$SELECTED_MODE" "${INSTALLER_ARGS[@]}")
+  if [[ "$SELECTED_MODE" == "all" ]]; then
+    FINAL_ARGS+=(--defer-domains)
+  fi
   echo "[meowvpn] Running installer (mode=$SELECTED_MODE)..."
 else
   FINAL_ARGS=("${INSTALLER_ARGS[@]}")

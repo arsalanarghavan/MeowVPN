@@ -197,7 +197,11 @@ ensure_nginx() {
   fi
   nginx -t
   systemctl enable nginx
-  systemctl reload nginx
+  if systemctl is-active nginx >/dev/null 2>&1; then
+    systemctl reload nginx 2>/dev/null || systemctl restart nginx
+  else
+    systemctl start nginx 2>/dev/null || systemctl restart nginx
+  fi
 }
 
 install_nginx_core() { render_nginx_site "core" "$CORE_HOST"; ensure_nginx; }

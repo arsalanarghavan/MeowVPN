@@ -6,6 +6,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 NON_INTERACTIVE=0
 INSTALL_MODE=""
+DEFER_DOMAINS=0
+MEOWVPN_DEFER_DOMAINS="${MEOWVPN_DEFER_DOMAINS:-0}"
 SSL_METHOD="${SSL_METHOD:-certbot}"
 SSL_EMAIL="${SSL_EMAIL:-}"
 
@@ -68,7 +70,32 @@ prompt_core_url() {
   fi
 }
 
+collect_bootstrap_hosts() {
+  local ip
+  ip="$(detect_server_ip)"
+  clear_domain_state
+  MEOWVPN_DEFER_DOMAINS=1
+  DEFER_DOMAINS=1
+  SERVER_IP="$ip"
+  CORE_HOST="$ip"
+  DASHBOARD_HOST="$ip"
+  TELEGRAM_HOST="$ip"
+  BALE_HOST="$ip"
+  RELAY_HOST="$ip"
+  SSL_METHOD="none"
+  SSL_EMAIL=""
+  save_state_kv "MEOWVPN_DEFER_DOMAINS" "1"
+  save_state_kv "SSL_METHOD" "none"
+  persist_domain_state
+  assign_bootstrap_ports
+  log "Bootstrap install: using ${SERVER_IP}:${SVP_HTTP_PORT} — configure domains in setup wizard"
+}
+
 collect_all_domains() {
+  if defer_domains_enabled; then
+    collect_bootstrap_hosts
+    return
+  fi
   local ip
   ip="$(detect_server_ip)"
   SERVER_IP="$ip"
@@ -151,6 +178,7 @@ parse_cli_args() {
       --ssl) SSL_METHOD="$2"; shift 2 ;;
       --email) SSL_EMAIL="$2"; shift 2 ;;
       --core-url) CORE_URL="$2"; shift 2 ;;
+      --defer-domains) DEFER_DOMAINS=1; MEOWVPN_DEFER_DOMAINS=1; shift ;;
       --non-interactive) NON_INTERACTIVE=1; shift ;;
       -h|--help)
         cat <<'EOF'

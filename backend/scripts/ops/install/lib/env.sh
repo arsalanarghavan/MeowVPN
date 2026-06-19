@@ -43,11 +43,19 @@ init_backend_env() {
     cp "$BACKEND_DIR/.env.example" "$env_file"
   fi
   local core_url
-  core_url="$(public_url_for_host "${CORE_HOST:-$(detect_server_ip)}" "$(host_use_ssl "${CORE_HOST:-}" && echo 1 || echo 0)")"
+  if defer_domains_enabled && [[ -n "${SVP_HTTP_PORT:-}" ]]; then
+    core_url="$(public_url_for_service "${CORE_HOST:-$(detect_server_ip)}" "$SVP_HTTP_PORT")"
+  else
+    core_url="$(public_url_for_host "${CORE_HOST:-$(detect_server_ip)}" "$(host_use_ssl "${CORE_HOST:-}" && echo 1 || echo 0)")"
+  fi
   local apex
   apex="$(apex_domain "${CORE_HOST:-}")"
   local sanctum="${DASHBOARD_HOST:-}"
-  [[ -n "$sanctum" && "$sanctum" != "${CORE_HOST:-}" ]] && sanctum="${sanctum},${CORE_HOST}"
+  if defer_domains_enabled && [[ -n "${SVP_HTTP_PORT:-}" ]]; then
+    sanctum="${SERVER_IP:-$(detect_server_ip)}:${SVP_HTTP_PORT}"
+  elif [[ -n "$sanctum" && "$sanctum" != "${CORE_HOST:-}" ]]; then
+    sanctum="${sanctum},${CORE_HOST}"
+  fi
   sanctum="${sanctum:-${CORE_HOST:-localhost}}"
 
   set_env_var "$env_file" "APP_ENV" "production"
@@ -62,7 +70,7 @@ init_backend_env() {
   set_env_var "$env_file" "SVP_RATE_LIMIT_TRUST_FORWARDED_FOR" "true"
   set_env_var "$env_file" "SVP_TELEGRAM_WEBHOOK_SECRET" "$MEOWVPN_TELEGRAM_WEBHOOK_SECRET"
   set_env_var "$env_file" "SVP_BALE_WEBHOOK_SECRET" "$MEOWVPN_BALE_WEBHOOK_SECRET"
-  if [[ -n "${RELAY_HOST:-}" ]]; then
+  if [[ -n "${RELAY_HOST:-}" ]] && ! defer_domains_enabled; then
     local relay_url
     relay_url="$(public_url_for_host "$RELAY_HOST" "$(host_use_ssl "$RELAY_HOST" && echo 1 || echo 0)")"
     set_env_var "$env_file" "SVP_MODULE_RELAY" "true"

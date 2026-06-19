@@ -13,6 +13,8 @@ apply_purple_theme
 
 # Parse --help / --mode before tree validation.
 parse_cli_args "$@"
+export MEOWVPN_DEFER_DOMAINS="${MEOWVPN_DEFER_DOMAINS:-0}"
+export DEFER_DOMAINS="${DEFER_DOMAINS:-0}"
 
 mode_total_steps() {
   local mode="${1:-all}"
@@ -92,7 +94,9 @@ run_mode() {
 if [[ -n "$INSTALL_MODE" ]]; then
   case "$INSTALL_MODE" in
     all)
-      [[ "$NON_INTERACTIVE" == "1" ]] && collect_all_domains
+      if [[ "$NON_INTERACTIVE" == "1" ]] && ! defer_domains_enabled; then
+        collect_all_domains
+      fi
       ;;
     dashboard)
       [[ "$NON_INTERACTIVE" == "1" ]] && collect_dashboard_domains
@@ -126,7 +130,7 @@ choice="$(whiptail --backtitle "MeowVPN" --title "MeowVPN Install" --menu "Selec
   3>&1 1>&2 2>&3)" || exit 0
 
 case "$choice" in
-  1) collect_all_domains; run_mode all ;;
+  1) DEFER_DOMAINS=1; MEOWVPN_DEFER_DOMAINS=1; export DEFER_DOMAINS MEOWVPN_DEFER_DOMAINS; run_mode all ;;
   2) collect_dashboard_domains; run_mode dashboard ;;
   3) run_mode telegram ;;
   4) run_mode bale ;;

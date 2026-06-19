@@ -102,16 +102,187 @@ ensure_time_sync() {
   log "Time sync: installed systemd-timesyncd"
 }
 
-check_ports() {
-  local port proc
+port_listener_line() {
+  local port="$1"
+  ss -tlnp 2>/dev/null | grep -E ":${port} " | head -1 || true
+}
+
+proc_name_from_ss() {
+  local line="$1"
+  sed -n 's/.*users:((("\([^"]*\)".*/\1/p' <<<"$line"
+}
+
+is_nginx_listener() {
+  local line="$1"
+  [[ "$line" == *nginx* ]]
+}
+
+services_for_proc() {
+  local proc="$1"
+  case "$proc" in
+    litespeed|lshttpd|lsws|openlitespeed)
+      printf '%s\n' lsws openlitespeed litespeed lshttpd
+      ;;
+    apache2|httpd)
+      printf '%s\n' apache2 httpd
+      ;;
+    caddy)
+      printf '%s\n' caddy
+      ;;
+    *)
+      printf '%s\n' "$proc"
+      ;;
+  esac
+}
+
+friendly_proc_label() {
+  local proc="$1"
+  case "$proc" in
+    litespeed|lshttpd|lsws|openlitespeed) echo "LiteSpeed / OpenLiteSpeed" ;;
+    apache2|httpd) echo "Apache" ;;
+    caddy) echo "Caddy" ;;
+    *) echo "$proc" ;;
+  esac
+}
+
+systemd_unit_exists() {
+  local unit="$1"
+  systemctl list-unit-files "${unit}.service" 2>/dev/null | grep -q "^${unit}\.service"
+}
+
+stop_disable_service_unit() {
+  local unit="$1"
+  if systemd_unit_exists "$unit"; then
+    systemctl stop "${unit}.service" 2>/dev/null || true
+    systemctl disable "${unit}.service" 2>/dev/null || true
+    log "Stopped and disabled ${unit}.service"
+    return 0
+  fi
+  return 1
+}
+
+stop_disable_proc() {
+  local proc="$1"
+  local svc stopped=0
+  while IFS= read -r svc; do
+    [[ -n "$svc" ]] || continue
+    if stop_disable_service_unit "$svc"; then
+      stopped=1
+    fi
+  done < <(services_for_proc "$proc")
+
+  if [[ -x "/etc/init.d/${proc}" ]]; then
+    "/etc/init.d/${proc}" stop 2>/dev/null || true
+    update-rc.d -f "$proc" remove 2>/dev/null || true
+    log "Stopped init.d service: $proc"
+    stopped=1
+  fi
+
+  if (( stopped == 0 )); then
+    warn "Could not find a systemd unit for process '$proc' — trying SIGTERM"
+    pkill -TERM -x "$proc" 2>/dev/null || pkill -TERM -f "$proc" 2>/dev/null || true
+    sleep 2
+  fi
+}
+
+port_still_blocked() {
+  local port="$1"
+  local line proc
+  line="$(port_listener_line "$port")"
+  [[ -n "$line" ]] || return 1
+  is_nginx_listener "$line" && return 1
+  return 0
+}
+
+is_install_interactive() {
+  [[ "${NON_INTERACTIVE:-0}" != "1" ]] \
+    && [[ "${MEOWVPN_NON_INTERACTIVE:-0}" != "1" ]] \
+    && [[ -t 0 && -t 1 ]]
+}
+
+prompt_stop_conflicting_webserver() {
+  local proc="$1"
+  local ports="$2"
+  local label
+  label="$(friendly_proc_label "$proc")"
+  apply_purple_theme
+  if command -v whiptail >/dev/null 2>&1; then
+    whiptail --backtitle "MeowVPN" --title "Port conflict" --yesno \
+      "Ports ${ports} are in use by ${label} (${proc}).\n\nMeowVPN needs ports 80/443 for nginx and SSL certificates.\n\nStop and disable ${label} now?" \
+      14 72
+    return $?
+  fi
+  read -r -p "Ports ${ports} in use by ${label}. Stop it now? [y/N]: " ans
+  [[ "${ans,,}" == "y" || "${ans,,}" == "yes" ]]
+}
+
+resolve_port_conflicts() {
+  local -a blocked_ports=()
+  local -A seen_procs=()
+  local port line proc label ports_csv
+
   for port in 80 443; do
-    if ss -tlnp 2>/dev/null | grep -q ":${port} "; then
-      proc="$(ss -tlnp 2>/dev/null | grep ":${port} " | head -1 || true)"
-      if [[ "$proc" != *nginx* ]]; then
-        warn "Port ${port} already in use (not nginx): ${proc}"
+    line="$(port_listener_line "$port")"
+    [[ -n "$line" ]] || continue
+    if is_nginx_listener "$line"; then
+      log "Port ${port} OK (nginx)"
+      continue
+    fi
+    proc="$(proc_name_from_ss "$line")"
+    [[ -n "$proc" ]] || proc="unknown"
+    blocked_ports+=("$port")
+    seen_procs["$proc"]=1
+    label="$(friendly_proc_label "$proc")"
+    warn "Port ${port} already in use (not nginx): ${label} — ${line}"
+  done
+
+  if [[ ${#blocked_ports[@]} -eq 0 ]]; then
+    return 0
+  fi
+
+  if defer_domains_enabled; then
+    warn "Bootstrap install — host ports ${blocked_ports[*]} in use; continuing without nginx on 80/443"
+    return 0
+  fi
+
+  ports_csv="$(IFS=','; echo "${blocked_ports[*]}")"
+  for proc in "${!seen_procs[@]}"; do
+    label="$(friendly_proc_label "$proc")"
+
+    if is_install_interactive; then
+      if prompt_stop_conflicting_webserver "$proc" "$ports_csv"; then
+        stop_disable_proc "$proc"
+      else
+        die "Port conflict: ${label} is using port(s) ${ports_csv}.
+Stop it manually, for example:
+  systemctl stop lsws && systemctl disable lsws
+Then re-run the installer."
       fi
+    elif [[ "${MEOWVPN_TAKEOVER_PORTS:-0}" == "1" ]]; then
+      log "MEOWVPN_TAKEOVER_PORTS=1 — stopping ${label}"
+      stop_disable_proc "$proc"
+    else
+      die "Port conflict: ${label} is using port(s) ${ports_csv}.
+MeowVPN requires ports 80/443 for nginx and SSL.
+Stop the conflicting web server manually, or re-run with:
+  MEOWVPN_TAKEOVER_PORTS=1 bash <(curl -fsSL .../install.sh)"
     fi
   done
+
+  sleep 1
+  for port in 80 443; do
+    if port_still_blocked "$port"; then
+      line="$(port_listener_line "$port")"
+      proc="$(proc_name_from_ss "$line")"
+      die "Port ${port} is still in use by ${proc:-unknown} after stop attempt.
+Free the port manually and re-run the installer."
+    fi
+  done
+  log "Port conflicts resolved"
+}
+
+check_ports() {
+  resolve_port_conflicts
 }
 
 preflight_all() {

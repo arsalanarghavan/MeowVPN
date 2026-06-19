@@ -142,6 +142,30 @@ Each push to `main` publishes rolling component bundles on the GitHub Release ta
 | Relay | install-kit + relay-server |
 | All | full (single archive) |
 
+### Install All — bootstrap (IP + random port)
+
+**Install All** does not ask for domains during install. It:
+
+1. Picks a free random port (15000–45000) on the server IP for **panel + API** (`http://YOUR_IP:PORT`)
+2. Skips host nginx on ports 80/443 (works even if LiteSpeed/Apache already uses them)
+3. Starts Telegram/Bale/Relay containers on localhost only
+4. Prints a **setup wizard** URL — configure real domains and SSL there
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/arsalanarghavan/MeowVPN/main/install.sh)
+# Choose "Install All" — no domain prompts
+```
+
+To force domain prompts (legacy behaviour): pass explicit domains with `--core-domain` etc. and omit `--defer-domains`.
+
+For a clean re-run after a failed install, optionally remove stale domain state:
+
+```bash
+sudo rm -rf /opt/meowvpn/backend/.install/state.env
+```
+
+`MEOWVPN_TAKEOVER_PORTS` is only needed when installing with host nginx on 80/443 (dashboard/backend modes with real domains), not for bootstrap Install All.
+
 ### Bootstrap troubleshooting
 
 If component releases are unreachable, the bootstrap **falls back to the full GitHub archive** automatically (same as before, but only after you select a target or pass `--mode`).
@@ -175,6 +199,19 @@ MEOWVPN_REUSE_TREE=1 bash <(curl -fsSL .../install.sh)
 | `MEOWVPN_REPO` | Git URL when `MEOWVPN_USE_GIT=1` |
 | `MEOWVPN_DOCKER_MIRROR` | Force a Docker registry mirror URL |
 | `MEOWVPN_DOCKER_MIRRORS` | Space-separated default mirrors when Hub is unreachable |
+| `MEOWVPN_TAKEOVER_PORTS=1` | Non-interactive: stop/disable conflicting web servers on ports 80/443 (LiteSpeed, Apache, Caddy) |
+
+**Port 80/443 conflict (LiteSpeed, Apache, Caddy):**
+
+MeowVPN needs host ports **80** and **443** for nginx and SSL. If another web server is listening, the installer detects it during preflight:
+
+- **Interactive install:** a purple whiptail dialog asks whether to stop and disable the conflicting service.
+- **Non-interactive install:** set `MEOWVPN_TAKEOVER_PORTS=1` to stop/disable automatically, or free the ports manually before re-running.
+
+```bash
+# Non-interactive on a server with OpenLiteSpeed on port 80
+MEOWVPN_TAKEOVER_PORTS=1 bash <(curl -fsSL .../main/install.sh) --non-interactive --mode all
+```
 
 **Docker Hub timeout (image pull fails):**
 
