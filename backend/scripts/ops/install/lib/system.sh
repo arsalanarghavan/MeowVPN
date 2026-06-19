@@ -45,9 +45,23 @@ retry() {
   return 1
 }
 
+_APT_AUTO_PAUSED=0
+
+pause_apt_auto_services() {
+  if [[ "$_APT_AUTO_PAUSED" == "1" ]]; then
+    return 0
+  fi
+  _APT_AUTO_PAUSED=1
+  log "Pausing automatic apt services (unattended-upgrades, apt-daily)..."
+  systemctl stop unattended-upgrades.service 2>/dev/null || true
+  systemctl stop apt-daily.service apt-daily-upgrade.service 2>/dev/null || true
+  systemctl stop apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true
+}
+
 apt_lock_wait() {
-  local max_wait="${1:-300}"
+  local max_wait="${1:-600}"
   local waited=0
+  pause_apt_auto_services
   while (( waited < max_wait )); do
     if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 \
       && ! fuser /var/lib/apt/lists/lock >/dev/null 2>&1 \
@@ -58,7 +72,9 @@ apt_lock_wait() {
     sleep 5
     waited=$((waited + 5))
   done
-  die "apt lock held for ${max_wait}s — try again after unattended-upgrades finishes"
+  die "apt lock still held after ${max_wait}s. A background update may be running.
+  Check:  sudo lsof /var/lib/dpkg/lock-frontend
+  Then re-run the installer (install state in backend/.install is preserved)."
 }
 
 apt_update() {

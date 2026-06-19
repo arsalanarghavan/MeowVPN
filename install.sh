@@ -168,7 +168,7 @@ git_update_with_retry() {
 }
 
 sync_repo_tarball() {
-  local tmpdir archive extracted inner
+  local tmpdir archive extracted inner state_backup=""
   tmpdir="$(mktemp -d /tmp/meowvpn-bootstrap.XXXXXX)"
   archive="$tmpdir/meowvpn.tar.gz"
   extracted="$tmpdir/extract"
@@ -194,12 +194,22 @@ sync_repo_tarball() {
   fi
 
   if [[ -d "$MEOWVPN_DIR" ]]; then
+    if [[ -d "$MEOWVPN_DIR/backend/.install" ]]; then
+      state_backup="$tmpdir/install-state-backup"
+      echo "[meowvpn] Preserving install state from $MEOWVPN_DIR/backend/.install"
+      cp -a "$MEOWVPN_DIR/backend/.install" "$state_backup"
+    fi
     echo "[meowvpn] Replacing existing $MEOWVPN_DIR with tarball contents..."
     rm -rf "$MEOWVPN_DIR"
   fi
 
   mkdir -p "$(dirname "$MEOWVPN_DIR")"
   mv "$inner" "$MEOWVPN_DIR"
+  if [[ -n "$state_backup" && -d "$state_backup" ]]; then
+    mkdir -p "$MEOWVPN_DIR/backend"
+    cp -a "$state_backup" "$MEOWVPN_DIR/backend/.install"
+    echo "[meowvpn] Restored install state to $MEOWVPN_DIR/backend/.install"
+  fi
   rm -rf "$tmpdir"
   echo "[meowvpn] Tarball extracted to $MEOWVPN_DIR"
   return 0
@@ -212,14 +222,19 @@ sync_repo_git() {
   fi
 
   if [[ -d "$MEOWVPN_DIR" ]]; then
-    echo "[meowvpn] $MEOWVPN_DIR exists but is not a git repo — remove it or set MEOWVPN_DIR" >&2
-    exit 1
+    echo "[meowvpn] $MEOWVPN_DIR exists but is not a git repo" >&2
+    return 1
   fi
 
   git_clone_with_retry "$MEOWVPN_DIR"
 }
 
 sync_repo() {
+  if [[ -d "$MEOWVPN_DIR" && -f "$INNER_INSTALL" ]]; then
+    echo "[meowvpn] Reusing existing tree at $MEOWVPN_DIR (rm -rf it to force re-download)"
+    return 0
+  fi
+
   if [[ "$MEOWVPN_SKIP_GIT" == "1" ]]; then
     echo "[meowvpn] MEOWVPN_SKIP_GIT=1 — using tarball only"
     sync_repo_tarball || die_clone_help

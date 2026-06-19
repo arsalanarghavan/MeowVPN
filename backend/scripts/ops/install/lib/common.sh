@@ -7,7 +7,7 @@ _INSTALL_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$_INSTALL_LIB/system.sh"
 
 INSTALL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-REPO_ROOT="$(cd "$INSTALL_ROOT/../../.." && pwd)"
+REPO_ROOT="$(cd "$INSTALL_ROOT/../../../.." && pwd)"
 BACKEND_DIR="$REPO_ROOT/backend"
 STATE_DIR="$BACKEND_DIR/.install"
 STATE_FILE="$STATE_DIR/state.env"

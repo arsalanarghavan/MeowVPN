@@ -159,6 +159,23 @@ curl -I --max-time 15 https://github.com
 dig +short github.com
 ```
 
+### Apt lock / unattended-upgrades
+
+On fresh Ubuntu VPS images, `unattended-upgrades` or `apt-daily` may hold the dpkg lock at boot. The installer **pauses those services once** and waits up to **10 minutes** before failing.
+
+If install still stops with `apt lock still held`:
+
+```bash
+sudo lsof /var/lib/dpkg/lock-frontend
+sudo systemctl stop unattended-upgrades apt-daily.timer apt-daily-upgrade.timer
+```
+
+Then **re-run the same command** — the tree at `/opt/meowvpn` is reused automatically and install state in `backend/.install/` is preserved. Or continue from the existing tree:
+
+```bash
+bash <(curl -fsSL .../install.sh) --skip-clone
+```
+
 ### Manual clone (alternative)
 
 ```bash
