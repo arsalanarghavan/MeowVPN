@@ -118,6 +118,47 @@ Another branch: `MEOWVPN_BRANCH=develop bash <(curl -fsSL .../main/install.sh)`
 
 Install directory: `/opt/meowvpn` (override with `MEOWVPN_DIR`).
 
+### Bootstrap troubleshooting (GitHub timeout)
+
+If you see `SSL connection timeout` or `unable to access github.com` during clone, the VPS cannot reach GitHub reliably. The bootstrap script will **retry git 3 times**, then fall back to a **tarball download** automatically.
+
+**Environment variables:**
+
+| Variable | Purpose |
+|----------|---------|
+| `MEOWVPN_REPO` | Git URL (HTTPS or `git@github.com:arsalanarghavan/MeowVPN.git`) |
+| `MEOWVPN_TARBALL_URL` | Archive URL if git fails (default: GitHub `archive/refs/heads/main.tar.gz`) |
+| `MEOWVPN_SKIP_GIT=1` | Skip git entirely; download tarball only |
+| `MEOWVPN_DIR` | Install path (default `/opt/meowvpn`) |
+
+**SSH clone from the VPS** (if you have a deploy key):
+
+```bash
+MEOWVPN_REPO=git@github.com:arsalanarghavan/MeowVPN.git \
+  bash <(curl -fsSL https://raw.githubusercontent.com/arsalanarghavan/MeowVPN/main/install.sh)
+```
+
+**Copy from your PC** (when GitHub works locally):
+
+```bash
+git clone --depth 1 https://github.com/arsalanarghavan/MeowVPN.git
+scp -r MeowVPN root@YOUR_VPS:/opt/meowvpn
+ssh root@YOUR_VPS 'cd /opt/meowvpn && bash backend/scripts/ops/install/install.sh'
+```
+
+**Tree already on the server** — skip sync:
+
+```bash
+bash <(curl -fsSL .../install.sh) --skip-clone
+```
+
+**Diagnostics on the VPS:**
+
+```bash
+curl -I --max-time 15 https://github.com
+dig +short github.com
+```
+
 ### Manual clone (alternative)
 
 ```bash
