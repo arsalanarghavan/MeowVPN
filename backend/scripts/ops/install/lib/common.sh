@@ -3,22 +3,38 @@
 set -euo pipefail
 
 _INSTALL_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=system.sh
-source "$_INSTALL_LIB/system.sh"
-
-INSTALL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-REPO_ROOT="$(cd "$INSTALL_ROOT/../../../.." && pwd)"
-BACKEND_DIR="$REPO_ROOT/backend"
-STATE_DIR="$BACKEND_DIR/.install"
-STATE_FILE="$STATE_DIR/state.env"
-TEMPLATE_DIR="$INSTALL_ROOT/templates/nginx"
-NGINX_SITES_AVAILABLE="${NGINX_SITES_AVAILABLE:-/etc/nginx/sites-available}"
-NGINX_SITES_ENABLED="${NGINX_SITES_ENABLED:-/etc/nginx/sites-enabled}"
-CERTBOT_WEBROOT="${CERTBOT_WEBROOT:-/var/www/certbot}"
 
 log() { echo "[meowvpn-install] $*"; }
 warn() { echo "[meowvpn-install] WARN: $*" >&2; }
 die() { echo "[meowvpn-install] ERROR: $*" >&2; exit 1; }
+
+# shellcheck source=system.sh
+source "$_INSTALL_LIB/system.sh"
+
+resolve_install_paths() {
+  INSTALL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  local up4 up3
+  up4="$(cd "$INSTALL_ROOT/../../../.." && pwd)"
+  up3="$(cd "$INSTALL_ROOT/../../.." && pwd)"
+
+  if [[ -f "$up4/backend/docker-compose.yml" ]]; then
+    REPO_ROOT="$up4"
+    BACKEND_DIR="$up4/backend"
+  elif [[ -f "$up3/docker-compose.yml" ]]; then
+    REPO_ROOT="$(cd "$up3/.." && pwd)"
+    BACKEND_DIR="$up3"
+  else
+    die "Cannot locate MeowVPN backend (expected docker-compose.yml under backend/)"
+  fi
+  STATE_DIR="$BACKEND_DIR/.install"
+  STATE_FILE="$STATE_DIR/state.env"
+}
+
+resolve_install_paths
+TEMPLATE_DIR="$INSTALL_ROOT/templates/nginx"
+NGINX_SITES_AVAILABLE="${NGINX_SITES_AVAILABLE:-/etc/nginx/sites-available}"
+NGINX_SITES_ENABLED="${NGINX_SITES_ENABLED:-/etc/nginx/sites-enabled}"
+CERTBOT_WEBROOT="${CERTBOT_WEBROOT:-/var/www/certbot}"
 
 require_root() {
   if [[ "$(id -u)" -ne 0 ]]; then

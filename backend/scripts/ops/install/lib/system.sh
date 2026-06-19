@@ -46,6 +46,8 @@ retry() {
 }
 
 _APT_AUTO_PAUSED=0
+_APT_KILL_TRIED=0
+_APT_DPKG_CONFIGURE_TRIED=0
 
 pause_apt_auto_services() {
   if [[ "$_APT_AUTO_PAUSED" == "1" ]]; then
@@ -54,8 +56,50 @@ pause_apt_auto_services() {
   _APT_AUTO_PAUSED=1
   log "Pausing automatic apt services (unattended-upgrades, apt-daily)..."
   systemctl stop unattended-upgrades.service 2>/dev/null || true
+  systemctl disable --now unattended-upgrades.service 2>/dev/null || true
   systemctl stop apt-daily.service apt-daily-upgrade.service 2>/dev/null || true
   systemctl stop apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true
+  systemctl mask apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true
+}
+
+apt_lock_busy() {
+  local lock
+  for lock in \
+    /var/lib/dpkg/lock \
+    /var/lib/dpkg/lock-frontend \
+    /var/lib/apt/lists/lock \
+    /var/cache/apt/archives/lock; do
+    if [[ -e "$lock" ]] && fuser "$lock" >/dev/null 2>&1; then
+      return 0
+    fi
+  done
+  if pgrep -x unattended-upgr >/dev/null 2>&1; then
+    return 0
+  fi
+  if pgrep -x apt-get >/dev/null 2>&1 || pgrep -x apt >/dev/null 2>&1 || pgrep -x dpkg >/dev/null 2>&1; then
+    return 0
+  fi
+  return 1
+}
+
+log_apt_lock_holders() {
+  local lock
+  for lock in /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock; do
+    if [[ -e "$lock" ]]; then
+      local holders
+      holders="$(fuser -v "$lock" 2>&1 | tail -n +2 || true)"
+      if [[ -n "$holders" ]]; then
+        warn "Lock holder on $lock: $(echo "$holders" | tr '\n' ' ' | head -c 200)"
+      fi
+    fi
+  done
+  if pgrep -xa unattended-upgr >/dev/null 2>&1; then
+    warn "unattended-upgrades still running: $(pgrep -xa unattended-upgr | head -1)"
+  fi
+}
+
+prepare_apt_for_install() {
+  pause_apt_auto_services
 }
 
 apt_lock_wait() {
@@ -63,15 +107,30 @@ apt_lock_wait() {
   local waited=0
   pause_apt_auto_services
   while (( waited < max_wait )); do
-    if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 \
-      && ! fuser /var/lib/apt/lists/lock >/dev/null 2>&1 \
-      && ! pgrep -x unattended-upgr >/dev/null 2>&1; then
+    if ! apt_lock_busy; then
       return 0
+    fi
+    if (( waited > 0 && waited % 60 == 0 )); then
+      pause_apt_auto_services
+      log_apt_lock_holders
+    fi
+    if (( waited >= 120 && _APT_KILL_TRIED == 0 )); then
+      _APT_KILL_TRIED=1
+      warn "Sending SIGTERM to unattended-upgrades after ${waited}s..."
+      systemctl kill unattended-upgrades.service 2>/dev/null || true
+      sleep 5
+    fi
+    if (( waited >= 180 && _APT_DPKG_CONFIGURE_TRIED == 0 )); then
+      _APT_DPKG_CONFIGURE_TRIED=1
+      warn "Running dpkg --configure -a after ${waited}s..."
+      DEBIAN_FRONTEND=noninteractive dpkg --configure -a 2>/dev/null || true
+      sleep 5
     fi
     log "Waiting for apt lock (${waited}s/${max_wait}s)..."
     sleep 5
     waited=$((waited + 5))
   done
+  log_apt_lock_holders
   die "apt lock still held after ${max_wait}s. A background update may be running.
   Check:  sudo lsof /var/lib/dpkg/lock-frontend
   Then re-run the installer (install state in backend/.install is preserved)."

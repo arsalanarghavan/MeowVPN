@@ -2,10 +2,16 @@
 # MeowVPN standard installer — interactive menu + non-interactive CLI.
 set -euo pipefail
 
+MEOWVPN_INSTALLER_API=2
+
 INSTALL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/common.sh
 source "$INSTALL_ROOT/lib/common.sh"
 source "$INSTALL_ROOT/lib/prompts.sh"
+
+[[ -f "$BACKEND_DIR/docker-compose.yml" ]] || die "Invalid install tree: missing $BACKEND_DIR/docker-compose.yml"
+[[ -f "$INSTALL_ROOT/install.sh" ]] || die "Installer layout broken: missing $INSTALL_ROOT/install.sh"
+log "Installer API v${MEOWVPN_INSTALLER_API} — REPO_ROOT=$REPO_ROOT BACKEND_DIR=$BACKEND_DIR"
 
 # Parse --help before logging / root / apt (no side effects).
 parse_cli_args "$@"

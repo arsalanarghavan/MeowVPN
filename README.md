@@ -122,6 +122,8 @@ Install directory: `/opt/meowvpn` (override with `MEOWVPN_DIR`).
 
 If you see `SSL connection timeout` or `unable to access github.com` during clone, the VPS cannot reach GitHub reliably. The bootstrap script will **retry git 3 times**, then fall back to a **tarball download** automatically.
 
+**Default refresh policy:** each one-liner run **updates the install tree** from GitHub (git pull if `.git` exists, otherwise a fresh tarball). Install state in `backend/.install/` is preserved across tarball refreshes. To reuse the local tree without downloading, pass **`--skip-clone`** or set `MEOWVPN_REUSE_TREE=1`.
+
 **Environment variables:**
 
 | Variable | Purpose |
@@ -129,6 +131,7 @@ If you see `SSL connection timeout` or `unable to access github.com` during clon
 | `MEOWVPN_REPO` | Git URL (HTTPS or `git@github.com:arsalanarghavan/MeowVPN.git`) |
 | `MEOWVPN_TARBALL_URL` | Archive URL if git fails (default: GitHub `archive/refs/heads/main.tar.gz`) |
 | `MEOWVPN_SKIP_GIT=1` | Skip git entirely; download tarball only |
+| `MEOWVPN_REUSE_TREE=1` | Reuse local tree (same as `--skip-clone`) |
 | `MEOWVPN_DIR` | Install path (default `/opt/meowvpn`) |
 
 **SSH clone from the VPS** (if you have a deploy key):
@@ -161,7 +164,7 @@ dig +short github.com
 
 ### Apt lock / unattended-upgrades
 
-On fresh Ubuntu VPS images, `unattended-upgrades` or `apt-daily` may hold the dpkg lock at boot. The installer **pauses those services once** and waits up to **10 minutes** before failing.
+On fresh Ubuntu VPS images, `unattended-upgrades` or `apt-daily` may hold the dpkg lock at boot. The installer **stops and masks apt timers**, escalates cleanup (kill stuck `unattended-upgrades`, `dpkg --configure -a`), and waits up to **10 minutes** before failing.
 
 If install still stops with `apt lock still held`:
 
@@ -170,10 +173,17 @@ sudo lsof /var/lib/dpkg/lock-frontend
 sudo systemctl stop unattended-upgrades apt-daily.timer apt-daily-upgrade.timer
 ```
 
-Then **re-run the same command** — the tree at `/opt/meowvpn` is reused automatically and install state in `backend/.install/` is preserved. Or continue from the existing tree:
+Then **re-run the same one-liner** — the bootstrap refreshes code from GitHub and reuses `backend/.install/` state. To continue without re-downloading:
 
 ```bash
 bash <(curl -fsSL .../install.sh) --skip-clone
+```
+
+**Broken tree from an older install** (log path shows `backend/backend/`): remove and re-run, or just re-run the one-liner after pushing latest `main` (tarball refresh + layout self-heal):
+
+```bash
+rm -rf /opt/meowvpn
+bash <(curl -fsSL https://raw.githubusercontent.com/arsalanarghavan/MeowVPN/main/install.sh)
 ```
 
 ### Manual clone (alternative)

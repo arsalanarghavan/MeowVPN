@@ -74,6 +74,7 @@ ensure_nginx_base() {
 }
 
 ensure_prereqs() {
+  prepare_apt_for_install
   preflight_all
   apt_update
   apt_install ca-certificates curl gnupg git openssl whiptail jq rsync socat

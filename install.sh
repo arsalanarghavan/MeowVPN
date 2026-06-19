@@ -13,15 +13,17 @@
 # Update only (git pull + rebuild + migrate):
 #   curl -fsSL .../install.sh | sudo bash -s -- --update-only
 #
-# Env: MEOWVPN_REPO MEOWVPN_BRANCH MEOWVPN_DIR MEOWVPN_TARBALL_URL MEOWVPN_SKIP_GIT
+# Env: MEOWVPN_REPO MEOWVPN_BRANCH MEOWVPN_DIR MEOWVPN_TARBALL_URL MEOWVPN_SKIP_GIT MEOWVPN_REUSE_TREE
 #
 set -euo pipefail
 
+MEOWVPN_INSTALLER_API=2
 MEOWVPN_REPO="${MEOWVPN_REPO:-https://github.com/arsalanarghavan/MeowVPN.git}"
 MEOWVPN_BRANCH="${MEOWVPN_BRANCH:-main}"
 MEOWVPN_DIR="${MEOWVPN_DIR:-/opt/meowvpn}"
 MEOWVPN_TARBALL_URL="${MEOWVPN_TARBALL_URL:-https://github.com/arsalanarghavan/MeowVPN/archive/refs/heads/${MEOWVPN_BRANCH}.tar.gz}"
 MEOWVPN_SKIP_GIT="${MEOWVPN_SKIP_GIT:-0}"
+MEOWVPN_REUSE_TREE="${MEOWVPN_REUSE_TREE:-0}"
 
 UPDATE_ONLY=0
 SKIP_CLONE=0
@@ -57,6 +59,7 @@ Env:
   MEOWVPN_DIR          default: /opt/meowvpn
   MEOWVPN_TARBALL_URL  GitHub archive tarball fallback URL
   MEOWVPN_SKIP_GIT     set to 1 to download tarball only (no git clone)
+  MEOWVPN_REUSE_TREE   set to 1 with existing tree to skip refresh (like --skip-clone)
 EOF
 }
 
@@ -76,6 +79,48 @@ fi
 
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || return 1
+}
+
+_BOOTSTRAP_APT_PAUSED=0
+
+bootstrap_pause_apt() {
+  if [[ "$_BOOTSTRAP_APT_PAUSED" == "1" ]]; then
+    return 0
+  fi
+  _BOOTSTRAP_APT_PAUSED=1
+  if ! command -v systemctl >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "[meowvpn] Pausing automatic apt services for bootstrap..."
+  systemctl stop unattended-upgrades.service 2>/dev/null || true
+  systemctl disable --now unattended-upgrades.service 2>/dev/null || true
+  systemctl stop apt-daily.service apt-daily-upgrade.service 2>/dev/null || true
+  systemctl stop apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true
+  systemctl mask apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true
+}
+
+bootstrap_apt_lock_wait() {
+  local max_wait=120
+  local waited=0
+  bootstrap_pause_apt
+  while (( waited < max_wait )); do
+    if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 \
+      && ! fuser /var/lib/dpkg/lock >/dev/null 2>&1 \
+      && ! fuser /var/lib/apt/lists/lock >/dev/null 2>&1 \
+      && ! pgrep -x unattended-upgr >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 5
+    waited=$((waited + 5))
+  done
+  echo "[meowvpn] WARN: apt lock still held after ${max_wait}s — continuing anyway" >&2
+}
+
+bootstrap_apt_install() {
+  bootstrap_apt_lock_wait
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -qq
+  apt-get install -y --no-install-recommends "$@"
 }
 
 die_clone_help() {
@@ -110,9 +155,7 @@ ensure_git() {
     return 0
   fi
   echo "[meowvpn] Installing git..."
-  export DEBIAN_FRONTEND=noninteractive
-  apt-get update -qq
-  apt-get install -y --no-install-recommends git ca-certificates
+  bootstrap_apt_install git ca-certificates
 }
 
 ensure_tar() {
@@ -120,9 +163,7 @@ ensure_tar() {
     return 0
   fi
   echo "[meowvpn] Installing tar..."
-  export DEBIAN_FRONTEND=noninteractive
-  apt-get update -qq
-  apt-get install -y --no-install-recommends tar
+  bootstrap_apt_install tar
 }
 
 if ! need_cmd curl; then
@@ -198,6 +239,10 @@ sync_repo_tarball() {
       state_backup="$tmpdir/install-state-backup"
       echo "[meowvpn] Preserving install state from $MEOWVPN_DIR/backend/.install"
       cp -a "$MEOWVPN_DIR/backend/.install" "$state_backup"
+    elif [[ -d "$MEOWVPN_DIR/backend/backend/.install" ]]; then
+      state_backup="$tmpdir/install-state-backup"
+      echo "[meowvpn] Preserving install state from $MEOWVPN_DIR/backend/backend/.install"
+      cp -a "$MEOWVPN_DIR/backend/backend/.install" "$state_backup"
     fi
     echo "[meowvpn] Replacing existing $MEOWVPN_DIR with tarball contents..."
     rm -rf "$MEOWVPN_DIR"
@@ -230,23 +275,60 @@ sync_repo_git() {
 }
 
 sync_repo() {
-  if [[ -d "$MEOWVPN_DIR" && -f "$INNER_INSTALL" ]]; then
-    echo "[meowvpn] Reusing existing tree at $MEOWVPN_DIR (rm -rf it to force re-download)"
-    return 0
-  fi
-
   if [[ "$MEOWVPN_SKIP_GIT" == "1" ]]; then
-    echo "[meowvpn] MEOWVPN_SKIP_GIT=1 — using tarball only"
+    echo "[meowvpn] MEOWVPN_SKIP_GIT=1 — refreshing from tarball"
     sync_repo_tarball || die_clone_help
     return 0
   fi
 
-  if sync_repo_git; then
+  if [[ -d "$MEOWVPN_DIR/.git" ]]; then
+    git_update_with_retry "$MEOWVPN_DIR"
     return 0
   fi
 
-  echo "[meowvpn] git clone/update failed — trying tarball fallback..."
+  if [[ ! -d "$MEOWVPN_DIR" ]]; then
+    if sync_repo_git; then
+      return 0
+    fi
+    echo "[meowvpn] git clone failed — trying tarball fallback..."
+    sync_repo_tarball || die_clone_help
+    return 0
+  fi
+
+  echo "[meowvpn] Refreshing install tree from tarball (no git repo at $MEOWVPN_DIR)..."
   sync_repo_tarball || die_clone_help
+}
+
+repair_nested_backend_layout() {
+  local base="$MEOWVPN_DIR/backend"
+  if [[ -f "$base/docker-compose.yml" ]]; then
+    return 0
+  fi
+  if [[ ! -d "$base/backend" ]]; then
+    return 0
+  fi
+  if [[ ! -f "$base/backend/docker-compose.yml" ]]; then
+    return 0
+  fi
+  echo "[meowvpn] Repairing nested backend/backend layout..."
+  shopt -s dotglob nullglob
+  local item
+  for item in "$base/backend"/*; do
+    [[ -e "$item" ]] || continue
+    local name
+    name="$(basename "$item")"
+    if [[ -e "$base/$name" ]]; then
+      continue
+    fi
+    mv "$item" "$base/$name"
+  done
+  shopt -u dotglob nullglob
+  rmdir "$base/backend" 2>/dev/null || true
+  if [[ -f "$base/docker-compose.yml" ]]; then
+    echo "[meowvpn] Layout repaired: $base/docker-compose.yml"
+  else
+    echo "[meowvpn] WARN: could not repair nested backend layout" >&2
+  fi
 }
 
 run_update_only() {
@@ -261,15 +343,18 @@ run_update_only() {
   echo "[meowvpn] Update complete. Tree: $MEOWVPN_DIR"
 }
 
-if [[ "$SKIP_CLONE" -eq 1 ]]; then
+if [[ "$SKIP_CLONE" -eq 1 || "$MEOWVPN_REUSE_TREE" == "1" ]]; then
   if [[ ! -f "$INNER_INSTALL" ]]; then
     echo "[meowvpn] --skip-clone set but installer not found: $INNER_INSTALL" >&2
     exit 1
   fi
-  echo "[meowvpn] Skipping repo sync (--skip-clone); using $MEOWVPN_DIR"
+  echo "[meowvpn] Skipping repo sync (--skip-clone / MEOWVPN_REUSE_TREE=1); using $MEOWVPN_DIR"
 else
   sync_repo
+  echo "[meowvpn] Bootstrap sync complete (Installer API v${MEOWVPN_INSTALLER_API})"
 fi
+
+repair_nested_backend_layout
 
 if [[ ! -f "$INNER_INSTALL" ]]; then
   echo "Installer not found: $INNER_INSTALL" >&2
