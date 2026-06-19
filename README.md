@@ -58,7 +58,7 @@ flowchart LR
 - **Disk:** ≥ 5 GB free on `/var`
 - **RAM:** ≥ 2 GB (installer adds 2 GB swap automatically on smaller VPS)
 
-**On the host you only need `git` before clone.** The installer auto-provisions everything else:
+**On a fresh VPS you only need `curl` and `root`.** The bootstrap installs `git` if missing; the full installer provisions Docker, nginx, certbot, swap, and time-sync.
 
 | Component | Where it runs |
 |-----------|----------------|
@@ -79,39 +79,54 @@ flowchart LR
 
 Repository: **https://github.com/arsalanarghavan/MeowVPN**
 
-### 1. Clone
+Review [install.sh](install.sh) on GitHub before piping to `bash`. Default branch: `main`.
+
+### One-liner (recommended)
 
 ```bash
-sudo apt update
-sudo apt install -y git
-
-export MEOWVPN_DIR=/opt/meowvpn
-sudo git clone https://github.com/arsalanarghavan/MeowVPN.git "$MEOWVPN_DIR"
-cd "$MEOWVPN_DIR"
+bash <(curl -fsSL https://raw.githubusercontent.com/arsalanarghavan/MeowVPN/main/install.sh)
 ```
 
-Use a specific branch if needed:
+Or:
 
 ```bash
-sudo git clone -b BRANCH_NAME https://github.com/arsalanarghavan/MeowVPN.git /opt/meowvpn
+curl -fsSL https://raw.githubusercontent.com/arsalanarghavan/MeowVPN/main/install.sh | sudo bash
 ```
 
-### 2. Run the installer
+Non-interactive:
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/arsalanarghavan/MeowVPN/main/install.sh | sudo bash -s -- \
+  --mode all \
+  --non-interactive \
+  --core-domain api.example.com \
+  --dashboard-domain panel.example.com \
+  --telegram-domain tg.example.com \
+  --bale-domain bale.example.com \
+  --relay-domain relay.example.com \
+  --ssl certbot \
+  --email admin@example.com
+```
+
+Update an existing install (git pull + rebuild + migrate):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/arsalanarghavan/MeowVPN/main/install.sh | sudo bash -s -- --update-only
+```
+
+Another branch: `MEOWVPN_BRANCH=develop bash <(curl -fsSL .../main/install.sh)`
+
+Install directory: `/opt/meowvpn` (override with `MEOWVPN_DIR`).
+
+### Manual clone (alternative)
+
+```bash
+sudo git clone https://github.com/arsalanarghavan/MeowVPN.git /opt/meowvpn
 cd /opt/meowvpn
 sudo bash backend/scripts/ops/install.sh
 ```
 
-Installer path (after clone to `/opt/meowvpn`):
-
-```text
-/opt/meowvpn/backend/scripts/ops/install.sh
-```
-
-If you cloned elsewhere, replace `/opt/meowvpn` with your path.
-
-### 3. Interactive menu
+### Interactive menu
 
 | # | Option | What it installs |
 |---|--------|------------------|
@@ -123,7 +138,7 @@ If you cloned elsewhere, replace `/opt/meowvpn` with your path.
 | 6 | **Install Dashboard Frontend** | SPA only |
 | 7 | **Install Relay** | Telegram relay (systemd; separate from Docker relay in option 1) |
 
-### 4. Domains (Install All)
+### Domains (Install All)
 
 | Prompt | Service | Example |
 |--------|---------|---------|
@@ -136,7 +151,7 @@ If you cloned elsewhere, replace `/opt/meowvpn` with your path.
 - **Leave blank** → server public IP, HTTP only (no Let's Encrypt)
 - **Hostname set** → TLS via **certbot** or **acme.sh**
 
-### 5. Non-interactive install
+### Non-interactive flags (after clone or via curl `-s --`)
 
 ```bash
 cd /opt/meowvpn
@@ -155,7 +170,7 @@ sudo bash backend/scripts/ops/install.sh \
 
 **`--mode` values:** `all` · `dashboard` · `backend` · `frontend` · `telegram` · `bale` · `relay`
 
-### 6. After install
+### After install
 
 - **Dashboard login:** user `admin` — password in `backend/.env` (`SVP_ADMIN_PASSWORD`) or printed by the installer
 - Set bot tokens in the dashboard → **Bots**
@@ -171,17 +186,6 @@ sudo docker compose exec -T app php artisan svp:register-webhooks --platform=bot
 ```bash
 curl -fsS https://api.example.com/health/ready
 curl -fsS https://panel.example.com/
-```
-
----
-
-## One-liner (fresh Ubuntu/Debian)
-
-```bash
-sudo apt update && sudo apt install -y git \
-  && sudo git clone https://github.com/arsalanarghavan/MeowVPN.git /opt/meowvpn \
-  && cd /opt/meowvpn \
-  && sudo bash backend/scripts/ops/install.sh
 ```
 
 ---
@@ -244,6 +248,12 @@ docker compose exec -T app php artisan db:seed --class=AdminUserSeeder --force
 ---
 
 ## Updating from GitHub
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/arsalanarghavan/MeowVPN/main/install.sh | sudo bash -s -- --update-only
+```
+
+Or manually:
 
 ```bash
 cd /opt/meowvpn

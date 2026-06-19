@@ -2,8 +2,22 @@
 
 ## Standard installer
 
+**One-liner (recommended):**
+
 ```bash
-sudo bash backend/scripts/ops/install.sh
+bash <(curl -fsSL https://raw.githubusercontent.com/arsalanarghavan/MeowVPN/main/install.sh)
+```
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/arsalanarghavan/MeowVPN/main/install.sh | sudo bash
+```
+
+**Update:** `curl -fsSL .../install.sh | sudo bash -s -- --update-only`
+
+**After manual clone** (`/opt/meowvpn`):
+
+```bash
+sudo bash /opt/meowvpn/backend/scripts/ops/install.sh
 ```
 
 | Menu option | Docker profiles | Host nginx vhost |
