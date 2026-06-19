@@ -4,9 +4,12 @@ set -euo pipefail
 
 _INSTALL_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-log() { echo "[meowvpn-install] $*"; }
-warn() { echo "[meowvpn-install] WARN: $*" >&2; }
-die() { echo "[meowvpn-install] ERROR: $*" >&2; exit 1; }
+# shellcheck source=ui.sh
+source "$_INSTALL_LIB/ui.sh"
+
+log() { printf '%b[meowvpn-install]%b %s\n' "$C_PURPLE" "$C_RESET" "$*"; }
+warn() { printf '%b[meowvpn-install] WARN:%b %s\n' "$C_YELLOW" "$C_RESET" "$*" >&2; }
+die() { printf '%b[meowvpn-install] ERROR:%b %s\n' "$C_RED" "$C_RESET" "$*" >&2; exit 1; }
 
 # shellcheck source=system.sh
 source "$_INSTALL_LIB/system.sh"

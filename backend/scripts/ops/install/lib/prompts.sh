@@ -18,7 +18,7 @@ prompt_domain() {
     return
   fi
   if command -v whiptail >/dev/null 2>&1; then
-    result="$(whiptail --title "MeowVPN Install" --inputbox "$title\n(leave empty to use server IP)" 10 70 "$default" 3>&1 1>&2 2>&3 || true)"
+    result="$(whiptail --backtitle "MeowVPN" --title "MeowVPN Install" --inputbox "$title\n(leave empty to use server IP)" 10 70 "$default" 3>&1 1>&2 2>&3 || true)"
   else
     read -r -p "$title [empty=IP]: " result
   fi
@@ -31,7 +31,7 @@ prompt_ssl_method() {
     return
   fi
   if command -v whiptail >/dev/null 2>&1; then
-    whiptail --title "SSL" --menu "Certificate issuer" 12 60 2 \
+    whiptail --backtitle "MeowVPN" --title "SSL" --menu "Certificate issuer" 12 60 2 \
       certbot "Let's Encrypt (certbot)" \
       acme "acme.sh" \
       3>&1 1>&2 2>&3 || echo certbot
@@ -47,7 +47,7 @@ prompt_email() {
     return
   fi
   if command -v whiptail >/dev/null 2>&1; then
-    whiptail --title "SSL Email" --inputbox "Email for Let's Encrypt (certbot)" 8 60 "$SSL_EMAIL" 3>&1 1>&2 2>&3 || true
+    whiptail --backtitle "MeowVPN" --title "SSL Email" --inputbox "Email for Let's Encrypt (certbot)" 8 60 "$SSL_EMAIL" 3>&1 1>&2 2>&3 || true
   else
     read -r -p "SSL email: " SSL_EMAIL
     echo "$SSL_EMAIL"
@@ -61,7 +61,7 @@ prompt_core_url() {
     return
   fi
   if command -v whiptail >/dev/null 2>&1; then
-    whiptail --title "Backend URL" --inputbox "Dashboard Core URL (API base, e.g. https://api.example.com)" 10 70 "$default" 3>&1 1>&2 2>&3 || true
+    whiptail --backtitle "MeowVPN" --title "Backend URL" --inputbox "Dashboard Core URL (API base, e.g. https://api.example.com)" 10 70 "$default" 3>&1 1>&2 2>&3 || true
   else
     read -r -p "Dashboard Core URL: " default
     echo "$default"

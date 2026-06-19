@@ -24,6 +24,51 @@ MEOWVPN_USE_GIT="${MEOWVPN_USE_GIT:-0}"
 MEOWVPN_FULL_SYNC="${MEOWVPN_FULL_SYNC:-0}"
 MEOWVPN_REUSE_TREE="${MEOWVPN_REUSE_TREE:-0}"
 
+_BOOTSTRAP_C_PURPLE='\033[38;5;141m'
+_BOOTSTRAP_C_RESET='\033[0m'
+if [[ -n "${NO_COLOR:-}" ]] || [[ ! -t 1 ]]; then
+  _BOOTSTRAP_C_PURPLE=''
+  _BOOTSTRAP_C_RESET=''
+fi
+
+apply_bootstrap_purple_theme() {
+  export NEWT_COLORS='
+root=,magenta
+window=magenta,white
+border=magenta,white
+title=magenta,white
+button=black,magenta
+actbutton=white,magenta
+compactbutton=black,magenta
+actselbutton=white,magenta
+disbutton=gray,magenta
+textbox=white,magenta
+acttextbox=black,magenta
+entry=white,magenta
+actentry=black,magenta
+listbox=white,magenta
+actlistbox=black,magenta
+actsellistbox=black,magenta
+checkbutton=magenta,white
+actcheckbutton=magenta,white
+searchbox=white,magenta
+actsearchbox=black,magenta
+shadow=magenta,magenta
+'
+}
+
+bootstrap_progress() {
+  local current="$1"
+  local total="$2"
+  local label="$3"
+  local pct=0
+  if (( total > 0 )); then
+    pct=$((current * 100 / total))
+  fi
+  if (( pct > 100 )); then pct=100; fi
+  printf '%b[ %3d%% ]%b %s\n' "$_BOOTSTRAP_C_PURPLE" "$pct" "$_BOOTSTRAP_C_RESET" "$label"
+}
+
 UPDATE_ONLY=0
 SKIP_CLONE=0
 SELECTED_MODE=""
@@ -64,6 +109,8 @@ Env:
   MEOWVPN_FULL_SYNC=1    on component failure, always download full archive
   MEOWVPN_REUSE_TREE=1   skip download (like --skip-clone)
   MEOWVPN_TARBALL_URL    full archive fallback URL
+  MEOWVPN_DOCKER_MIRROR  force Docker registry mirror (auto if Hub unreachable)
+  MEOWVPN_DOCKER_MIRRORS space-separated default mirrors
 EOF
 }
 
@@ -225,6 +272,7 @@ PY
 fetch_manifest() {
   local tmp
   tmp="$(mktemp /tmp/meowvpn-manifest.XXXXXX.json)"
+  bootstrap_progress 1 2 "Fetching component manifest"
   echo "[meowvpn] Fetching manifest: $MEOWVPN_MANIFEST_URL"
   if ! retry_with_backoff curl -fsSL --retry 3 --retry-delay 5 --connect-timeout 30 --max-time 120 \
     -o "$tmp" "$MEOWVPN_MANIFEST_URL"; then
@@ -238,6 +286,7 @@ fetch_manifest() {
   MANIFEST_FILE="$tmp"
   local ver
   ver="$(python3 -c "import json; print(json.load(open('$MANIFEST_FILE'))['version'])")"
+  bootstrap_progress 2 2 "Manifest ready (version $ver)"
   echo "[meowvpn] Manifest version: $ver"
   return 0
 }
@@ -261,6 +310,8 @@ restore_install_state() {
 
 download_and_extract_component() {
   local comp="$1"
+  local dl_index="${2:-1}"
+  local dl_total="${3:-1}"
   local file url expected actual tmpdir archive
   file="$(manifest_py component_file "$comp")"
   url="$(manifest_py component_url "$comp")"
@@ -268,8 +319,8 @@ download_and_extract_component() {
   tmpdir="$(mktemp -d /tmp/meowvpn-dl.XXXXXX)"
   archive="$tmpdir/$file"
 
-  echo "[meowvpn] Downloading component: $comp ($file)"
-  if ! retry_with_backoff curl -fsSL --retry 3 --retry-delay 5 --connect-timeout 30 --max-time 600 \
+  bootstrap_progress "$dl_index" "$dl_total" "Downloading component: $comp ($file)"
+  if ! retry_with_backoff curl -fSL --progress-bar --retry 3 --retry-delay 5 --connect-timeout 30 --max-time 600 \
     -o "$archive" "$url"; then
     rm -rf "$tmpdir"
     return 1
@@ -281,6 +332,8 @@ download_and_extract_component() {
     rm -rf "$tmpdir"
     return 1
   fi
+
+  bootstrap_progress "$dl_index" "$dl_total" "Extracting component: $comp"
 
   if [[ "$comp" == "backend" || "$comp" == "full" ]]; then
     backup_install_state
@@ -302,9 +355,13 @@ download_and_extract_component() {
 }
 
 sync_components_list() {
+  local -a comps=("$@")
+  local total="${#comps[@]}"
+  local i=0
   local comp
-  for comp in "$@"; do
-    download_and_extract_component "$comp" || return 1
+  for comp in "${comps[@]}"; do
+    i=$((i + 1))
+    download_and_extract_component "$comp" "$i" "$total" || return 1
   done
   return 0
 }
@@ -362,8 +419,9 @@ sync_update_components() {
 
 bootstrap_select_mode() {
   ensure_whiptail
+  apply_bootstrap_purple_theme
   local choice
-  choice="$(whiptail --title "MeowVPN Install" --menu "Select install target\n(only required files will be downloaded)" 20 72 8 \
+  choice="$(whiptail --backtitle "MeowVPN" --title "MeowVPN Install" --menu "Select install target\n(only required files will be downloaded)" 20 72 8 \
     1 "Install All" \
     2 "Install Dashboard (Backend + Frontend)" \
     3 "Install Telegram Bot" \
@@ -406,12 +464,14 @@ sync_repo_tarball() {
   extracted="$tmpdir/extract"
 
   echo "[meowvpn] Downloading full archive: $MEOWVPN_TARBALL_URL"
-  if ! curl -fsSL --retry 3 --retry-delay 5 --connect-timeout 30 --max-time 600 \
+  bootstrap_progress 0 1 "Downloading full archive"
+  if ! curl -fSL --progress-bar --retry 3 --retry-delay 5 --connect-timeout 30 --max-time 600 \
     -o "$archive" "$MEOWVPN_TARBALL_URL"; then
     rm -rf "$tmpdir"
     return 1
   fi
 
+  bootstrap_progress 1 1 "Extracting full archive"
   mkdir -p "$extracted"
   if ! tar -xzf "$archive" -C "$extracted"; then
     rm -rf "$tmpdir"

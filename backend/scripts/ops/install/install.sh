@@ -9,8 +9,25 @@ INSTALL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$INSTALL_ROOT/lib/common.sh"
 source "$INSTALL_ROOT/lib/prompts.sh"
 
+apply_purple_theme
+
 # Parse --help / --mode before tree validation.
 parse_cli_args "$@"
+
+mode_total_steps() {
+  local mode="${1:-all}"
+  local prereq=7
+  local module_steps=8
+  case "$mode" in
+    backend) module_steps=8 ;;
+    frontend) module_steps=6 ;;
+    dashboard) module_steps=11 ;;
+    telegram|bale) module_steps=7 ;;
+    relay) module_steps=3 ;;
+    all) module_steps=14 ;;
+  esac
+  echo $((prereq + module_steps))
+}
 
 validate_install_tree() {
   [[ -f "$INSTALL_ROOT/install.sh" ]] || die "Installer layout broken: missing $INSTALL_ROOT/install.sh"
@@ -55,6 +72,7 @@ setup_logging
 
 source "$INSTALL_ROOT/lib/docker.sh"
 
+progress_reset "$(mode_total_steps "${INSTALL_MODE:-all}")"
 ensure_prereqs
 
 run_mode() {
@@ -97,7 +115,7 @@ EOF
   exit 1
 fi
 
-choice="$(whiptail --title "MeowVPN Install" --menu "Select install target" 18 72 8 \
+choice="$(whiptail --backtitle "MeowVPN" --title "MeowVPN Install" --menu "Select install target" 18 72 8 \
   1 "Install All" \
   2 "Install Dashboard (Backend + Frontend)" \
   3 "Install Telegram Bot" \

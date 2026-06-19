@@ -87,7 +87,7 @@ Review [install.sh](install.sh) on GitHub before piping to `bash`. Default branc
 bash <(curl -fsSL https://raw.githubusercontent.com/arsalanarghavan/MeowVPN/main/install.sh)
 ```
 
-**Flow:** choose install target (Dashboard, Telegram bot, Relay, …) → download only required component tarballs → run the installer for that mode. No full-repo clone before you choose.
+**Flow:** choose install target (Dashboard, Telegram bot, Relay, …) → download only required component tarballs → run the installer for that mode. The installer shows **purple whiptail dialogs** and **inline `[ 45% ]` progress** for each major step.
 
 Or:
 
@@ -173,8 +173,21 @@ MEOWVPN_REUSE_TREE=1 bash <(curl -fsSL .../install.sh)
 | `MEOWVPN_TARBALL_URL` | Full archive URL fallback |
 | `MEOWVPN_REUSE_TREE=1` | Skip download (same as `--skip-clone`) |
 | `MEOWVPN_REPO` | Git URL when `MEOWVPN_USE_GIT=1` |
+| `MEOWVPN_DOCKER_MIRROR` | Force a Docker registry mirror URL |
+| `MEOWVPN_DOCKER_MIRRORS` | Space-separated default mirrors when Hub is unreachable |
 
-**VPS recovery when GitHub is slow:**
+**Docker Hub timeout (image pull fails):**
+
+The installer probes `registry-1.docker.io` and, if unreachable, automatically configures `registry-mirrors` in `/etc/docker/daemon.json` (default list in `MEOWVPN_DOCKER_MIRRORS`), pre-pulls required images with retry, then continues.
+
+```bash
+# Force a specific mirror
+MEOWVPN_DOCKER_MIRROR=https://docker.m.daocloud.io \
+  bash <(curl -fsSL .../main/install.sh) --skip-clone
+
+# Re-run after a failed install (state preserved in backend/.install/)
+bash <(curl -fsSL .../main/install.sh) --skip-clone
+```
 
 ```bash
 # Relay only — small download (~65 KB components vs full repo)

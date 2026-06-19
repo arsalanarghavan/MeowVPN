@@ -22,17 +22,24 @@ module_frontend() {
   fi
 
   collect_single_domain DASHBOARD_HOST "Enter Dashboard Domain:"
+  progress "Configuring frontend environment"
   export_compose_env
 
+  progress "Building frontend"
   build_frontend "${CORE_URL}/api/v1"
+  progress "Configuring nginx (dashboard)"
   install_nginx_dashboard
+  progress "Starting frontend container"
   compose_up frontend
+  progress "Waiting for dashboard health"
   wait_for_health "http://127.0.0.1:3001/" || true
 
   local dash_url
   dash_url="$(public_url_for_host "$DASHBOARD_HOST" "$(host_use_ssl "$DASHBOARD_HOST" && echo 1 || echo 0)")"
+  progress "Running smoke tests"
   smoke_curl "dashboard" "${dash_url}/"
   print_ssl_renew_hint
+  progress "Verifying installation"
   verify_install
   log "Install Dashboard Frontend complete."
 }

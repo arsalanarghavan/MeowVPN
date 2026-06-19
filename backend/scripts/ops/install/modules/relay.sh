@@ -24,8 +24,9 @@ module_relay() {
     warn "Relay domain is IP — relay install uses self-signed admin SSL"
   fi
 
-  log "Running relay-server install..."
+  progress "Installing relay server"
   bash "$relay_install" "${args[@]}"
+  progress "Verifying installation"
   verify_install
   log "Install Relay complete."
 }
