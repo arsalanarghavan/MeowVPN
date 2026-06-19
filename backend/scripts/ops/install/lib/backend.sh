@@ -39,7 +39,32 @@ run_smoke_tests() {
 
 print_admin_credentials() {
   load_state
-  log "Dashboard admin: user=admin password=${MEOWVPN_ADMIN_PASSWORD:-see backend/.env SVP_ADMIN_PASSWORD}"
+  log "Temporary admin (set final password in setup wizard): user=admin password=${MEOWVPN_ADMIN_PASSWORD:-see backend/.env SVP_ADMIN_PASSWORD}"
+}
+
+init_install_wizard() {
+  local core_url="${1:-}"
+  local dash_url="${2:-}"
+  local tg_url="${3:-}"
+  local bale_url="${4:-}"
+  local relay_url="${5:-}"
+  local token
+  token="$(rand_hex 24)"
+  log "Enabling post-install setup wizard..."
+  compose_cmd exec -T app php artisan svp:install-wizard-init \
+    --token="$token" \
+    --core-url="$core_url" \
+    --dashboard-url="$dash_url" \
+    --telegram-url="$tg_url" \
+    --bale-url="$bale_url" \
+    --relay-url="$relay_url"
+  if [[ -n "$dash_url" ]]; then
+    log "============================================"
+    log "Setup wizard: ${dash_url}/setup/?token=${token}"
+    log "============================================"
+  else
+    warn "Dashboard URL not set — open /setup/?token=${token} on your dashboard host after frontend install."
+  fi
 }
 
 verify_install() {

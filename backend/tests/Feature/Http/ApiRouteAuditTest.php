@@ -41,6 +41,11 @@ class ApiRouteAuditTest extends TestCase
         $this->actingAsAdmin()->getJson('/api/v1/bootstrap')->assertOk();
     }
 
+    public function test_setup_status_route(): void
+    {
+        $this->getJson('/api/v1/setup/status')->assertOk();
+    }
+
     public function test_me_state_route(): void
     {
         $this->actingAsAdmin()->getJson('/api/v1/me/state')->assertOk();

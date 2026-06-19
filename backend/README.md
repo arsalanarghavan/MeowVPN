@@ -84,7 +84,7 @@ Enable/disable via `.env`: `SVP_MODULE_TELEGRAM`, `SVP_MODULE_RELAY`, etc. See `
 
 ## Data migration
 
-WordPress `wp:import` was removed after Laravel cutover. Use `php artisan migrate --force` and seeders for fresh installs.
+WordPress `wp:import` is available for migrations from legacy WP SQL dumps (setup wizard step 2 or `php artisan wp:import`). Fresh installs use `migrate --force` and seeders.
 
 ## Schema
 

@@ -65,6 +65,12 @@ export function mapTabForReseller(tab: string, isReseller: boolean): string {
  */
 export function parseDashFromPath(pathname: string, opts?: ParseDashOpts): DashLocation {
   const path = (pathname || "").replace(/\/+$/, "") || "/"
+  if (/\/setup(?:\/|$)/.test(path)) {
+    return { tab: "setup", userDetailId: null }
+  }
+  if (/\/dashboard\/setup(?:\/|$)/.test(path)) {
+    return { tab: "setup", userDetailId: null }
+  }
   if (/\/dashboard\/login(?:\/|$)/.test(path)) {
     return { tab: "login", userDetailId: null }
   }

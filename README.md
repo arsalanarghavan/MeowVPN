@@ -172,9 +172,24 @@ sudo bash backend/scripts/ops/install.sh \
 
 ### After install
 
-- **Dashboard login:** user `admin` — password in `backend/.env` (`SVP_ADMIN_PASSWORD`) or printed by the installer
+The installer prints a **setup wizard URL** on the dashboard domain, for example:
+
+```text
+https://panel.example.com/setup/?token=...
+```
+
+Open that link once and complete all four steps:
+
+1. **Domains** — verify Core, Dashboard, bot, and relay URLs; re-probe connectivity; optionally re-register webhooks
+2. **Backup** — restore a MeowVPN `.zip` backup, import a WordPress `.sql` dump, or skip
+3. **Admin** — choose the dashboard username and password (replaces the temporary `admin` user from install)
+4. **Finish** — open the dashboard login; the setup wizard is permanently disabled
+
+Until the wizard is completed, dashboard login is blocked (`wizard_pending`).
+
+- **Temporary admin** during install: user `admin` — password in `backend/.env` (`SVP_ADMIN_PASSWORD`) or printed by the installer (set your final password in step 3 of the wizard)
 - Set bot tokens in the dashboard → **Bots**
-- Webhooks are registered automatically; re-run after adding tokens if needed:
+- Webhooks are registered automatically during install; re-run after adding tokens if needed:
 
 ```bash
 cd /opt/meowvpn/backend

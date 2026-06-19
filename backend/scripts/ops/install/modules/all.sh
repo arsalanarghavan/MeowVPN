@@ -42,6 +42,7 @@ module_all() {
   run_smoke_tests "$core_url" "$dash_url"
   smoke_curl "telegram bot" "${tg_url}/health"
   smoke_curl "bale bot" "${bale_url}/health"
+  init_install_wizard "$core_url" "$dash_url" "$tg_url" "$bale_url" "$relay_url"
   print_admin_credentials
   print_ssl_renew_hint
   verify_install

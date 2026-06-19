@@ -23,6 +23,7 @@ module_backend() {
   backend_post_install 1
   apply_install_settings "$core_url"
   run_smoke_tests "$core_url"
+  init_install_wizard "$core_url"
   print_admin_credentials
   print_ssl_renew_hint
   verify_install

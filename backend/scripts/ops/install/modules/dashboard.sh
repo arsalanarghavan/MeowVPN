@@ -27,6 +27,7 @@ module_dashboard() {
   backend_post_install 1
   apply_install_settings "$core_url" "$dash_url"
   run_smoke_tests "$core_url" "$dash_url"
+  init_install_wizard "$core_url" "$dash_url"
   print_admin_credentials
   print_ssl_renew_hint
   verify_install

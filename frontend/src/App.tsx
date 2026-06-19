@@ -23,6 +23,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { DashboardLogin } from "@/components/dashboard-login"
+import { InstallWizard } from "@/components/install-wizard"
 import { ACCENT_BRANDING_VAR_KEYS, normalizeAccent } from "@/lib/accent"
 import { botPlatformUrl } from "@/lib/bot-links"
 import { overviewPlatformEnabled } from "@/lib/enabled-platforms"
@@ -43,6 +44,7 @@ import { saveUiPreferences, type UiTheme } from "@/lib/dash-ui-preferences"
 import type { DashLang } from "@/lib/dash-locale"
 import { DashLocaleProvider } from "@/lib/dash-locale-context"
 import { apiBase, apiHeaders, ensureCsrfCookie, normalizeAdminApiPath } from "@/lib/api-base"
+import { fetchSetupStatus, readInstallToken } from "@/lib/setup-wizard-api"
 import { cn } from "@/lib/utils"
 
 type DashData = {
@@ -216,7 +218,36 @@ function App() {
   const [lang, setLang] = useState<"fa" | "en">(() =>
     boot.lang === "fa" || boot.lang === "en" ? boot.lang : "fa"
   )
+  const [setupGate, setSetupGate] = useState<"loading" | "open" | "closed">("loading")
   const sidebarDefaultOpen = boot.uiSidebar !== "collapsed"
+
+  useEffect(() => {
+    let cancelled = false
+    void fetchSetupStatus()
+      .then((st) => {
+        if (cancelled) return
+        const path = window.location.pathname.replace(/\/+$/, "") || "/"
+        const onSetup = /\/setup(?:\/|$)/.test(path) || /\/dashboard\/setup(?:\/|$)/.test(path)
+        if (st.completed && onSetup) {
+          const login = st.dashboard_login_url || "/dashboard/login/"
+          window.location.replace(login)
+          return
+        }
+        if (st.open && !onSetup) {
+          const token = readInstallToken()
+          const q = token ? `?token=${encodeURIComponent(token)}` : ""
+          window.location.replace(`/setup/${q}`)
+          return
+        }
+        setSetupGate(st.open ? "open" : "closed")
+      })
+      .catch(() => {
+        if (!cancelled) setSetupGate("closed")
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     if (!isOperator || !restBase) return
@@ -1011,6 +1042,29 @@ function App() {
   )
 
   const dashLang: DashLang = lang === "en" ? "en" : "fa"
+
+  const pathTab =
+    typeof window !== "undefined"
+      ? parseDashFromPath(window.location.pathname, { reseller: Boolean(boot.isReseller) }).tab
+      : activeTab
+
+  if (pathTab === "setup") {
+    return (
+      <DashLocaleProvider lang={boot.lang === "en" ? "en" : "fa"}>
+        <InstallWizard />
+      </DashLocaleProvider>
+    )
+  }
+
+  if (setupGate === "loading") {
+    return (
+      <DashLocaleProvider lang={boot.lang === "en" ? "en" : "fa"}>
+        <div className="flex min-h-svh items-center justify-center text-sm text-muted-foreground">
+          {t("loading")}
+        </div>
+      </DashLocaleProvider>
+    )
+  }
 
   if (boot.isLoggedIn === false) {
     return (

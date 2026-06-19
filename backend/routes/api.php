@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\V1\LogsController;
 use App\Http\Controllers\Api\V1\MediaController;
 use App\Http\Controllers\Api\V1\MutateController;
 use App\Http\Controllers\Api\V1\PurgeExpiredController;
+use App\Http\Controllers\Api\V1\SetupWizardController;
 use App\Http\Controllers\Api\V1\UserPortalController;
 use App\Http\Controllers\Api\V1\UsersBulkController;
 use App\Http\Middleware\AdminDashboardRateLimit;
@@ -25,9 +26,24 @@ use App\Modules\XuiPanel\Http\PanelController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
-    Route::post('auth/login', [AuthController::class, 'login'])->middleware('web');
-    Route::post('auth/token', [AuthController::class, 'token']);
+    Route::post('auth/login', [AuthController::class, 'login'])
+        ->middleware(['web', 'install.wizard.complete']);
+    Route::post('auth/token', [AuthController::class, 'token'])
+        ->middleware('install.wizard.complete');
     Route::get('bootstrap', BootstrapController::class)->middleware('web');
+
+    Route::get('setup/status', [SetupWizardController::class, 'status']);
+
+    Route::middleware(['install.wizard.open'])->prefix('setup')->group(function () {
+        Route::get('domains', [SetupWizardController::class, 'domains']);
+        Route::post('domains', [SetupWizardController::class, 'updateDomains']);
+        Route::post('domains/probe', [SetupWizardController::class, 'probeDomains']);
+        Route::post('domains/register-webhooks', [SetupWizardController::class, 'registerWebhooks']);
+        Route::post('backup/restore', [SetupWizardController::class, 'restoreBackup']);
+        Route::post('backup/wordpress', [SetupWizardController::class, 'importWordpress']);
+        Route::post('admin-credentials', [SetupWizardController::class, 'adminCredentials']);
+        Route::post('complete', [SetupWizardController::class, 'complete']);
+    });
 
     Route::middleware(['web', 'auth:sanctum', 'dashboard.enabled', 'reseller.scope'])->group(function () {
         Route::post('auth/logout', [AuthController::class, 'logout']);

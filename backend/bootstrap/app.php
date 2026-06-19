@@ -30,6 +30,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin.state.module' => \App\Http\Middleware\EnsureAdminStateModule::class,
             'health.metrics.auth' => \App\Http\Middleware\HealthMetricsAuth::class,
             'bot.service.auth' => \App\Http\Middleware\BotServiceAuth::class,
+            'install.wizard.open' => \App\Http\Middleware\EnsureInstallWizardOpen::class,
+            'install.wizard.complete' => \App\Http\Middleware\EnsureInstallWizardComplete::class,
         ]);
         $middleware->api(append: [
             \App\Http\Middleware\RedactSecretsInLogs::class,
