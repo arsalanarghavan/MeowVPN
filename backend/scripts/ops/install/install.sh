@@ -2,19 +2,53 @@
 # MeowVPN standard installer — interactive menu + non-interactive CLI.
 set -euo pipefail
 
-MEOWVPN_INSTALLER_API=2
+MEOWVPN_INSTALLER_API=3
 
 INSTALL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/common.sh
 source "$INSTALL_ROOT/lib/common.sh"
 source "$INSTALL_ROOT/lib/prompts.sh"
 
-[[ -f "$BACKEND_DIR/docker-compose.yml" ]] || die "Invalid install tree: missing $BACKEND_DIR/docker-compose.yml"
-[[ -f "$INSTALL_ROOT/install.sh" ]] || die "Installer layout broken: missing $INSTALL_ROOT/install.sh"
-log "Installer API v${MEOWVPN_INSTALLER_API} — REPO_ROOT=$REPO_ROOT BACKEND_DIR=$BACKEND_DIR"
-
-# Parse --help before logging / root / apt (no side effects).
+# Parse --help / --mode before tree validation.
 parse_cli_args "$@"
+
+validate_install_tree() {
+  [[ -f "$INSTALL_ROOT/install.sh" ]] || die "Installer layout broken: missing $INSTALL_ROOT/install.sh"
+
+  case "${INSTALL_MODE:-}" in
+    relay)
+      [[ -f "$REPO_ROOT/relay-server/scripts/install.sh" ]] \
+        || die "Invalid install tree: missing $REPO_ROOT/relay-server/scripts/install.sh"
+      ;;
+    telegram)
+      [[ -f "$BACKEND_DIR/docker-compose.yml" ]] \
+        || die "Invalid install tree: missing $BACKEND_DIR/docker-compose.yml"
+      [[ -f "$REPO_ROOT/telegram_bot/Dockerfile" ]] \
+        || die "Invalid install tree: missing $REPO_ROOT/telegram_bot/Dockerfile"
+      ;;
+    bale)
+      [[ -f "$BACKEND_DIR/docker-compose.yml" ]] \
+        || die "Invalid install tree: missing $BACKEND_DIR/docker-compose.yml"
+      [[ -f "$REPO_ROOT/bale_bot/Dockerfile" ]] \
+        || die "Invalid install tree: missing $REPO_ROOT/bale_bot/Dockerfile"
+      ;;
+    frontend|dashboard)
+      [[ -d "$REPO_ROOT/frontend" ]] || die "Invalid install tree: missing $REPO_ROOT/frontend"
+      [[ -f "$BACKEND_DIR/docker-compose.yml" ]] \
+        || die "Invalid install tree: missing $BACKEND_DIR/docker-compose.yml"
+      ;;
+    backend|all|"")
+      [[ -f "$BACKEND_DIR/docker-compose.yml" ]] \
+        || die "Invalid install tree: missing $BACKEND_DIR/docker-compose.yml"
+      ;;
+    *)
+      die "Unknown mode: $INSTALL_MODE"
+      ;;
+  esac
+}
+
+validate_install_tree
+log "Installer API v${MEOWVPN_INSTALLER_API} — REPO_ROOT=$REPO_ROOT BACKEND_DIR=$BACKEND_DIR"
 
 install_err_trap
 setup_logging

@@ -1,0 +1,31 @@
+name: Release component bundles
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build component tarballs
+        run: bash scripts/release/build-component-tarballs.sh
+
+      - name: Publish rolling release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: components-latest
+          name: MeowVPN component bundles (latest main)
+          body: |
+            Rolling release of per-component install tarballs.
+            Used by the bootstrap installer (`install.sh`) after the user selects an install target.
+          files: dist/release/*
+          prerelease: false
+          make_latest: false
+          overwrite: true

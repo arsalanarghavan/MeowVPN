@@ -58,7 +58,7 @@ flowchart LR
 - **Disk:** ≥ 5 GB free on `/var`
 - **RAM:** ≥ 2 GB (installer adds 2 GB swap automatically on smaller VPS)
 
-**On a fresh VPS you only need `curl` and `root`.** The bootstrap installs `git` if missing; the full installer provisions Docker, nginx, certbot, swap, and time-sync.
+**On a fresh VPS you only need `curl` and `root`.** The bootstrap shows an install menu first, then downloads **only the components you chose** from GitHub Releases. The full installer provisions Docker, nginx, certbot, swap, and time-sync.
 
 | Component | Where it runs |
 |-----------|----------------|
@@ -87,13 +87,15 @@ Review [install.sh](install.sh) on GitHub before piping to `bash`. Default branc
 bash <(curl -fsSL https://raw.githubusercontent.com/arsalanarghavan/MeowVPN/main/install.sh)
 ```
 
+**Flow:** choose install target (Dashboard, Telegram bot, Relay, …) → download only required component tarballs → run the installer for that mode. No full-repo clone before you choose.
+
 Or:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/arsalanarghavan/MeowVPN/main/install.sh | sudo bash
 ```
 
-Non-interactive:
+Non-interactive (skip menu, download components for that mode):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/arsalanarghavan/MeowVPN/main/install.sh | sudo bash -s -- \
@@ -118,26 +120,74 @@ Another branch: `MEOWVPN_BRANCH=develop bash <(curl -fsSL .../main/install.sh)`
 
 Install directory: `/opt/meowvpn` (override with `MEOWVPN_DIR`).
 
-### Bootstrap troubleshooting (GitHub timeout)
+### Component downloads (select-then-download)
 
-If you see `SSL connection timeout` or `unable to access github.com` during clone, the VPS cannot reach GitHub reliably. The bootstrap script will **retry git 3 times**, then fall back to a **tarball download** automatically.
+Each push to `main` publishes rolling component bundles on the GitHub Release tag **`components-latest`** (see [`.github/workflows/release-components.yml`](.github/workflows/release-components.yml)).
 
-**Default refresh policy:** each one-liner run **updates the install tree** from GitHub (git pull if `.git` exists, otherwise a fresh tarball). Install state in `backend/.install/` is preserved across tarball refreshes. To reuse the local tree without downloading, pass **`--skip-clone`** or set `MEOWVPN_REUSE_TREE=1`.
+| Component tarball | Typical size (source, no vendor/node_modules) | Used for |
+|-----------------|-----------------------------------------------|----------|
+| `meowvpn-install-kit.tar.gz` | ~15 KB | install scripts (always) |
+| `meowvpn-backend.tar.gz` | ~1 MB | API, Docker stack, bots via compose |
+| `meowvpn-frontend.tar.gz` | ~1 MB | dashboard SPA build context |
+| `meowvpn-relay-server.tar.gz` | ~50 KB | relay only |
+| `meowvpn-telegram-bot.tar.gz` | ~3 KB | Telegram bot Dockerfile context |
+| `meowvpn-bale-bot.tar.gz` | ~3 KB | Bale bot Dockerfile context |
+| `meowvpn-full.tar.gz` | ~2 MB | Install All |
+
+| Install target | Components downloaded |
+|----------------|----------------------|
+| Backend | install-kit + backend |
+| Frontend / Dashboard | install-kit + backend + frontend |
+| Telegram / Bale | install-kit + backend + bot dir |
+| Relay | install-kit + relay-server |
+| All | full (single archive) |
+
+### Bootstrap troubleshooting
+
+If component releases are unreachable, the bootstrap **falls back to the full GitHub archive** automatically (same as before, but only after you select a target or pass `--mode`).
+
+**Force full archive / git:**
+
+```bash
+MEOWVPN_FULL_SYNC=1 bash <(curl -fsSL .../main/install.sh)
+MEOWVPN_USE_GIT=1 bash <(curl -fsSL .../main/install.sh)
+```
+
+**Reuse local tree** (no download):
+
+```bash
+bash <(curl -fsSL .../install.sh) --skip-clone
+# or
+MEOWVPN_REUSE_TREE=1 bash <(curl -fsSL .../install.sh)
+```
 
 **Environment variables:**
 
 | Variable | Purpose |
 |----------|---------|
-| `MEOWVPN_REPO` | Git URL (HTTPS or `git@github.com:arsalanarghavan/MeowVPN.git`) |
-| `MEOWVPN_TARBALL_URL` | Archive URL if git fails (default: GitHub `archive/refs/heads/main.tar.gz`) |
-| `MEOWVPN_SKIP_GIT=1` | Skip git entirely; download tarball only |
-| `MEOWVPN_REUSE_TREE=1` | Reuse local tree (same as `--skip-clone`) |
 | `MEOWVPN_DIR` | Install path (default `/opt/meowvpn`) |
+| `MEOWVPN_RELEASE_TAG` | Release tag for components (default `components-latest`) |
+| `MEOWVPN_MANIFEST_URL` | Override `manifest.json` URL |
+| `MEOWVPN_FULL_SYNC=1` | Prefer full archive when components fail |
+| `MEOWVPN_USE_GIT=1` | Use `git clone` / `git pull` instead of component releases |
+| `MEOWVPN_TARBALL_URL` | Full archive URL fallback |
+| `MEOWVPN_REUSE_TREE=1` | Skip download (same as `--skip-clone`) |
+| `MEOWVPN_REPO` | Git URL when `MEOWVPN_USE_GIT=1` |
 
-**SSH clone from the VPS** (if you have a deploy key):
+**VPS recovery when GitHub is slow:**
 
 ```bash
-MEOWVPN_REPO=git@github.com:arsalanarghavan/MeowVPN.git \
+# Relay only — small download (~65 KB components vs full repo)
+curl -fsSL .../install.sh | sudo bash -s -- --mode relay
+
+# Or force full archive once releases are not ready yet
+MEOWVPN_FULL_SYNC=1 bash <(curl -fsSL .../main/install.sh) --mode backend
+```
+
+**SSH clone from the VPS** (if you have a deploy key and `MEOWVPN_USE_GIT=1`):
+
+```bash
+MEOWVPN_USE_GIT=1 MEOWVPN_REPO=git@github.com:arsalanarghavan/MeowVPN.git \
   bash <(curl -fsSL https://raw.githubusercontent.com/arsalanarghavan/MeowVPN/main/install.sh)
 ```
 
@@ -149,17 +199,11 @@ scp -r MeowVPN root@YOUR_VPS:/opt/meowvpn
 ssh root@YOUR_VPS 'cd /opt/meowvpn && bash backend/scripts/ops/install/install.sh'
 ```
 
-**Tree already on the server** — skip sync:
-
-```bash
-bash <(curl -fsSL .../install.sh) --skip-clone
-```
-
 **Diagnostics on the VPS:**
 
 ```bash
 curl -I --max-time 15 https://github.com
-dig +short github.com
+curl -fsSL --max-time 30 https://github.com/arsalanarghavan/MeowVPN/releases/download/components-latest/manifest.json
 ```
 
 ### Apt lock / unattended-upgrades
@@ -173,13 +217,13 @@ sudo lsof /var/lib/dpkg/lock-frontend
 sudo systemctl stop unattended-upgrades apt-daily.timer apt-daily-upgrade.timer
 ```
 
-Then **re-run the same one-liner** — the bootstrap refreshes code from GitHub and reuses `backend/.install/` state. To continue without re-downloading:
+Then **re-run the same one-liner** — the bootstrap refreshes installed components and reuses `backend/.install/` state. To continue without re-downloading:
 
 ```bash
 bash <(curl -fsSL .../install.sh) --skip-clone
 ```
 
-**Broken tree from an older install** (log path shows `backend/backend/`): remove and re-run, or just re-run the one-liner after pushing latest `main` (tarball refresh + layout self-heal):
+**Broken tree from an older install** (log path shows `backend/backend/`): remove and re-run:
 
 ```bash
 rm -rf /opt/meowvpn

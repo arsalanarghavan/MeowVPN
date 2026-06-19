@@ -23,6 +23,9 @@ resolve_install_paths() {
   elif [[ -f "$up3/docker-compose.yml" ]]; then
     REPO_ROOT="$(cd "$up3/.." && pwd)"
     BACKEND_DIR="$up3"
+  elif [[ -f "$INSTALL_ROOT/install.sh" ]]; then
+    REPO_ROOT="$(cd "$INSTALL_ROOT/../../../.." && pwd)"
+    BACKEND_DIR="$REPO_ROOT/backend"
   else
     die "Cannot locate MeowVPN backend (expected docker-compose.yml under backend/)"
   fi
