@@ -14,7 +14,11 @@ return [
     'webhook_rate_limit_per_min' => max(0, (int) env('SVP_WEBHOOK_RATE_LIMIT_PER_MIN', 0)),
     'webhook_reseller_rate_limit_per_min' => max(0, (int) env('SVP_WEBHOOK_RESELLER_RATE_LIMIT_PER_MIN', 0)),
     'portal_link_secret' => env('SVP_PORTAL_LINK_SECRET', ''),
+    'dashboard_default_locale' => env('SVP_DASHBOARD_DEFAULT_LOCALE', 'fa'),
     'bot_service_secret' => env('SVP_BOT_SERVICE_SECRET', ''),
     'bot_service_allowed_ips' => env('SVP_BOT_SERVICE_ALLOWED_IPS', ''),
     'legacy_webhook_on_backend' => filter_var(env('SVP_LEGACY_WEBHOOK_ON_BACKEND', true), FILTER_VALIDATE_BOOL),
+    'xray_base_config_json' => env('SVP_XRAY_BASE_CONFIG_JSON', ''),
+    'xray_agent_url' => env('SVP_XRAY_AGENT_URL', 'http://xray-agent:8444'),
+    'xray_public_ip' => env('SVP_XRAY_PUBLIC_IP', ''),
 ];

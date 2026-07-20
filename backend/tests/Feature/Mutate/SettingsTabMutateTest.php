@@ -37,6 +37,9 @@ class SettingsTabMutateTest extends TestCase
             'service_naming' => ['service_naming'],
             'logs' => ['logs'],
             'bots' => ['bots'],
+            'landing' => ['landing'],
+            'subscription_portal' => ['subscription_portal'],
+            'cron' => ['cron'],
         ];
     }
 

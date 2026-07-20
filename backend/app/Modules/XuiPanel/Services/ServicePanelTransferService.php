@@ -6,6 +6,7 @@ use App\Models\SvpPlan;
 use App\Models\SvpUser;
 use App\Modules\Core\Services\UserBotNotifyService;
 use App\Modules\L2tp\Services\L2tpProvisionerService;
+use App\Modules\PasarGuard\Services\PasarGuardClient;
 use App\Support\Xui\InboundTraffic;
 use App\Support\Xui\ServiceNaming;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -118,50 +119,78 @@ class ServicePanelTransferService
         $newUuid = '';
         $newSubId = '';
 
-        $create = $this->xui->runWithPanel($targetPanelId, function () use (
+        $create = $this->runOnPanel($targetPanelId, function ($client) use (
             $targetInboundId,
             $panelQuota,
             $expiryMs,
             $svc,
             $canonical,
+            $targetPlanId,
             &$newEmail,
             &$newUuid,
             &$newSubId
         ) {
-            if (! $this->xui->loginWithRetries(6, 300000)) {
+            if (! $client->loginWithRetries(6, 300000)) {
                 return ['ok' => false, 'reason' => 'target_login'];
             }
-            $inbound = $this->xui->inboundGet($targetInboundId);
+
+            if ($client instanceof PasarGuardClient) {
+                $templateId = 0;
+                if ($targetPlanId > 0 && Schema::hasColumn('svp_plans', 'panel_template_id')) {
+                    $templateId = (int) (DB::table('svp_plans')->where('id', $targetPlanId)->value('panel_template_id') ?? 0);
+                }
+                $created = $client->userCreate([
+                    'email' => $newEmail,
+                    'enable' => true,
+                    'totalGB' => $panelQuota,
+                    'expiryTime' => (int) $expiryMs,
+                    'remark' => (string) ($svc->remark ?? $canonical),
+                    'comment' => (string) ($svc->remark ?? $canonical),
+                ], [$targetInboundId], $templateId);
+                if (empty($created['ok'])) {
+                    return ['ok' => false, 'reason' => 'target_add_failed'];
+                }
+                $cl = is_array($created['client'] ?? null) ? $created['client'] : $client->clientGetV3($newEmail);
+                if (! is_array($cl) || ! $client->isLikelyPanelClientId((string) ($cl['id'] ?? ''))) {
+                    return ['ok' => false, 'reason' => 'target_verify_failed'];
+                }
+                $newUuid = (string) ($cl['id'] ?? '');
+                $newSubId = $client->pasarguardSubIdForStorage($cl, $targetInboundId);
+
+                return ['ok' => true];
+            }
+
+            $inbound = $client->inboundGet($targetInboundId);
             if (! is_array($inbound)) {
                 return ['ok' => false, 'reason' => 'target_inbound'];
             }
-            $newUuid = (string) $this->xui->getNewUuid();
-            if ($newUuid === '' || ! $this->xui->isLikelyClientUuid($newUuid)) {
+            $newUuid = (string) $client->getNewUuid();
+            if ($newUuid === '' || ! $client->isLikelyClientUuid($newUuid)) {
                 return ['ok' => false, 'reason' => 'new_uuid'];
             }
             $newSubId = substr(md5($newEmail.microtime(true)), 0, 16);
             $template = $this->inboundTemplateClient($inbound);
-            $client = is_array($template) ? $template : [];
-            $client['id'] = $newUuid;
-            $client['email'] = $newEmail;
-            $client['enable'] = true;
-            $client['subId'] = $newSubId;
-            $client['remark'] = (string) ($svc->remark ?? $canonical);
-            $client['totalGB'] = $panelQuota;
-            $client['expiryTime'] = (int) $expiryMs;
+            $clientRow = is_array($template) ? $template : [];
+            $clientRow['id'] = $newUuid;
+            $clientRow['email'] = $newEmail;
+            $clientRow['enable'] = true;
+            $clientRow['subId'] = $newSubId;
+            $clientRow['remark'] = (string) ($svc->remark ?? $canonical);
+            $clientRow['totalGB'] = $panelQuota;
+            $clientRow['expiryTime'] = (int) $expiryMs;
             foreach (['up', 'down', 'total', 'lastOnline'] as $dropKey) {
-                unset($client[$dropKey]);
+                unset($clientRow[$dropKey]);
             }
             $payload = [
                 'id' => $targetInboundId,
-                'settings' => json_encode(['clients' => [$client]]),
+                'settings' => json_encode(['clients' => [$clientRow]]),
             ];
-            $res = $this->xui->addClientRequest($payload);
-            if (! $this->xui->addClientRequestOk($res)) {
+            $res = $client->addClientRequest($payload);
+            if (! $client->addClientRequestOk($res)) {
                 return ['ok' => false, 'reason' => 'target_add_failed'];
             }
-            $inb2 = $this->xui->inboundGet($targetInboundId);
-            $cl2 = is_array($inb2) ? $this->xui->inboundClientByEmail($inb2, $newEmail) : null;
+            $inb2 = $client->inboundGet($targetInboundId);
+            $cl2 = is_array($inb2) ? $client->inboundClientByEmail($inb2, $newEmail) : null;
             if (! is_array($cl2)) {
                 return ['ok' => false, 'reason' => 'target_verify_failed'];
             }
@@ -215,6 +244,62 @@ class ServicePanelTransferService
             'panel_id' => $targetPanelId,
             'plan_id' => (int) $plan->id,
         ]);
+    }
+
+    /** @return array<string, mixed> */
+    public function reassignServiceDbOnly(int $serviceId, int $targetPanelId, int $targetPlanId, string $actorLabel = ''): array
+    {
+        if ($serviceId < 1 || $targetPanelId < 1 || $targetPlanId < 1) {
+            return svp_err('bad_params');
+        }
+        $svc = DB::table('svp_services')->where('id', $serviceId)->whereNull('deleted_at')->first();
+        if (! $svc || L2tpProvisionerService::isL2tp($svc)) {
+            return svp_err('bad_service');
+        }
+        $sourcePanelId = max(1, (int) ($svc->panel_id ?? 1));
+        if ((int) ($svc->inbound_id ?? 0) < 1) {
+            return svp_err('bad_inbound');
+        }
+        if ($sourcePanelId === $targetPanelId && (int) ($svc->plan_id ?? 0) === $targetPlanId) {
+            return svp_ok();
+        }
+        $plan = $this->resolveTargetPlan($targetPanelId, $targetPlanId);
+        if (! $plan) {
+            return svp_err('target_plan_not_found');
+        }
+        $targetInboundId = (int) ($plan->inbound_id ?? 0);
+        if ($targetInboundId < 1) {
+            return svp_err('target_inbound_missing');
+        }
+        $targetInboundIds = [$targetInboundId];
+        if (Schema::hasColumn('svp_plans', 'inbound_ids') && ! empty($plan->inbound_ids)) {
+            $dec = json_decode((string) $plan->inbound_ids, true);
+            if (is_array($dec) && $dec !== []) {
+                $targetInboundIds = array_values(array_filter(array_map('intval', $dec), fn ($v) => $v > 0));
+            }
+        }
+        $update = [
+            'panel_id' => $targetPanelId,
+            'inbound_id' => $targetInboundId,
+            'plan_id' => (int) $plan->id,
+            'remark' => (string) ($plan->name ?? $svc->remark ?? ''),
+        ];
+        if (Schema::hasColumn('svp_services', 'inbound_ids')) {
+            $update['inbound_ids'] = json_encode($targetInboundIds);
+        }
+        DB::table('svp_services')->where('id', $serviceId)->update($update);
+        $verify = DB::table('svp_services')->where('id', $serviceId)->first();
+        if (! $verify || (int) ($verify->panel_id ?? 0) !== $targetPanelId || (int) ($verify->plan_id ?? 0) !== (int) $plan->id) {
+            return svp_err('reassign_db_failed');
+        }
+        $iids = array_values(array_unique(array_merge([(int) ($svc->inbound_id ?? 0)], $targetInboundIds)));
+        $this->configs->syncInboundsAfterMutation($sourcePanelId, $iids);
+        if ($targetPanelId !== $sourcePanelId) {
+            $this->configs->syncInboundsAfterMutation($targetPanelId, $iids);
+        }
+        $this->notifyAfterTransfer($svc, $actorLabel, $plan);
+
+        return svp_ok(['service_id' => $serviceId]);
     }
 
     protected function resolveTargetPlan(int $panelId, int $targetPlanId): ?object
@@ -287,11 +372,11 @@ class ServicePanelTransferService
     /** @return array{ok:bool, reason?:string} */
     protected function deleteSourceClient(int $panelId, int $inboundId, string $xuiClientId, string $email): array
     {
-        return $this->xui->runWithPanel($panelId, function () use ($inboundId, $xuiClientId, $email) {
-            if (! $this->xui->loginWithRetries(6, 300000)) {
+        return $this->runOnPanel($panelId, function ($client) use ($inboundId, $xuiClientId, $email) {
+            if (! $client->loginWithRetries(6, 300000)) {
                 return ['ok' => false, 'reason' => 'source_login'];
             }
-            $this->xui->delClient($inboundId, $xuiClientId, $email);
+            $client->delClient($inboundId, $xuiClientId, $email);
 
             return ['ok' => true];
         });
@@ -299,10 +384,21 @@ class ServicePanelTransferService
 
     protected function deleteTargetClient(int $panelId, int $inboundId, string $email): void
     {
-        $this->xui->runWithPanel($panelId, function () use ($inboundId, $email) {
-            if ($this->xui->loginWithRetries(4, 220000)) {
-                $this->xui->delClient($inboundId, $email, $email);
+        $this->runOnPanel($panelId, function ($client) use ($inboundId, $email) {
+            if ($client->loginWithRetries(4, 220000)) {
+                $client->delClient($inboundId, $email, $email);
             }
+        });
+    }
+
+    protected function runOnPanel(int $panelId, callable $fn): mixed
+    {
+        if (function_exists('svp_modules') && svp_modules()->isEnabled('pasarguard') && class_exists(\App\Modules\PasarGuard\Services\PanelClientFactory::class)) {
+            return app(\App\Modules\PasarGuard\Services\PanelClientFactory::class)->runWithPanel($panelId, $fn);
+        }
+
+        return $this->xui->runWithPanel($panelId, function () use ($fn) {
+            return $fn($this->xui);
         });
     }
 

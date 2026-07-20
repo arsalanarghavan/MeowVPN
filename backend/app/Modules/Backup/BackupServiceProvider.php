@@ -3,13 +3,18 @@
 namespace App\Modules\Backup;
 
 use App\Modules\AbstractModuleServiceProvider;
-use App\Modules\Backup\Jobs\BackupJob;
+use App\Modules\Backup\Mutations\BackupMutations;
 
 class BackupServiceProvider extends AbstractModuleServiceProvider
 {
     public function moduleKey(): string
     {
         return 'backup';
+    }
+
+    public function mutationHandlers(): array
+    {
+        return (new \ReflectionClass(BackupMutations::class))->newInstanceWithoutConstructor()->handlers();
     }
 
     protected function bootEnabled(): void

@@ -42,4 +42,13 @@ class ConfigsController
 
         return response()->json($result, ! empty($result['ok']) ? 200 : 400);
     }
+
+    public function liveTraffic(Request $request, \App\Modules\XuiPanel\Services\UsageLiveService $live): JsonResponse
+    {
+        $panelId = (int) $request->input('panel_id');
+        $items = $request->input('items', []);
+        $result = $live->refreshTrafficBatch($panelId, is_array($items) ? $items : []);
+
+        return response()->json($result, ! empty($result['ok']) ? 200 : 400);
+    }
 }

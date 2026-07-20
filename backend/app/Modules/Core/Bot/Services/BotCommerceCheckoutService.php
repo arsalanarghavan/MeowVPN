@@ -5,6 +5,7 @@ namespace App\Modules\Core\Bot\Services;
 use App\Models\SvpPlan;
 use App\Models\SvpUser;
 use App\Modules\Core\Bot\BotContext;
+use App\Services\Commerce\CardRotationService;
 use App\Services\Commerce\TransactionFulfillService;
 use App\Services\SettingsStore;
 use Illuminate\Support\Facades\DB;
@@ -17,6 +18,7 @@ class BotCommerceCheckoutService
         protected BotPlanPricingService $pricing,
         protected BotDiscountService $discounts,
         protected BotRuntime $runtime,
+        protected CardRotationService $cardRotation,
     ) {}
 
     /** @return array<string, mixed> */
@@ -212,15 +214,19 @@ class BotCommerceCheckoutService
             ];
         }
 
-        $cardQ = DB::table('svp_cards')->where('active', true)->orderBy('priority');
+        $cards = DB::table('svp_cards')->where('active', true)->orderBy('priority')->get()->all();
         if ($cardId > 0) {
-            $cardQ->where('id', $cardId);
+            $cards = array_values(array_filter($cards, fn ($c) => (int) ($c->id ?? 0) === $cardId));
         }
-        $card = $cardQ->first();
+        $mode = $this->cardRotation->sanitizeDisplayMode($this->settings->get('cards_display_mode', 'list'));
+        $scope = $this->cardRotation->resolveOwnerScopeKey($txId);
+        $picked = $this->cardRotation->pickForCheckout($cards, $mode, $scope, $txId);
+        $card = $picked[0] ?? null;
 
         $receiptId = (int) DB::table('svp_receipts')->insertGetId([
             'user_id' => $user->id,
             'transaction_id' => $txId,
+            'card_id' => $card ? (int) $card->id : null,
             'amount' => (float) $tx->amount,
             'status' => 'pending',
             'created_at' => now(),
@@ -273,6 +279,46 @@ class BotCommerceCheckoutService
         DB::table('svp_transactions')->where('id', $txId)->update(['meta_json' => json_encode($meta)]);
 
         return ['ok' => true, 'link' => $link];
+    }
+
+    /** @return array{ok:bool, text?:string, reply_markup?:array<string, mixed>, pay_url?:string, message?:string} */
+    public function startGatewayInvoice(SvpUser $user, int $txId, object $card, string $platform = 'telegram'): array
+    {
+        $tx = DB::table('svp_transactions')->where('id', $txId)->where('user_id', $user->id)->first();
+        if (! $tx) {
+            return ['ok' => false, 'message' => 'bad_tx'];
+        }
+        $method = (string) ($card->method_key ?? 'c2c');
+
+        return match ($method) {
+            'rial_zarinpal' => svp_modules()->isEnabled('rial')
+                ? app(\App\Modules\Rial\Services\ZarinpalPaymentService::class)->requestPayment($tx, $platform)
+                : ['ok' => false, 'message' => 'module_disabled'],
+            'rial_zibal' => svp_modules()->isEnabled('rial')
+                ? app(\App\Modules\Rial\Services\ZibalPaymentService::class)->requestPayment($tx, $platform)
+                : ['ok' => false, 'message' => 'module_disabled'],
+            'rial_aqayepardakht' => svp_modules()->isEnabled('rial')
+                ? app(\App\Modules\Rial\Services\AqayepardakhtPaymentService::class)->createPayment($tx, $platform)
+                : ['ok' => false, 'message' => 'module_disabled'],
+            'crypto_tetra' => svp_modules()->isEnabled('crypto')
+                ? app(\App\Modules\Crypto\Services\TetraPaymentService::class)->createOrder($tx, $platform)
+                : ['ok' => false, 'message' => 'module_disabled'],
+            'crypto_auto' => svp_modules()->isEnabled('crypto')
+                ? app(\App\Modules\Crypto\Services\NowPaymentsPaymentService::class)->createInvoice($tx, $platform)
+                : ['ok' => false, 'message' => 'module_disabled'],
+            default => ['ok' => false, 'message' => 'not_gateway'],
+        };
+    }
+
+    public static function isGatewayMethod(string $methodKey): bool
+    {
+        return in_array($methodKey, [
+            'rial_zarinpal',
+            'rial_zibal',
+            'rial_aqayepardakht',
+            'crypto_tetra',
+            'crypto_auto',
+        ], true);
     }
 
     public function validateBalePreCheckout(int $txId, int $expectedAmount): bool

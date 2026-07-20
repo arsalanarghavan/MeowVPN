@@ -4,7 +4,10 @@ namespace Tests\Concerns;
 
 use App\Models\DashboardUser;
 use Database\Seeders\SvpTestDataSeeder;
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 
 trait InteractsWithMutate
 {
@@ -14,6 +17,35 @@ trait InteractsWithMutate
     {
         $this->createSvpTestSchema();
         $this->seed(SvpTestDataSeeder::class);
+        DB::table('svp_panels')->updateOrInsert(
+            ['id' => 2],
+            [
+                'label' => 'Panel 2',
+                'panel_url' => 'https://panel2.test',
+                'panel_username' => 'admin',
+                'panel_password' => 'secret',
+                'panel_api_base' => 'panel/api',
+                'panel_api_flavor' => 'legacy_inbound',
+                'sort_order' => 2,
+                'active' => 1,
+                'created_at' => now(),
+            ]
+        );
+
+        if (Schema::hasTable('svp_telegram_mirror_bots')) {
+            DB::table('svp_telegram_mirror_bots')->delete();
+            DB::table('svp_telegram_mirror_bots')->insert([
+                'id' => 1,
+                'label' => 'Fixture Mirror',
+                'telegram_token' => Crypt::encryptString('1:fixture-mirror'),
+                'telegram_bot_username' => 'fixture_mirror',
+                'webhook_secret' => Crypt::encryptString('fixture-mirror-wh'),
+                'telegram_secret_token' => '',
+                'enabled' => 1,
+                'sort_order' => 0,
+                'updated_at' => now(),
+            ]);
+        }
     }
 
     protected function actingAsAdmin(): static
@@ -86,6 +118,7 @@ trait InteractsWithMutate
             'broadcast_send' => ['bc_text' => 'hi', 'bc_targets' => 'telegram'],
             'broadcast_cancel' => ['broadcast_id' => 1],
             'crypto_settings' => ['enabled' => true],
+            'rial_settings' => ['zarinpal_sandbox' => 0],
             'texts_save' => ['key' => 'welcome', 'value' => 'Hello'],
             'card_add' => ['card_number' => '6037-0000-0000-0002', 'holder_name' => 'Test'],
             'card_update' => ['id' => 1, 'holder_name' => 'Updated'],
@@ -131,6 +164,13 @@ trait InteractsWithMutate
             'bot_reseller_delete' => ['reseller_svp_user_id' => 100],
             'bot_ui_layout_save' => ['layout' => []],
             'bot_ui_layout_reset' => [],
+            'bot_ui_group_create' => [
+                'parent_surface' => 'user_main',
+                'label_fa' => 'گروه',
+                'label_en' => 'Group',
+                'member_actions' => ['user.main.buy'],
+            ],
+            'bot_ui_group_delete' => ['group_id' => 'g_missing'],
             'broadcast_run_worker' => [],
             'discount_save' => ['code' => 'V18OFF', 'percent' => 10, 'owner_svp_user_id' => 0],
             'discount_delete' => ['code_id' => 1],
@@ -140,8 +180,23 @@ trait InteractsWithMutate
             'logs_clear' => [],
             'l2tp_delete' => ['id' => 1],
             'l2tp_update' => ['id' => 1, 'label' => 'Updated'],
+            'marketing_lifecycle_confirm_defaults' => [],
+            'marketing_preview_message' => ['rule_id' => 1],
             'panel_economics_save' => ['panel_id' => 1, 'lines' => []],
             'panel_economics_mark_paid' => ['panel_id' => 1],
+            'panel_merge_preview' => ['source_panel_id' => 1, 'target_panel_id' => 2],
+            'panel_merge_execute' => ['source_panel_id' => 1, 'target_panel_id' => 2, 'plan_map' => ['1' => 1]],
+            'configs_panel_del_orphans' => ['panel_id' => 1],
+            'panels_repair_identities' => ['panel_id' => 1, 'limit' => 10],
+            'configs_bulk_reset_traffic' => ['panel_id' => 1, 'emails' => ['child@local']],
+            'configs_reset_all_panel_traffic' => ['panel_id' => 1],
+            'configs_panel_del_depleted' => ['panel_id' => 1],
+            'configs_client_fetch_ips' => ['panel_id' => 1, 'inbound_id' => 1, 'email' => 'child@local'],
+            'configs_client_clear_ips' => ['panel_id' => 1, 'inbound_id' => 1, 'email' => 'child@local'],
+            'configs_client_set_inbounds' => ['panel_id' => 1, 'email' => 'child@local', 'attach_inbound_ids' => [1]],
+            'configs_clients_bulk_set_inbounds' => ['panel_id' => 1, 'emails' => ['child@local'], 'attach_inbound_ids' => [1]],
+            'configs_inbound_patch' => ['panel_id' => 1, 'inbound_id' => 1, 'remark' => 'patched'],
+            'configs_delete_expired_older_than' => ['panel_id' => 1, 'min_days' => 30, 'confirm_count' => 0],
             'shared_economics_save' => ['panel_id' => 1, 'monthly_cost' => 500000],
             'purge_expired_run_cron' => [],
             'purge_expired_purge_ready' => ['panel_id' => 1],
@@ -154,6 +209,13 @@ trait InteractsWithMutate
             'service_apply_canonical_panel_identity' => ['service_id' => 1],
             'service_panel_transfer' => ['service_id' => 1, 'target_panel_id' => 1],
             'telegram_proxy_test' => [],
+            'telegram_mirror_save' => ['label' => 'Mirror 1', 'telegram_token' => '1:ABC'],
+            'telegram_mirror_delete' => ['mirror_id' => 1],
+            'telegram_mirror_set_webhook' => ['mirror_id' => 1],
+            'telegram_mirror_delete_webhook' => ['mirror_id' => 1],
+            'telegram_mirror_toggle' => ['mirror_id' => 1, 'enabled' => true],
+            'telegram_mirror_test' => ['mirror_id' => 1],
+            'telegram_mirror_diagnostics' => ['mirror_id' => 1],
             'telegram_relay_test' => [],
             'telegram_relay_sync' => [],
             'telegram_relay_set_webhook' => [],

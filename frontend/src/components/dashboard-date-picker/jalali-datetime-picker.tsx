@@ -2,7 +2,7 @@
 
 import { useId, useMemo, useState } from "react"
 import { CalendarIcon } from "lucide-react"
-import { useTranslation } from "react-i18next"
+import { useLocale, useTranslations } from "next-intl"
 
 import { useDashDatePicker } from "@/components/dashboard-date-picker/use-dash-date-picker"
 import { PersianCalendar } from "@/components/dashboard-date-picker/persian-calendar"
@@ -44,8 +44,10 @@ export function JalaliDateTimePicker({
   label?: string
   className?: string
 }) {
-  const { t } = useTranslation()
-  const tl = (k: string) => t(`discountsAdmin.${k}`)
+  const locale = useLocale()
+  const isFa = locale === "fa"
+  const tDisc = useTranslations("discountsAdmin")
+  const tl = (k: string) => tDisc(k)
   const { dir, rootClass } = useDashDatePicker(className)
   const timeId = useId()
   const ms = apiDatetimeToMs(value)
@@ -62,7 +64,7 @@ export function JalaliDateTimePicker({
     <div className={rootClass} dir={dir}>
       {label ? <Label>{label}</Label> : null}
       <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
+        <PopoverTrigger>
           <Button
             type="button"
             variant="outline"

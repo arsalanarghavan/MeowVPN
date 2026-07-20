@@ -1,4 +1,4 @@
-/** Matches PHP `dash_list_pagination` param prefixes in `route_admin_state`. */
+/** Matches PHP `dash_list_pagination` param prefixes in route_admin_state. */
 export const LIST_QUERY_PREFIX = {
   usersList: "users",
   resellers: "resellers",
@@ -33,7 +33,11 @@ export function parsePaginationMeta(raw: unknown): PaginationMeta | null {
   const perPage = Number(o.perPage)
   const total = Number(o.total)
   if (!Number.isFinite(page) || !Number.isFinite(perPage) || !Number.isFinite(total)) return null
-  return { page: Math.max(1, page), perPage: Math.max(1, perPage), total: Math.max(0, total) }
+  return {
+    page: Math.max(1, page),
+    perPage: Math.max(1, perPage),
+    total: Math.max(0, total),
+  }
 }
 
 export function listQuerySetPage(
@@ -50,22 +54,14 @@ export function listQuerySetPage(
   return next
 }
 
-/**
- * Build query string for GET dashboard/admin/state.
- * Merges list pagination from `listQuery`, optional health refresh, and tab-specific
- * overrides so catalog tabs still receive enough rows for dropdowns (plans, plan_cats).
- */
 export function buildAdminStateQuery(
   listQuery: Record<string, string>,
   opts?: {
     refreshPanelHealth?: boolean
     refreshLivePanelMetrics?: boolean
     activeTab?: string
-    /** Reseller operator: avoid stale admin panels_page leaving panel list empty. */
     resellerOperator?: boolean
-    /** When false, skip L2TP server list prefetch on state load. */
     l2tpEnabled?: boolean
-    /** Users tab user-detail: request plan catalog without full admin state payload. */
     includePlansForUserDetail?: boolean
   }
 ): string {

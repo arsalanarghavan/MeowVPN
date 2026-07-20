@@ -15,7 +15,13 @@ class EnsureAdminStateModule
     private const BOT_TABS = ['bots', 'bot_ui', 'texts', 'reseller_bots'];
 
     /** @var list<string> */
-    private const XUI_TABS = ['xui_panels', 'configs', 'unit_economics', 'reseller_xui_panels'];
+    private const XUI_TABS = ['xui_panels', 'configs', 'unit_economics', 'reseller_xui_panels', 'panel_financial_reports'];
+
+    /** @var list<string> */
+    private const XRAY_TABS = ['vpn_server', 'xray_core', 'xray_inbounds', 'xray_hosts'];
+
+    /** @var list<string> */
+    private const TUNNEL_TABS = ['tunnel_nodes'];
 
     public function handle(Request $request, Closure $next): Response
     {
@@ -28,6 +34,14 @@ class EnsureAdminStateModule
         }
 
         if (in_array($tab, self::XUI_TABS, true) && ! $modules->isEnabled('xui_panel')) {
+            return response()->json(svp_err('module_disabled'), 403);
+        }
+
+        if (in_array($tab, self::XRAY_TABS, true) && ! $modules->isEnabled('xray_core')) {
+            return response()->json(svp_err('module_disabled'), 403);
+        }
+
+        if (in_array($tab, self::TUNNEL_TABS, true) && ! $modules->isEnabled('tunnel')) {
             return response()->json(svp_err('module_disabled'), 403);
         }
 

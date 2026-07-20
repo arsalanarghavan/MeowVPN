@@ -8,6 +8,7 @@ use App\Modules\Core\Services\Portal\PortalConfigUriCollector;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
+use App\Services\QrService;
 use Illuminate\Support\Facades\Log;
 
 class BotConfigDeliveryService
@@ -17,6 +18,7 @@ class BotConfigDeliveryService
         protected BotRuntime $runtime,
         protected TextService $texts,
         protected BotManagedUserContext $managed,
+        protected QrService $qr,
     ) {}
 
     public function enqueue(BotContext $ctx, SvpUser $user, int $chatId, int $serviceId, string $mode = 'config', ?string $cbId = null): void
@@ -141,16 +143,16 @@ class BotConfigDeliveryService
         if ($uri === '' || strlen($uri) > 2000) {
             return;
         }
-        $qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data='.rawurlencode($uri);
-        $sent = $this->runtime->sendPhoto($ctx, [
-            'chat_id' => $chatId,
-            'photo' => $qrUrl,
-            'caption' => 'QR',
-        ]);
-        if ($sent === null) {
-            Log::debug('bot.config_delivery.qr_fallback', ['chat_id' => $chatId]);
-            $this->runtime->sendMessage($ctx, $chatId, $uri);
+        $path = $this->qr->tempPng($uri);
+        if ($path !== null) {
+            $sent = $this->runtime->sendLocalPhoto($ctx, $chatId, $path, 'QR');
+            @unlink($path);
+            if ($sent !== null) {
+                return;
+            }
         }
+        Log::debug('bot.config_delivery.qr_fallback', ['chat_id' => $chatId]);
+        $this->runtime->sendMessage($ctx, $chatId, $uri);
     }
 
     protected function resolveL2tpPsk(?object $server): string

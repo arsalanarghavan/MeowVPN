@@ -181,6 +181,7 @@ class ApiRouteAuditTest extends TestCase
             'configs-snapshot?panel_id=1',
             'configs-portal-payload?panel_id=1',
             'panel-inbounds?panel_id=1',
+            'panel-templates?panel_id=1',
             'panel-inbound-clients?panel_id=1&inbound_id=1',
             'panel/inbound-map?panel_id=1',
             'broadcast-queue',

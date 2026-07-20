@@ -17,7 +17,8 @@ class ImpersonationController extends Controller
             return response()->json(svp_err('forbidden'), 403);
         }
 
-        if (app()->environment('production') && ! $request->secure()) {
+        // Match WP: require TLS outside local/testing (not only production).
+        if (! app()->environment(['local', 'testing']) && ! $request->secure()) {
             return response()->json(svp_err('https_required'), 403);
         }
 

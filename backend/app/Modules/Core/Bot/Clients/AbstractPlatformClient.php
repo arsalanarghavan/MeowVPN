@@ -25,6 +25,28 @@ abstract class AbstractPlatformClient
         return $this->post('sendPhoto', $params);
     }
 
+    public function sendPhotoFile(int|string $chatId, string $path, string $caption = ''): ?array
+    {
+        if ($this->token === '' || ! is_file($path)) {
+            return null;
+        }
+        try {
+            $pending = Http::timeout(30)->attach('photo', fopen($path, 'r'), basename($path));
+            $proxy = trim((string) ($this->httpProxy ?? ''));
+            if ($proxy !== '') {
+                $pending = $pending->withOptions(['proxy' => $proxy]);
+            }
+            $payload = ['chat_id' => $chatId];
+            if ($caption !== '') {
+                $payload['caption'] = $caption;
+            }
+
+            return $pending->post($this->baseUrl().'sendPhoto', $payload)->json();
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
     /** @param  array<string, mixed>  $params */
     public function sendMediaGroup(array $params): ?array
     {

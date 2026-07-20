@@ -49,6 +49,12 @@ return [
             'depends' => ['core'],
             'provider' => \App\Modules\XuiPanel\XuiPanelServiceProvider::class,
         ],
+        'pasarguard' => [
+            'enabled' => svp_module_env('SVP_MODULE_PASARGUARD', 'MODULE_PASARGUARD_ENABLED', true),
+            'label' => 'PasarGuard Panel',
+            'depends' => ['core'],
+            'provider' => \App\Modules\PasarGuard\PasarGuardServiceProvider::class,
+        ],
         'relay' => [
             'enabled' => svp_module_env('SVP_MODULE_RELAY', 'MODULE_RELAY_ENABLED', false),
             'label' => 'Telegram Relay',
@@ -57,9 +63,15 @@ return [
         ],
         'crypto' => [
             'enabled' => svp_module_env('SVP_MODULE_CRYPTO', 'MODULE_CRYPTO_ENABLED', false),
-            'label' => 'Crypto (NOWPayments)',
+            'label' => 'Crypto (NOWPayments / TetraPay)',
             'depends' => ['core'],
             'provider' => \App\Modules\Crypto\CryptoServiceProvider::class,
+        ],
+        'rial' => [
+            'enabled' => svp_module_env('SVP_MODULE_RIAL', 'MODULE_RIAL_ENABLED', true),
+            'label' => 'Rial Gateways (ZarinPal / Zibal / AqayePardakht)',
+            'depends' => ['core'],
+            'provider' => \App\Modules\Rial\RialServiceProvider::class,
         ],
         'l2tp' => [
             'enabled' => svp_module_env('SVP_MODULE_L2TP', 'MODULE_L2TP_ENABLED', false),
@@ -85,6 +97,18 @@ return [
             'label' => 'Backup',
             'depends' => ['core'],
             'provider' => \App\Modules\Backup\BackupServiceProvider::class,
+        ],
+        'xray_core' => [
+            'enabled' => svp_module_env('SVP_MODULE_XRAY_CORE', 'MODULE_XRAY_CORE_ENABLED', false),
+            'label' => 'Native Xray Core',
+            'depends' => ['core'],
+            'provider' => \App\Modules\XrayCore\XrayCoreServiceProvider::class,
+        ],
+        'tunnel' => [
+            'enabled' => svp_module_env('SVP_MODULE_TUNNEL', 'MODULE_TUNNEL_ENABLED', false),
+            'label' => 'Edge Tunnels',
+            'depends' => ['core', 'xray_core'],
+            'provider' => \App\Modules\Tunnel\TunnelServiceProvider::class,
         ],
     ],
 ];

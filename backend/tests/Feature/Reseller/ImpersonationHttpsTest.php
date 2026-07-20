@@ -2,34 +2,45 @@
 
 namespace Tests\Feature\Reseller;
 
-use App\Models\DashboardUser;
-use App\Models\SvpUser;
-use Database\Seeders\SvpTestDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\Concerns\CreatesSvpTestSchema;
+use Tests\Concerns\InteractsWithMutate;
 use Tests\TestCase;
 
 class ImpersonationHttpsTest extends TestCase
 {
-    use CreatesSvpTestSchema;
+    use InteractsWithMutate;
     use RefreshDatabase;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->createSvpTestSchema();
-        $this->seed(SvpTestDataSeeder::class);
+        $this->setUpMutateFixtures();
     }
 
-    public function test_impersonate_start_requires_https_in_production(): void
+    public function test_impersonate_start_requires_https_outside_local(): void
     {
-        $this->app['env'] = 'production';
-        $admin = DashboardUser::query()->where('username', 'admin')->first();
-        $resellerSvpId = (int) SvpUser::query()->where('role', 'reseller')->value('id');
+        $this->app['env'] = 'staging';
+        $csrf = $this->get('/sanctum/csrf-cookie');
+        $token = $this->extractXsrfToken($csrf);
 
-        $this->actingAs($admin)->postJson('/api/v1/dashboard/impersonate/start', [
-            'reseller_svp_user_id' => $resellerSvpId,
-        ])->assertStatus(403)
+        $this->withHeaders(['X-XSRF-TOKEN' => $token])
+            ->actingAsAdmin()
+            ->postJson('/api/v1/dashboard/impersonate/start', [
+                'targetSvpUserId' => 100,
+            ])
+            ->assertStatus(403)
             ->assertJsonPath('message', 'https_required');
+    }
+
+    protected function extractXsrfToken(\Illuminate\Testing\TestResponse $response): string
+    {
+        $cookie = collect($response->headers->getCookies())
+            ->first(fn ($c) => $c->getName() === 'XSRF-TOKEN');
+
+        if (! $cookie) {
+            return '';
+        }
+
+        return urldecode($cookie->getValue());
     }
 }

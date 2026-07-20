@@ -22,6 +22,6 @@ class XuiPanelServiceProvider extends AbstractModuleServiceProvider
 
     public function mutationHandlers(): array
     {
-        return app(XuiPanelMutations::class)->handlers();
+        return (new \ReflectionClass(XuiPanelMutations::class))->newInstanceWithoutConstructor()->handlers();
     }
 }

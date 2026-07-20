@@ -17,7 +17,9 @@ class MutateAdminPositiveMatrixTest extends TestCase
     use TogglesModules;
 
     /** Ops that intentionally return ok:false by design. */
-    private const EXPECT_FAIL_OPS = [];
+    private const EXPECT_FAIL_OPS = [
+        'panel_merge_execute', // needs services queue; empty panels return ok:false
+    ];
 
     protected function setUp(): void
     {

@@ -15,7 +15,7 @@ class DashboardSessionController extends Controller
         /** @var DashboardUser|null $user */
         $user = $request->user();
         if (! $user) {
-            return response()->json(svp_ok(['loggedIn' => false]));
+            return response()->json(svp_ok(['loggedIn' => false, 'isLoggedIn' => false]));
         }
 
         $payload = $boot->bootstrapApiPayload($user);

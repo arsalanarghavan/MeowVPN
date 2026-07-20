@@ -87,6 +87,74 @@ class ReceiptProcessorService
         return ['ok' => true, 'receipt_id' => $receiptId, 'service_id' => $serviceId];
     }
 
+    /**
+     * Retry panel/service provision for a receipt that was approved but left in provision_failed.
+     * Equivalent of WP svp_deferred_receipt_provision_retry.
+     *
+     * @return array<string, mixed>
+     */
+    public function retryProvision(int $receiptId, string $adminLabel): array
+    {
+        $rec = DB::table('svp_receipts')->where('id', $receiptId)->first();
+        if (! $rec) {
+            return ['ok' => false, 'reason' => 'not_found'];
+        }
+        if ((string) $rec->status !== 'provision_failed') {
+            return ['ok' => false, 'reason' => 'not_provision_failed'];
+        }
+
+        $claimed = DB::table('svp_receipts')
+            ->where('id', $receiptId)
+            ->where('status', 'provision_failed')
+            ->update(['status' => 'processing']) === 1;
+        if (! $claimed) {
+            return ['ok' => false, 'reason' => 'already_processing'];
+        }
+
+        $txId = (int) $rec->transaction_id;
+        $provisionError = null;
+        $serviceId = null;
+
+        $tx = DB::table('svp_transactions')->where('id', $txId)->first();
+        if ($tx && in_array((string) $tx->type, ['purchase', 'service_renew', 'service_add_volume', 'service_add_slots', 'wallet_topup'], true)) {
+            $fulfillResult = $this->fulfill->fulfillByTransaction($txId, 'receipt_retry');
+            if (empty($fulfillResult['ok'])) {
+                $provisionError = (string) ($fulfillResult['reason'] ?? 'fulfill_failed');
+            } else {
+                $serviceId = (int) ($fulfillResult['service_id'] ?? 0);
+            }
+        } else {
+            $provisionError = 'no_fulfillable_tx';
+        }
+
+        DB::table('svp_receipts')->where('id', $receiptId)->update([
+            'status' => $provisionError ? 'provision_failed' : 'approved',
+            'decided_at' => now(),
+            'decided_by' => $adminLabel,
+        ]);
+
+        if (! $provisionError) {
+            DB::table('svp_transactions')->where('id', $txId)->update([
+                'status' => 'completed',
+            ]);
+        }
+
+        if (! $provisionError) {
+            $this->notifyUser((int) $rec->user_id, $receiptId, null, $serviceId);
+        }
+
+        if ($provisionError) {
+            return [
+                'ok' => true,
+                'purchase_failed' => true,
+                'provision_error' => $provisionError,
+                'reason' => $provisionError,
+            ];
+        }
+
+        return ['ok' => true, 'receipt_id' => $receiptId, 'service_id' => $serviceId];
+    }
+
     /** @return array<string, mixed> */
     public function reject(int $receiptId, string $adminLabel, string $reason = ''): array
     {

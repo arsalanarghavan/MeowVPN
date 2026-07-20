@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react"
 import { format } from "date-fns"
 import { CalendarIcon } from "lucide-react"
-import { useTranslation } from "react-i18next"
+import { useLocale, useTranslations } from "next-intl"
 
 import { useDashDatePicker } from "@/components/dashboard-date-picker/use-dash-date-picker"
 import { PersianCalendar } from "@/components/dashboard-date-picker/persian-calendar"
@@ -42,8 +42,9 @@ function JalaliDateOnlyPicker({
   label?: string
   className?: string
 }) {
-  const { t } = useTranslation()
-  const tl = (k: string) => t(`discountsAdmin.${k}`)
+  const locale = useLocale()
+  const t = useTranslations("discountsAdmin")
+  const tl = (k: string) => t(k)
   const { dir, rootClass } = useDashDatePicker(className)
   const ms = isoDateToMs(value)
   const [open, setOpen] = useState(false)
@@ -62,7 +63,7 @@ function JalaliDateOnlyPicker({
     <div className={rootClass} dir={dir}>
       {label ? <Label>{label}</Label> : null}
       <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
+        <PopoverTrigger>
           <Button
             type="button"
             variant="outline"
@@ -111,8 +112,9 @@ function GregorianDateOnlyPicker({
   label?: string
   className?: string
 }) {
-  const { t } = useTranslation()
-  const tl = (k: string) => t(`discountsAdmin.${k}`)
+  const locale = useLocale()
+  const t = useTranslations("discountsAdmin")
+  const tl = (k: string) => t(k)
   const { dir, rootClass } = useDashDatePicker(className)
   const ms = isoDateToMs(value)
   const [open, setOpen] = useState(false)
@@ -123,7 +125,7 @@ function GregorianDateOnlyPicker({
     <div className={rootClass} dir={dir}>
       {label ? <Label>{label}</Label> : null}
       <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
+        <PopoverTrigger>
           <Button
             type="button"
             variant="outline"

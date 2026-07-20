@@ -1,20 +1,17 @@
 "use client"
 
 import type { ReactNode } from "react"
-
 import { dashTableCellClass, dashTableHeadClass } from "@/lib/dash-locale"
 import { cn } from "@/lib/utils"
+
 export function DashTableShell({
   minWidth,
   colWidths,
   children,
   className,
 }: {
-  /** @deprecated isFa unused — table inherits dir from main scroll */
   isFa?: boolean
-  /** e.g. "42rem" */
   minWidth?: string
-  /** Percent widths in column order, e.g. ["7%", "20%", ...] */
   colWidths: string[]
   children: ReactNode
   className?: string
@@ -51,10 +48,7 @@ export function DashTh({
   title?: string
 }) {
   return (
-    <th
-      className={cn("p-2 font-medium", dashTableHeadClass(), dashTableCellClass({ numeric }), className)}
-      title={title}
-    >
+    <th className={cn("p-2 font-medium", dashTableHeadClass(), dashTableCellClass({ numeric }), className)} title={title}>
       {children}
     </th>
   )
@@ -69,17 +63,12 @@ export function DashTd({
 }: {
   children?: ReactNode
   className?: string
-  /** Use for URL/token cells; default follows table dir */
   dir?: "ltr" | "rtl"
   colSpan?: number
   numeric?: boolean
 }) {
   return (
-    <td
-      dir={dir}
-      colSpan={colSpan}
-      className={cn("p-2", dashTableCellClass({ numeric }), className)}
-    >
+    <td dir={dir} colSpan={colSpan} className={cn("p-2", dashTableCellClass({ numeric }), className)}>
       {children}
     </td>
   )

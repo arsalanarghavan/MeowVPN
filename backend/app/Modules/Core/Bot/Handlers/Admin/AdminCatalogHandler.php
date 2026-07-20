@@ -25,6 +25,7 @@ class AdminCatalogHandler extends AbstractAdminHandler
         protected AdminBotScopeService $scope,
         protected BotAdminMutateService $mutate,
         protected BotStateService $state,
+        protected AdminPlanInboundsHandler $planInbounds,
     ) {
         parent::__construct($runtime, $texts);
     }
@@ -262,29 +263,67 @@ class AdminCatalogHandler extends AbstractAdminHandler
             return;
         }
         $existing = $planId > 0 ? DB::table('svp_plans')->where('id', $planId)->first() : null;
-        $params = [
-            'id' => $planId,
+        $draft = [
+            'plan_id' => $planId,
             'name' => $lines[0],
             'category' => $lines[1],
             'duration_days' => (int) preg_replace('/\D/', '', $lines[2]),
             'traffic_gb' => (int) preg_replace('/\D/', '', $lines[3]),
             'price' => (float) str_replace(',', '.', $lines[4]),
-            'inbound_id' => (int) preg_replace('/\D/', '', $lines[5]),
             'clients_count' => max(1, (int) preg_replace('/\D/', '', $lines[6])),
             'active' => isset($lines[7]) ? ((int) preg_replace('/\D/', '', $lines[7]) ? 1 : 0) : (int) ($existing->active ?? 1),
+            'plan_active' => isset($lines[7]) ? ((int) preg_replace('/\D/', '', $lines[7]) ? 1 : 0) : (int) ($existing->active ?? 1),
         ];
+        $panelId = $existing ? max(1, (int) ($existing->panel_id ?? 1)) : 1;
         if ($existing) {
-            $params['panel_id'] = (int) ($existing->panel_id ?? 1);
-            $params['pricing_type'] = (string) ($existing->pricing_type ?? 'fixed');
-        }
-        $result = $this->mutate->applyForUser($user, 'plan', $params);
-        $this->state->clear($user);
-        $msg = $this->mutate->resultMessage($user, is_array($result) ? $result : ['ok' => false]);
-        if (! empty($result['ok'])) {
-            $this->sendList($ctx, $chatId, $user, 'plans', 0, $msg);
+            $draft['panel_id'] = $panelId;
+            $draft['plan_pricing_type'] = (string) ($existing->pricing_type ?? 'fixed');
+            $draft['pricing_type'] = (string) ($existing->pricing_type ?? 'fixed');
+            $draft['service_type'] = (string) ($existing->service_type ?? 'xray');
+            $draft['price_per_gb'] = (float) ($existing->price_per_gb ?? 0);
+            $draft['traffic_gb_min'] = (int) ($existing->traffic_gb_min ?? 0);
+            $draft['traffic_gb_max'] = (int) ($existing->traffic_gb_max ?? 0);
+            $draft['l2tp_server_id'] = (int) ($existing->l2tp_server_id ?? 0);
+            $draft['sort_order'] = (int) ($existing->sort_order ?? 0);
         } else {
-            $this->send($ctx, $chatId, $msg);
+            $draft['panel_id'] = $panelId;
         }
+
+        $selected = [];
+        $lineInbound = (int) preg_replace('/\D/', '', $lines[5]);
+        if ($lineInbound > 0) {
+            $selected[] = $lineInbound;
+        } elseif ($existing) {
+            $selected = $this->planInboundIdsFromRow($existing);
+        }
+
+        $nextState = $planId > 0
+            ? AdminPlanInboundsHandler::STATE_EDIT
+            : AdminPlanInboundsHandler::STATE_CREATE;
+        $this->planInbounds->beginPickerAfterLines($ctx, $chatId, $user, $draft, $panelId, $selected, $nextState);
+    }
+
+    /** @return array<int, int> */
+    protected function planInboundIdsFromRow(object $plan): array
+    {
+        if (isset($plan->inbound_ids) && is_string($plan->inbound_ids) && $plan->inbound_ids !== '') {
+            $decoded = json_decode($plan->inbound_ids, true);
+            if (is_array($decoded)) {
+                $out = [];
+                foreach ($decoded as $v) {
+                    $n = (int) $v;
+                    if ($n > 0) {
+                        $out[] = $n;
+                    }
+                }
+                if ($out !== []) {
+                    return $out;
+                }
+            }
+        }
+        $single = (int) ($plan->inbound_id ?? 0);
+
+        return $single > 0 ? [$single] : [];
     }
 
     protected function routeCardEdit(BotContext $ctx, SvpUser $user, int $chatId, string $text): void

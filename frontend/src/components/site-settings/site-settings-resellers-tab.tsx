@@ -1,15 +1,15 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useTranslation } from "react-i18next"
+import { useTranslations } from "next-intl"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { DashSelect } from "@/components/dash-select"
 import { Switch } from "@/components/ui/switch"
-import { postAdminMutate } from "@/lib/dash-admin-mutate"
-import { formatAdminSaveError, useSiteSettingsSave } from "@/lib/use-site-settings-save"
+import { adminMutateErrorText, postAdminMutate } from "@/lib/dash-admin-mutate"
+import { useSiteSettingsSave } from "@/lib/use-site-settings-save"
 import { SiteSettingsSaveFeedback } from "@/components/site-settings/site-settings-save-feedback"
 import { cn } from "@/lib/utils"
 
@@ -51,9 +51,10 @@ export function SiteSettingsResellersTab({
   resellerPermissionsMap: Record<string, Record<string, boolean>>
   onMutateSuccess?: () => void
 }) {
-  const { t } = useTranslation()
-  const tp = (k: string) => t(`siteSettings.resellers.${k}`)
-  const tr = (k: string) => t(`resellersAdmin.${k}`)
+  const t = useTranslations("siteSettings.resellers")
+  const tc = useTranslations("siteSettings.common")
+  const tr = useTranslations("resellersAdmin")
+  const tp = t
   const { saving: savingDefaults, error, okMsg, saveSettingsTab, setError, setOkMsg } =
     useSiteSettingsSave(onMutateSuccess)
 
@@ -123,13 +124,13 @@ export function SiteSettingsResellersTab({
         permissions: editPerms,
       })
       if (!res.ok) {
-        setError(formatAdminSaveError(res, t))
+        setError(adminMutateErrorText(res, tc("saveError")))
         return
       }
-      setOkMsg(t("siteSettings.common.saved"))
+      setOkMsg(tc("saved"))
       onMutateSuccess?.()
     } catch {
-      setError(t("siteSettings.common.saveNetworkError"))
+      setError(tc("saveNetworkError"))
     } finally {
       setSavingReseller(false)
     }

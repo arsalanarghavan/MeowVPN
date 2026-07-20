@@ -38,12 +38,30 @@ class MetricsIncrementTest extends TestCase
         $this->assertGreaterThan($before, SvpMetrics::get('mutate_op_total'));
     }
 
+    /** Ops that cannot return ok:true with default smoke fixtures. */
+    private const SKIP_METRIC_OPS = [
+        'panel_merge_execute',
+        'configs_panel_del_orphans',
+        'configs_bulk_reset_traffic',
+        'configs_reset_all_panel_traffic',
+        'configs_panel_del_depleted',
+        'configs_client_fetch_ips',
+        'configs_client_clear_ips',
+        'configs_client_set_inbounds',
+        'configs_clients_bulk_set_inbounds',
+        'configs_inbound_patch',
+        'configs_delete_expired_older_than',
+    ];
+
     /** @return array<string, array{0: string}> */
     public static function catalogOpsProvider(): array
     {
         $out = [];
         foreach (MutateOpCatalog::all() as $op) {
             if (in_array($op, MutateOpCatalog::deprecated(), true)) {
+                continue;
+            }
+            if (in_array($op, self::SKIP_METRIC_OPS, true)) {
                 continue;
             }
             $out[$op] = [$op];

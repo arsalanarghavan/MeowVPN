@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useTranslation } from "react-i18next"
+import { useTranslations } from "next-intl"
 
 import { ColorHexField } from "@/components/site-settings/color-hex-field"
 import { ImageUrlField } from "@/components/site-settings/image-url-field"
@@ -63,9 +63,9 @@ export function SiteSettingsWhitelabelTab({
   plans: DashRecord[]
   onMutateSuccess?: () => void
 }) {
-  const { t } = useTranslation()
+  const t = useTranslations("siteSettings.whitelabel")
   const { ltrCell } = useDashLocale()
-  const tp = (k: string) => t(`siteSettings.whitelabel.${k}`)
+  const tp = t
   const s = settings ?? {}
   const showTg = mainEnabledPlatforms(s).includes("telegram")
   const showBale = mainEnabledPlatforms(s).includes("bale")

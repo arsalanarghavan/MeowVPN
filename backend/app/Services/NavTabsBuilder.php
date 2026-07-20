@@ -22,6 +22,14 @@ class NavTabsBuilder
             $tabs[] = ['key' => 'configs', 'label' => 'کانفیگ‌ها'];
             $tabs[] = ['key' => 'unit_economics', 'label' => 'اقتصاد واحد'];
         }
+        if ($modules->isEnabled('xray_core')) {
+            $tabs[] = ['key' => 'xray_core', 'label' => 'Xray Core'];
+            $tabs[] = ['key' => 'xray_inbounds', 'label' => 'Inbounds'];
+            $tabs[] = ['key' => 'xray_hosts', 'label' => 'Hosts'];
+        }
+        if ($modules->isEnabled('tunnel')) {
+            $tabs[] = ['key' => 'tunnel_nodes', 'label' => 'تانل Edge'];
+        }
         $tabs = array_merge($tabs, [
             ['key' => 'plan_cats', 'label' => 'دسته‌های خرید'],
             ['key' => 'plans', 'label' => 'پلن‌ها'],
@@ -33,6 +41,7 @@ class NavTabsBuilder
         }
 
         $tabs = array_merge($tabs, [
+            ['key' => 'payments', 'label' => 'پرداخت‌ها'],
             ['key' => 'receipts', 'label' => 'رسیدها'],
             ['key' => 'texts', 'label' => 'متن‌ها'],
             ['key' => 'users', 'label' => 'کاربران'],
@@ -49,6 +58,9 @@ class NavTabsBuilder
             ['key' => 'referral_reports', 'label' => 'گزارشات رفرال'],
             ['key' => 'reseller_reports', 'label' => 'گزارشات نمایندگان'],
         ]);
+        if ($modules->isEnabled('xui_panel')) {
+            $tabs[] = ['key' => 'panel_financial_reports', 'label' => 'گزارش مالی سرورها'];
+        }
         if ($modules->isEnabled('marketing')) {
             $tabs[] = ['key' => 'marketing_lifecycle', 'label' => 'بازگشت مشتری'];
         }

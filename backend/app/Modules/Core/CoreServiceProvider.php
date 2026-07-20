@@ -16,10 +16,11 @@ class CoreServiceProvider extends AbstractModuleServiceProvider
 
     public function mutationHandlers(): array
     {
+        // Prefer class maps without constructing deps: avoids boot-time DI graphs.
         return array_merge(
-            app(UserMutations::class)->handlers(),
-            app(CoreMutations::class)->handlers(),
-            app(CommerceMutations::class)->handlers(),
+            (new \ReflectionClass(UserMutations::class))->newInstanceWithoutConstructor()->handlers(),
+            (new \ReflectionClass(CoreMutations::class))->newInstanceWithoutConstructor()->handlers(),
+            (new \ReflectionClass(CommerceMutations::class))->newInstanceWithoutConstructor()->handlers(),
         );
     }
 

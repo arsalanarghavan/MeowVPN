@@ -158,4 +158,26 @@ class PortalLinkService
             'svp_s' => $sig,
         ];
     }
+
+    /** @return array{ok:bool, user_id?:int, service_id?:int} */
+    public function resolveFromRequest(\Illuminate\Http\Request $request): array
+    {
+        $userId = (int) $request->query('svp_u', 0);
+        $exp = (int) $request->query('svp_e', 0);
+        $sig = (string) $request->query('svp_s', '');
+        $serviceId = (int) $request->query('service_id', 0);
+        if ($userId < 1 || $exp < 1 || $sig === '') {
+            return ['ok' => false];
+        }
+        $user = $this->verifyCustomerSignature($userId, $exp, $sig, $serviceId);
+        if ($user) {
+            return ['ok' => true, 'user_id' => (int) $user->id, 'service_id' => $serviceId];
+        }
+        $admin = $this->verifyAdminSignature($userId, $exp, $sig);
+        if ($admin) {
+            return ['ok' => true, 'user_id' => (int) $admin->id, 'service_id' => $serviceId];
+        }
+
+        return ['ok' => false];
+    }
 }

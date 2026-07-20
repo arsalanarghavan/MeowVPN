@@ -18,7 +18,7 @@ class NavTabsBuilderTest extends TestCase
 
         $keys = array_column(app(NavTabsBuilder::class)->build(true), 'key');
 
-        foreach (['users_bulk', 'bot_ui', 'unit_economics', 'reseller_charge', 'reseller_settings', 'reseller_xui_panels', 'cards'] as $tab) {
+        foreach (['users_bulk', 'bot_ui', 'unit_economics', 'reseller_charge', 'reseller_settings', 'reseller_xui_panels', 'cards', 'payments', 'panel_financial_reports'] as $tab) {
             $this->assertContains($tab, $keys, "Missing nav tab: {$tab}");
         }
     }

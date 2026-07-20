@@ -5,6 +5,7 @@ namespace App\Modules\Commerce\Mutations;
 use App\Models\DashboardUser;
 use App\Models\SvpPlan;
 use App\Models\SvpService;
+use App\Modules\XuiPanel\Services\PlanInboundSyncService;
 use App\Services\Commerce\ReceiptActionService;
 use App\Services\Commerce\ReceiptProcessorService;
 use App\Services\Commerce\ServiceProvisioner;
@@ -13,6 +14,7 @@ use App\Services\ResellerModuleGuard;
 use App\Services\SettingsStore;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class CommerceMutations
 {
@@ -23,6 +25,7 @@ class CommerceMutations
         protected ReceiptProcessorService $receiptProcessor,
         protected SettingsStore $settings,
         protected ResellerModuleGuard $resellerModule,
+        protected PlanInboundSyncService $planInboundSync,
     ) {}
     /** @return array<string, array{0: class-string, 1: string}> */
     public function handlers(): array
@@ -56,22 +59,133 @@ class CommerceMutations
     /** @param  array<string, mixed>  $payload */
     public function plan(array $payload, ?Authenticatable $actor): array
     {
-        $id = (int) ($payload['id'] ?? 0);
-        $data = collect($payload)->only([
-            'name', 'category', 'duration_days', 'traffic_gb', 'price', 'pricing_type',
-            'price_per_gb', 'traffic_gb_min', 'traffic_gb_max', 'clients_count', 'inbound_id',
-            'panel_id', 'service_type', 'active', 'sort_order',
-        ])->filter(fn ($v) => $v !== null)->all();
+        $action = (string) ($payload['plan_action'] ?? '');
+        $id = (int) ($payload['id'] ?? $payload['plan_id'] ?? 0);
 
-        if ($id > 0) {
-            SvpPlan::query()->where('id', $id)->update($data);
+        if ($action === 'delete' && $id > 0) {
+            SvpPlan::query()->where('id', $id)->delete();
 
             return svp_ok(['plan_id' => $id]);
         }
 
-        $plan = SvpPlan::query()->create(array_merge($data, ['created_at' => now()]));
+        if ($action === 'toggle' && $id > 0) {
+            $plan = SvpPlan::query()->find($id);
+            if (! $plan) {
+                return svp_err('not_found');
+            }
+            $plan->update(['active' => ! $plan->active]);
 
-        return svp_ok(['plan_id' => $plan->id]);
+            return svp_ok(['plan_id' => $id]);
+        }
+
+        $data = collect($payload)->only([
+            'name', 'category', 'duration_days', 'traffic_gb', 'price', 'pricing_type',
+            'price_per_gb', 'traffic_gb_min', 'traffic_gb_max', 'clients_count', 'inbound_id',
+            'panel_id', 'service_type', 'l2tp_server_id', 'active', 'sort_order',
+            'owner_svp_user_id', 'wholesale_line_id', 'panel_template_id', 'quota_display_mode',
+        ])->filter(fn ($v) => $v !== null)->all();
+
+        if (isset($payload['plan_panel_id']) && ! isset($data['panel_id'])) {
+            $data['panel_id'] = (int) $payload['plan_panel_id'];
+        }
+        if (isset($payload['plan_pricing_type']) && ! isset($data['pricing_type'])) {
+            $data['pricing_type'] = (string) $payload['plan_pricing_type'];
+        }
+        if (array_key_exists('plan_active', $payload) && ! array_key_exists('active', $data)) {
+            $data['active'] = ! empty($payload['plan_active']) ? 1 : 0;
+        }
+        if (array_key_exists('owner_svp_user_id', $data)) {
+            $data['owner_svp_user_id'] = $this->resellerModule->normalizeOwnerId((int) $data['owner_svp_user_id']);
+        }
+        if (array_key_exists('wholesale_line_id', $data)) {
+            $wl = (int) $data['wholesale_line_id'];
+            $data['wholesale_line_id'] = $wl > 0 ? $wl : null;
+        }
+        if (array_key_exists('panel_template_id', $data)) {
+            $tid = (int) $data['panel_template_id'];
+            $data['panel_template_id'] = $tid > 0 ? $tid : null;
+        }
+        if (array_key_exists('quota_display_mode', $data)) {
+            $qdm = strtolower(trim((string) $data['quota_display_mode']));
+            $data['quota_display_mode'] = $qdm === 'hide_as_unlimited' ? 'hide_as_unlimited' : 'show';
+        }
+
+        if (isset($payload['inbound_ids']) && is_array($payload['inbound_ids'])) {
+            $ids = [];
+            foreach ($payload['inbound_ids'] as $raw) {
+                $n = (int) $raw;
+                if ($n > 0 && ! in_array($n, $ids, true)) {
+                    $ids[] = $n;
+                }
+            }
+            if ($ids !== []) {
+                if (Schema::hasColumn('svp_plans', 'inbound_ids')) {
+                    $data['inbound_ids'] = json_encode(array_values($ids));
+                }
+                if (! isset($data['inbound_id'])) {
+                    $data['inbound_id'] = $ids[0];
+                }
+            }
+        }
+
+        $existing = $id > 0 ? SvpPlan::query()->find($id) : null;
+        $oldInboundIds = $existing ? $this->planInboundIds($existing) : null;
+        $isUpdate = $id > 0 && ($action === 'update' || $action === '');
+
+        if ($id > 0) {
+            if (! $existing) {
+                return svp_err('not_found');
+            }
+            SvpPlan::query()->where('id', $id)->update($data);
+            $planId = $id;
+        } else {
+            $plan = SvpPlan::query()->create(array_merge($data, ['created_at' => now()]));
+            $planId = (int) $plan->id;
+        }
+
+        $response = ['plan_id' => $planId];
+        if ($isUpdate && $existing) {
+            $updated = SvpPlan::query()->find($planId);
+            $syncMeta = $this->planInboundSync->propagatePlanInbounds(
+                $planId,
+                $oldInboundIds,
+                $this->planInboundIds($updated),
+            );
+            if ($syncMeta !== []) {
+                $response['inbound_sync'] = $syncMeta;
+            }
+        }
+
+        return svp_ok($response);
+    }
+
+    /** @return array<int, int> */
+    protected function planInboundIds(?object $plan): array
+    {
+        if (! $plan) {
+            return [];
+        }
+        if (Schema::hasColumn('svp_plans', 'inbound_ids')) {
+            $raw = trim((string) ($plan->inbound_ids ?? ''));
+            if ($raw !== '') {
+                $decoded = json_decode($raw, true);
+                if (is_array($decoded)) {
+                    $out = [];
+                    foreach ($decoded as $value) {
+                        $iid = (int) $value;
+                        if ($iid > 0 && ! in_array($iid, $out, true)) {
+                            $out[] = $iid;
+                        }
+                    }
+                    if ($out !== []) {
+                        return $out;
+                    }
+                }
+            }
+        }
+        $single = (int) ($plan->inbound_id ?? 0);
+
+        return $single > 0 ? [$single] : [];
     }
 
     /** @param  array<string, mixed>  $payload */

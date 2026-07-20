@@ -6,9 +6,12 @@ use App\Models\SvpMarketingOffer;
 use App\Models\SvpMarketingRule;
 use App\Services\AdminState\AdminStateContext;
 use App\Services\AdminState\AdminStateResult;
+use App\Services\Marketing\MarketingGuardService;
 
 class MarketingLoader extends AbstractLoader
 {
+    public function __construct(protected MarketingGuardService $guard) {}
+
     protected function shouldLoad(AdminStateContext $ctx): bool
     {
         return $ctx->needsMarketing();
@@ -57,12 +60,15 @@ class MarketingLoader extends AbstractLoader
             }
         }
 
+        $windowDays = max(7, min(90, (int) ($ctx->request->query('marketing_window_days', 30) ?? 30)));
+        $lifecycle = $this->guard->lifecycleStatsStub($windowDays);
+
         $result->setTotal('marketingOffers', $total);
         $result->merge([
             'marketingOffers' => $offers,
             'marketingRules' => $rules,
             'marketingRuleStats' => $ruleStats,
-            'marketingLifecycleStats' => ['users_total' => 0],
+            'marketingLifecycleStats' => $lifecycle,
             'marketingLifecycleFunnel' => [],
         ]);
     }

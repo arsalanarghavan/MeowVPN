@@ -54,7 +54,8 @@ export function DashSelect({
 
   const radixValue = allowEmpty && value === "" ? DASH_SELECT_EMPTY : value
 
-  const handleValueChange = (next: string) => {
+  const handleValueChange = (next: string | null) => {
+    if (next == null) return
     if (allowEmpty && next === DASH_SELECT_EMPTY) {
       onValueChange("")
       return
@@ -78,7 +79,6 @@ export function DashSelect({
       </SelectTrigger>
       <SelectContent
         dir={contentDir}
-        position="popper"
         sideOffset={4}
         align="start"
         className={cn("text-start", contentClassName)}

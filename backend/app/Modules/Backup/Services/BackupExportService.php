@@ -2,6 +2,7 @@
 
 namespace App\Modules\Backup\Services;
 
+use App\Modules\PasarGuard\Services\PanelClientFactory;
 use App\Services\SettingsStore;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -9,7 +10,10 @@ use ZipArchive;
 
 class BackupExportService
 {
-    public function __construct(protected SettingsStore $settings) {}
+    public function __construct(
+        protected SettingsStore $settings,
+        protected PanelClientFactory $panels,
+    ) {}
 
     public function backupDir(): string
     {
@@ -61,6 +65,17 @@ class BackupExportService
         $zip->addFromString('laravel/data.json', json_encode($data, JSON_UNESCAPED_UNICODE));
         $zip->addFromString('laravel/settings.json', json_encode($settings, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
         $zip->addFromString('laravel/database.sql', $this->buildSqlDump($data));
+
+        if (svp_modules()->isEnabled('xui_panel') && Schema::hasTable('svp_panels')) {
+            $panelMeta = $this->appendPanelDatabases($zip);
+            $manifest['panels_expected'] = $panelMeta['panels_expected'];
+            $manifest['panel_db_files'] = $panelMeta['panel_db_files'];
+            $manifest['panel_db_failures'] = $panelMeta['panel_db_failures'];
+            $manifest['has_panel_db'] = $panelMeta['panel_db_files'] !== [];
+            $zip->deleteName('laravel/manifest.json');
+            $zip->addFromString('laravel/manifest.json', json_encode($manifest, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+        }
+
         $zip->close();
 
         $this->settings->set('backup_last_built_at', time());
@@ -165,5 +180,53 @@ class BackupExportService
         }
 
         return $realPath;
+    }
+
+    /** @return array{panels_expected:int, panel_db_files:array<int,string>, panel_db_failures:array<int,array<string,mixed>>} */
+    protected function appendPanelDatabases(ZipArchive $zip): array
+    {
+        $files = [];
+        $failures = [];
+        $panels = DB::table('svp_panels')->where('active', 1)->orderBy('sort_order')->orderBy('id')->get();
+        foreach ($panels as $pn) {
+            $pid = (int) ($pn->id ?? 0);
+            if ($pid < 1) {
+                continue;
+            }
+            $db = $this->panels->runWithPanel($pid, function ($client) {
+                if (! $client->loginWithRetries(3, 250000)) {
+                    return false;
+                }
+                if (method_exists($client, 'getDbBinaryForBackup')) {
+                    return $client->getDbBinaryForBackup();
+                }
+                if (method_exists($client, 'getDbBinary')) {
+                    return $client->getDbBinary();
+                }
+                if (method_exists($client, 'exportUsersSnapshot')) {
+                    return json_encode($client->exportUsersSnapshot(), JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+                }
+
+                return false;
+            }, (array) $pn);
+            if (! is_string($db) || $db === '') {
+                $failures[] = [
+                    'panel_id' => $pid,
+                    'label' => (string) ($pn->label ?? ''),
+                'step' => 'download_failed',
+                ];
+
+                continue;
+            }
+            $name = str_starts_with($db, '{') ? 'panel-db/panel-'.$pid.'.json' : 'panel-db/panel-'.$pid.'.db';
+            $zip->addFromString($name, $db);
+            $files[] = $name;
+        }
+
+        return [
+            'panels_expected' => count($panels),
+            'panel_db_files' => $files,
+            'panel_db_failures' => $failures,
+        ];
     }
 }

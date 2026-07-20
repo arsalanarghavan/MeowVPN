@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useTranslation } from "react-i18next"
+import { useTranslations } from "next-intl"
 import { AlertTriangle, Plus, Trash2 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -133,7 +133,7 @@ onSaved?: (patch: { panelId: number; entry: PanelEconomicsEntry }) => void
   const formatMoney = (value: number, suffix: string) =>
     `${formatNumber(value, isFa)} ${suffix}`
 
-  const { t } = useTranslation()
+  const t = useTranslations("unitEconomicsAdmin")
   const tp = (k: string) => t(`panelEconomics.${k}`)
   const ts = (k: string) => t(`sharedEconomics.${k}`)
   const currency = tp("currencySuffix")
@@ -309,7 +309,7 @@ onSaved?: (patch: { panelId: number; entry: PanelEconomicsEntry }) => void
           {CATEGORIES.map((cat) => (
             <Collapsible key={cat} defaultOpen={cat === "cdn" || cat === "external_server"}>
               <div className="flex items-center justify-between gap-2">
-                <CollapsibleTrigger asChild>
+                <CollapsibleTrigger>
                   <Button type="button" variant="ghost" className="h-8 px-2 font-medium">
                     {tp(`cat_${cat}`)}
                     <Badge variant="secondary" className="ms-2">

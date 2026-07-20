@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef } from "react"
-import { useTranslation } from "react-i18next"
+import { useTranslations } from "next-intl"
 
 import { Button } from "@/components/ui/button"
 import { useDashLocale } from "@/lib/dash-locale-context"
@@ -31,8 +31,8 @@ function escapeForPreFragment(text: string): string {
 /** Strip browser-specific markup from contentEditable output. */
 function normalizeEditorHtml(html: string): string {
   let t = html
-  t = t.replace(/<span[^>]*style="[^"]*"[^>]*>(.*?)<\/span>/gis, "$1")
-  t = t.replace(/<font[^>]*>(.*?)<\/font>/gis, "$1")
+  t = t.replace(/<span[^>]*style="[^"]*"[^>]*>(.*?)<\/span>/gi, "$1")
+  t = t.replace(/<font[^>]*>(.*?)<\/font>/gi, "$1")
   return t
 }
 
@@ -47,7 +47,7 @@ export function BroadcastRichEditor({
   disabled?: boolean
   placeholder?: string
 }) {
-  const { t } = useTranslation()
+  const t = useTranslations("broadcastAdmin")
   const { isFa, dir } = useDashLocale()
   const tip = (key: string) => t(`broadcastAdmin.${key}`)
   const ref = useRef<HTMLDivElement>(null)
@@ -166,13 +166,13 @@ export function BroadcastRichEditor({
       >
         {btn("B", "editorTipBold", runBold, "font-bold")}
         {btn("I", "editorTipItalic", runItalic, "italic")}
-        {btn(t("broadcastAdmin.editorBtnMono"), "editorTipMono", runMono, "font-mono")}
-        {btn(t("broadcastAdmin.editorBtnPre"), "editorTipPre", runPre, "font-mono")}
+        {btn(t("editorBtnMono"), "editorTipMono", runMono, "font-mono")}
+        {btn(t("editorBtnPre"), "editorTipPre", runPre, "font-mono")}
         {btn("U", "editorTipUnderline", runUnderline, "underline")}
         {btn("S", "editorTipStrike", runStrike, "line-through")}
-        {btn(t("broadcastAdmin.editorBtnSpoiler"), "editorTipSpoiler", runSpoiler)}
-        {btn(t("broadcastAdmin.editorBtnQuote"), "editorTipQuote", runQuote)}
-        {btn(t("broadcastAdmin.editorBtnLink"), "editorTipLink", runLink)}
+        {btn(t("editorBtnSpoiler"), "editorTipSpoiler", runSpoiler)}
+        {btn(t("editorBtnQuote"), "editorTipQuote", runQuote)}
+        {btn(t("editorBtnLink"), "editorTipLink", runLink)}
       </div>
       <div
         ref={ref}

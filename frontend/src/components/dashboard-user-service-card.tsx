@@ -55,7 +55,7 @@ import {
   formatServiceExpiryLine,
   formatServiceQuotaLine,
 } from "@/lib/format-locale"
-import { useTranslation } from "react-i18next"
+import { useTranslations } from "next-intl"
 import { DashSelect } from "@/components/dash-select"
 import { cn } from "@/lib/utils"
 import { useDashLocale } from "@/lib/dash-locale-context"
@@ -430,7 +430,7 @@ isReseller: boolean
   onSetServiceNote?: (note: string) => void
 }) {
   const { isFa } = useDashLocale()
-  const { t } = useTranslation()
+  const tPlans = useTranslations("plansAdmin")
   const [noteOpen, setNoteOpen] = useState(false)
   const [noteDraft, setNoteDraft] = useState("")
   const sid = num(svc.id)
@@ -459,7 +459,7 @@ isReseller: boolean
   const limitCached = svc.panel_limit_ip != null && svc.panel_limit_ip !== "" ? num(svc.panel_limit_ip) : null
   const ipRows = Array.isArray(svc.ip_log) ? (svc.ip_log as DashRecord[]) : []
   const usedPct = quotaGb > 0 ? Math.min(100, (usedGb / quotaGb) * 100) : 0
-  const gbSuffix = t("plansAdmin.gbSuffix")
+  const gbSuffix = tPlans("gbSuffix")
   const quotaLine = formatServiceQuotaLine(quotaGb, usedGb, isFa, {
     usedShort: tp("usedShort"),
     gbSuffix,
@@ -531,10 +531,15 @@ isReseller: boolean
             </CardDescription>
           </div>
           {portalSvc ? (
-            <Button size="sm" variant="secondary" className="shrink-0 gap-1" asChild>
-              <a href={portalSvc} target="_blank" rel="noopener noreferrer">
-                {tp("servicePanelBtn")}
-              </a>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="shrink-0 gap-1"
+              render={
+                <a href={portalSvc} target="_blank" rel="noopener noreferrer" />
+              }
+            >
+              {tp("servicePanelBtn")}
             </Button>
           ) : null}
         </div>

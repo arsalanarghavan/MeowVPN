@@ -20,6 +20,7 @@ class UserResolver
 
         if ($user) {
             $ctx->user = $user;
+            $this->trackLastTelegramMirror($ctx, $user);
 
             return $user;
         }
@@ -65,7 +66,23 @@ class UserResolver
 
         $user = SvpUser::query()->create($data);
         $ctx->user = $user;
+        $this->trackLastTelegramMirror($ctx, $user);
 
         return $user;
+    }
+
+    protected function trackLastTelegramMirror(BotContext $ctx, SvpUser $user): void
+    {
+        if ($ctx->platform !== 'telegram' || $ctx->isResellerBot()) {
+            return;
+        }
+
+        $mid = $ctx->isMirrorBot() ? $ctx->mirrorBotId : 0;
+        if ((int) ($user->last_tg_mirror_bot_id ?? 0) === $mid) {
+            return;
+        }
+
+        $user->last_tg_mirror_bot_id = $mid;
+        $user->save();
     }
 }

@@ -1,8 +1,22 @@
 # گزارش جامع وضعیت پنل نماینده و ربات مستقل
 
-**آخرین به‌روزرسانی:** **Laravel backend v28** — spec/matrix 158 text-sync؛ alias parity tests؛ strict `run-v28-evidence.sh`؛ matrix v28 honest OPS until operator re-run.
+**آخرین به‌روزرسانی:** **Absolute UI residual** — shell impersonate/nav، plan mutate fields، monitoring/VPN/panels depth، reseller UI rules، Playwright `frontend/e2e/{shell,shell-depth,admin-tabs,admin-mutate,admin-depth}.spec.ts`.
 
-## Laravel dashboard (spec v28 — خلاصه)
+## Playwright (current — Next)
+
+| Spec | Coverage |
+|------|----------|
+| `frontend/e2e/shell.spec.ts` | Login RTL/LTR shell, sidebar layout |
+| `frontend/e2e/shell-depth.spec.ts` | CSRF, `/me/state`, impersonate banner, magic/portal, users deep-link, ui-preferences |
+| `frontend/e2e/admin-tabs.spec.ts` | Tab smoke + auth guard |
+| `frontend/e2e/admin-mutate.spec.ts` | API login when backend up; merge/orphans/rial/crypto/configs mutates |
+| `frontend/e2e/admin-depth.spec.ts` | overview/backup/marketing/bot_ui/plans inbound/mirror |
+
+Legacy archive: `frontend-vite-legacy/e2e/` (v23–v25, session-v27).
+
+Set `PLAYWRIGHT_SKIP_BACKEND=1` to fall back to session-cookie mocks.
+
+## Laravel backend (spec v28 — خلاصه)
 
 - §14+§16: [`SECTION14-GAP-MATRIX-V28-FA.md`](docs/SECTION14-GAP-MATRIX-V28-FA.md) — generated from `*-v28.log`
 - OPS: [`OPS-EVIDENCE-INDEX-V28.md`](docs/evidence/OPS-EVIDENCE-INDEX-V28.md) + [`run-v28-evidence.sh`](backend/scripts/ops/run-v28-evidence.sh)

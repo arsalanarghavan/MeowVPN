@@ -1,14 +1,21 @@
 "use client"
 
-import { Check, LayoutDashboard, LifeBuoy, MessageSquareQuote, UserRoundCog } from "lucide-react"
-import type { MouseEvent, ReactNode } from "react"
-import { useState } from "react"
-import { useTranslation } from "react-i18next"
-
-import { apiHeaders, ensureCsrfCookie, normalizeAdminApiPath } from "@/lib/api-base"
-import { NavGrouped } from "@/components/nav-grouped"
+import * as React from "react"
+import Link from "next/link"
+import { useLocale, useTranslations } from "next-intl"
+import { usePathname } from "next/navigation"
+import { CheckIcon, GalleryVerticalEndIcon, UserRoundCogIcon } from "lucide-react"
+import {
+  ADMIN_NAV_SECTIONS,
+  filterAdminNavByFeatures,
+  filterAdminNavForReseller,
+  injectL2tpNavTab,
+  type AdminNavSection,
+  type DashboardFeatures,
+} from "@/config/admin-nav"
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
+import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,110 +34,59 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar"
-import { Button } from "@/components/ui/button"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
-import type { AdminNavSection } from "@/config/admin-nav"
-import { menuBtnCollapsedIcon } from "@/lib/sidebar-menu-classes"
-import { cn } from "@/lib/utils"
-import { buildDashboardTabUrl } from "@/lib/dash-tab"
-import { writeSiteSubtabToUrl } from "@/lib/site-settings-subtab"
-import { useDashLocale } from "@/lib/dash-locale-context"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { apiBase, apiHeaders, ensureCsrfCookie, normalizeAdminApiPath } from "@/lib/api"
 
-type NavTab = {
-  key: string
-  label: string
+type DashPersona = "admin" | "reseller" | "user"
+
+function tabHref(locale: string, tabKey: string) {
+  if (tabKey === "dashboard") return `/${locale}/dashboard`
+  return `/${locale}/dashboard/${tabKey}`
 }
 
-function SidebarQuickLinks({
-  variant,
-  dashboardBaseUrl,
-  onSelectTab,
-}: {
-  variant: "admin" | "reseller" | "user"
-  dashboardBaseUrl: string
-  onSelectTab: (tabKey: string) => void
-}) {
-  const { dir } = useDashLocale()
-  const { t } = useTranslation()
-  const base = dashboardBaseUrl.replace(/\/?$/, "")
-
-  const openSupportSettings = (e: MouseEvent) => {
-    e.preventDefault()
-    if (variant !== "admin") return
-    writeSiteSubtabToUrl("whitelabel")
-    onSelectTab("site_settings")
-    const url = `${base}/site_settings/?site_subtab=whitelabel#whitelabel-support`
-    window.history.pushState({ tab: "site_settings" }, "", url)
-    window.setTimeout(() => {
-      document.getElementById("whitelabel-support")?.scrollIntoView({ behavior: "smooth", block: "start" })
-    }, 200)
-  }
-
-  const host = typeof window !== "undefined" ? window.location.hostname : "localhost"
-  const resellerSupportHref = `mailto:support@${host}?subject=${encodeURIComponent(t("sidebar.footer.support"))}`
-
-  return (
-    <SidebarMenu
-      className="border-b border-sidebar-border px-0 pb-3"
-      dir={dir}
-    >
-      <SidebarMenuItem>
-        <SidebarMenuButton
-          asChild={variant !== "admin"}
-          size="default"
-          tooltip={t("sidebar.footer.support")}
-          className={menuBtnCollapsedIcon}
-          onClick={variant === "admin" ? openSupportSettings : undefined}
-        >
-          {variant === "admin" ? (
-            <>
-              <LifeBuoy />
-              <span className="truncate">{t("sidebar.footer.support")}</span>
-            </>
-          ) : (
-            <a href={resellerSupportHref}>
-              <LifeBuoy />
-              <span className="truncate">{t("sidebar.footer.support")}</span>
-            </a>
-          )}
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-      <SidebarMenuItem>
-        <SidebarMenuButton
-          asChild
-          size="default"
-          tooltip={t("sidebar.footer.feedback")}
-          className={menuBtnCollapsedIcon}
-        >
-          <a href="#feedback" onClick={(e) => e.preventDefault()}>
-            <MessageSquareQuote />
-            <span className="truncate">{t("sidebar.footer.feedback")}</span>
-          </a>
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-    </SidebarMenu>
+function sectionsToNavMain(
+  sections: AdminNavSection[],
+  locale: string,
+  t: (key: string) => string,
+  tTab: (key: string) => string,
+  pathname: string
+) {
+  return sections.flatMap((sec) =>
+    sec.entries.map((ent) => {
+      if (ent.kind === "leaf") {
+        const url = tabHref(locale, ent.tabKey)
+        return {
+          title: tTab(ent.tabKey),
+          url,
+          icon: ent.icon ? <ent.icon /> : undefined,
+          isActive: pathname === url || pathname.startsWith(`${url}/`),
+        }
+      }
+      return {
+        title: t(ent.labelKey),
+        url: "#",
+        icon: ent.icon ? <ent.icon /> : undefined,
+        items: ent.children.map((ch) => ({
+          title: tTab(ch.tabKey),
+          url: tabHref(locale, ch.tabKey),
+        })),
+      }
+    })
   )
 }
 
 function RoleSwitcher({
   activePersona,
   availablePersonas,
-  restUrl,
   personaSwitchBlocked,
 }: {
-  activePersona: "admin" | "reseller" | "user"
-  availablePersonas: Array<"admin" | "reseller" | "user">
-  restUrl: string
-  /** True while impersonating a reseller — persona API returns 403 until stopped. */
+  activePersona: DashPersona
+  availablePersonas: DashPersona[]
   personaSwitchBlocked?: boolean
 }) {
-  const { dir } = useDashLocale()
-  const { t } = useTranslation()
+  const t = useTranslations()
+  const [switchError, setSwitchError] = React.useState<string | null>(null)
+
   const label =
     activePersona === "admin"
       ? t("sidebar.role.admin")
@@ -138,16 +94,13 @@ function RoleSwitcher({
         ? t("sidebar.role.reseller")
         : t("sidebar.role.user")
 
-  const [switchError, setSwitchError] = useState<string | null>(null)
-
-  const setPersona = (persona: "admin" | "reseller" | "user") => {
+  const setPersona = (persona: DashPersona) => {
     if (persona === activePersona) return
-    const base = restUrl.replace(/\/$/, "")
     void (async () => {
       setSwitchError(null)
       try {
         await ensureCsrfCookie()
-        const r = await fetch(`${base}${normalizeAdminApiPath("/dashboard/persona")}`, {
+        const r = await fetch(`${apiBase()}${normalizeAdminApiPath("/dashboard/persona")}`, {
           method: "POST",
           headers: apiHeaders(),
           credentials: "include",
@@ -165,11 +118,13 @@ function RoleSwitcher({
     })()
   }
 
+  if (availablePersonas.length < 2) return null
+
   if (personaSwitchBlocked) {
     return (
-      <TooltipProvider delayDuration={200}>
+      <TooltipProvider delay={200}>
         <Tooltip>
-          <TooltipTrigger asChild>
+          <TooltipTrigger>
             <span className="inline-flex">
               <Button
                 type="button"
@@ -179,11 +134,11 @@ function RoleSwitcher({
                 disabled
                 aria-label={label}
               >
-                <UserRoundCog className="size-4 opacity-50" />
+                <UserRoundCogIcon className="size-4 opacity-50" />
               </Button>
             </span>
           </TooltipTrigger>
-          <TooltipContent side="bottom" className="max-w-xs text-start">
+          <TooltipContent side="top" className="max-w-xs text-start">
             <p>{t("layout.personaSwitchBlockedImpersonation")}</p>
           </TooltipContent>
         </Tooltip>
@@ -192,24 +147,15 @@ function RoleSwitcher({
   }
 
   return (
-    <DropdownMenu modal={false}>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          className="h-8 w-8 shrink-0"
-          aria-label={label}
-          title={label}
-        >
-          <UserRoundCog className="size-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="end"
-        style={{ direction: dir }}
-        className="min-w-48 text-start"
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        className="inline-flex size-8 items-center justify-center rounded-lg border border-border bg-background hover:bg-muted"
+        aria-label={label}
+        title={label}
       >
+        <UserRoundCogIcon className="size-4" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-48 text-start">
         <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
           {t("sidebar.role.switchLabel")}
         </DropdownMenuLabel>
@@ -226,7 +172,7 @@ function RoleSwitcher({
             onClick={() => setPersona("admin")}
           >
             {activePersona === "admin" ? (
-              <Check className="size-4 shrink-0 opacity-90" />
+              <CheckIcon className="size-4 shrink-0 opacity-90" />
             ) : (
               <span className="inline-block w-4 shrink-0" aria-hidden />
             )}
@@ -240,7 +186,7 @@ function RoleSwitcher({
             onClick={() => setPersona("reseller")}
           >
             {activePersona === "reseller" ? (
-              <Check className="size-4 shrink-0 opacity-90" />
+              <CheckIcon className="size-4 shrink-0 opacity-90" />
             ) : (
               <span className="inline-block w-4 shrink-0" aria-hidden />
             )}
@@ -254,7 +200,7 @@ function RoleSwitcher({
             onClick={() => setPersona("user")}
           >
             {activePersona === "user" ? (
-              <Check className="size-4 shrink-0 opacity-90" />
+              <CheckIcon className="size-4 shrink-0 opacity-90" />
             ) : (
               <span className="inline-block w-4 shrink-0" aria-hidden />
             )}
@@ -267,190 +213,129 @@ function RoleSwitcher({
 }
 
 export function AppSidebar({
-  side,
-  variant,
-  navTabs,
   user,
-  activeTabKey,
-  onSelectTab,
-  dashboardBaseUrl,
-  siteName,
-  siteIconUrl,
-  adminSections,
+  features,
+  isReseller,
+  allowedResellerTabs,
+  personaSwitchBlocked,
   activePersona,
   availablePersonas,
-  personaRestUrl,
-  personaSwitchBlocked = false,
-  mobileHeaderToolbar,
-}: {
-  side: "left" | "right"
-  variant: "admin" | "reseller" | "user"
-  navTabs: NavTab[]
-  user: {
-    name: string
-    tgUserId: number
-    baleUserId: number
-    avatar: string
-    logoutUrl?: string
-  }
-  activeTabKey: string
-  onSelectTab: (tabKey: string) => void
-  dashboardBaseUrl: string
-  siteName: string
-  siteIconUrl?: string
-  adminSections?: AdminNavSection[]
-  activePersona?: "admin" | "reseller" | "user"
-  availablePersonas?: Array<"admin" | "reseller" | "user">
-  personaRestUrl?: string
+  ...props
+}: React.ComponentProps<typeof Sidebar> & {
+  user?: { name: string; email: string; avatar?: string }
+  features?: DashboardFeatures | null
+  isReseller?: boolean
+  allowedResellerTabs?: string[] | null
   personaSwitchBlocked?: boolean
-  mobileHeaderToolbar?: ReactNode
+  activePersona?: string
+  availablePersonas?: string[]
 }) {
-  const { t } = useTranslation()
-  const base = dashboardBaseUrl.replace(/\/?$/, "")
-  const subItemUrl = (tabKey: string) => buildDashboardTabUrl(base, tabKey)
+  const t = useTranslations()
+  const locale = useLocale()
+  const pathname = usePathname()
+  const tTab = (key: string) => {
+    try {
+      return t(`sidebar.items.${key}`)
+    } catch {
+      try {
+        return t(`sidebar.tabs.${key}`)
+      } catch {
+        return key
+      }
+    }
+  }
 
-  const displayName = siteName.trim() || t("sidebar.siteFallback")
-  const isAdmin = variant === "admin"
-  const persona: "admin" | "reseller" | "user" =
-    activePersona ?? (isAdmin ? "admin" : variant === "reseller" ? "reseller" : "user")
-  const personas = availablePersonas ?? [persona]
-  const showRoleSwitcher =
-    Boolean(personaRestUrl) && (personas.length > 1 || personaSwitchBlocked)
+  const filteredSections = React.useMemo(() => {
+    const l2tpOn = features?.l2tp === true
+    let sections = injectL2tpNavTab(ADMIN_NAV_SECTIONS, l2tpOn)
+    sections = filterAdminNavByFeatures(sections, features)
+    if (isReseller) {
+      const allowed = new Set(
+        Array.isArray(allowedResellerTabs) && allowedResellerTabs.length > 0
+          ? allowedResellerTabs
+          : [
+              "dashboard",
+              "users",
+              "plans",
+              "cards",
+              "payments",
+              "receipts",
+              "reseller_bots",
+              "reseller_charge",
+              "reseller_settings",
+              "reseller_xui_panels",
+              "configs",
+              "bot_ui",
+              "discounts",
+            ]
+      )
+      sections = filterAdminNavForReseller(sections, allowed)
+    }
+    return sections
+  }, [features, isReseller, allowedResellerTabs])
 
-  const userMainItems = [
-    {
-      title: t("myPanel"),
-      url: `${base}/`,
-      icon: LayoutDashboard,
-      isActive: true,
-      items: navTabs.map((tab) => ({
-        title: tab.label,
-        url: subItemUrl(tab.key),
-        tabKey: tab.key,
-      })),
-    },
-  ]
-
-  const showOperatorHeader = variant === "admin" || variant === "reseller"
-
-  const siteLogoInitial =
-    displayName.trim().charAt(0).toUpperCase() || "?"
-
-  const brandRowClass = cn(
-    "flex h-full min-w-0 flex-1 items-center gap-2",
-    "group-data-[collapsible=icon]:justify-center"
+  const navMain = React.useMemo(
+    () =>
+      sectionsToNavMain(
+        filteredSections,
+        locale,
+        (k) => t(k),
+        tTab,
+        pathname
+      ),
+    // tTab is derived from t each render; intentional deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filteredSections, locale, pathname, t]
   )
 
-  const brandLogo = siteIconUrl ? (
-    <img
-      src={siteIconUrl}
-      alt=""
-      className="size-8 shrink-0 rounded-md object-cover"
-    />
-  ) : (
-    <div
-      className="flex size-8 shrink-0 items-center justify-center rounded-md bg-sidebar-accent text-xs font-semibold text-sidebar-accent-foreground"
-      aria-hidden
-    >
-      {siteLogoInitial !== "?" ? (
-        siteLogoInitial
-      ) : (
-        <LayoutDashboard className="size-4 opacity-80" />
-      )}
-    </div>
+  const displayUser = user ?? {
+    name: t("layout.adminUser"),
+    email: "admin@meowvpn.local",
+    avatar: "",
+  }
+
+  const personas = (availablePersonas ?? []).filter((p): p is DashPersona =>
+    p === "admin" || p === "reseller" || p === "user"
   )
-
-  const showSidebarHeader =
-    showOperatorHeader || (variant === "user" && showRoleSwitcher)
-
-  const mobileToolbarBlock = mobileHeaderToolbar ? (
-    <div className="w-full border-t border-sidebar-border pt-2 pb-1 md:hidden">
-      {mobileHeaderToolbar}
-    </div>
-  ) : null
+  const persona: DashPersona =
+    activePersona === "admin" || activePersona === "reseller" || activePersona === "user"
+      ? activePersona
+      : isReseller
+        ? "reseller"
+        : "admin"
 
   return (
-    <Sidebar side={side} collapsible="icon">
-      {showSidebarHeader && (
-        <SidebarHeader
-          className={cn(
-            "h-auto min-h-16 shrink-0 gap-0 border-b border-sidebar-border px-4 py-2 md:h-16 md:py-0",
-            mobileHeaderToolbar && "flex flex-col items-stretch"
-          )}
-        >
-          <div
-            className={cn(
-              "flex h-12 w-full items-center gap-2 md:h-full",
-              "group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
-            )}
-          >
-            {brandLogo}
-            <div
-              className={cn(
-                brandRowClass,
-                "sidebar-brand-expanded group-data-[collapsible=icon]:hidden"
-              )}
+    <Sidebar collapsible="icon" {...props}>
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              size="lg"
+              render={<Link href={`/${locale}/dashboard`} />}
             >
-              <p className="sidebar-brand-label min-w-0 flex-1 truncate text-sm font-semibold leading-tight">
-                {displayName}
-              </p>
-              {showRoleSwitcher ? (
-                <RoleSwitcher
-                  activePersona={persona}
-                  availablePersonas={personas}
-                  restUrl={personaRestUrl!}
-                  personaSwitchBlocked={personaSwitchBlocked}
-                />
-              ) : null}
-            </div>
-            {showRoleSwitcher ? (
-              <div className="hidden shrink-0 group-data-[collapsible=icon]:block">
-                <RoleSwitcher
-                  activePersona={persona}
-                  availablePersonas={personas}
-                  restUrl={personaRestUrl!}
-                  personaSwitchBlocked={personaSwitchBlocked}
-                />
-              </div>
-            ) : null}
-          </div>
-          {mobileToolbarBlock}
-        </SidebarHeader>
-      )}
+                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+                  <GalleryVerticalEndIcon className="size-4" />
+                </div>
+                <div className="grid flex-1 text-start text-sm leading-tight">
+                  <span className="truncate font-semibold">MeowVPN</span>
+                  <span className="truncate text-xs">{t("layout.dashboard")}</span>
+                </div>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
       <SidebarContent>
-        {!showSidebarHeader && mobileToolbarBlock ? (
-          <div className="border-b border-sidebar-border px-4 py-2 md:hidden">
-            {mobileHeaderToolbar}
-          </div>
-        ) : null}
-        {variant === "admin" || variant === "reseller" ? (
-          <NavGrouped
-            activeTabKey={activeTabKey}
-            onSelectTab={onSelectTab}
-            subItemUrl={subItemUrl}
-            sections={adminSections}
-          />
-        ) : (
-          <NavMain
-            items={userMainItems}
-            groupLabel={t("myPanel")}
-            activeTabKey={activeTabKey}
-            onSubItemClick={onSelectTab}
-            subItemUrl={subItemUrl}
-          />
-        )}
+        <NavMain items={navMain} />
       </SidebarContent>
-      <SidebarFooter className="gap-0">
-        {(variant === "admin" || variant === "reseller") && (
-          <SidebarQuickLinks
-            variant={variant}
-            dashboardBaseUrl={dashboardBaseUrl}
-            onSelectTab={onSelectTab}
+      <SidebarFooter>
+        <div className="flex items-center gap-2 px-2 pb-1">
+          <RoleSwitcher
+            activePersona={persona}
+            availablePersonas={personas}
+            personaSwitchBlocked={personaSwitchBlocked}
           />
-        )}
-        <div className={cn((variant === "admin" || variant === "reseller") && "px-0 pt-1")}>
-          <NavUser user={user} />
         </div>
+        <NavUser user={displayUser} />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

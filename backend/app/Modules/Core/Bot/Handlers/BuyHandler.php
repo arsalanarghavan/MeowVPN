@@ -340,10 +340,26 @@ class BuyHandler
         );
         $methods = $this->checkout->enabledPaymentMethods($ctx);
         $rows = [];
-        if (in_array('c2c', $methods, true)) {
-            $card = DB::table('svp_cards')->where('active', true)->orderBy('priority')->value('id');
-            if ($card) {
-                $rows[] = [['text' => $this->texts->getForUser('btn.buy.pay_c2c', $user, 'Card'), 'callback_data' => 'buy:pm:'.$txId.':'.$card]];
+        if (in_array('c2c', $methods, true)
+            || in_array('rial_zarinpal', $methods, true)
+            || in_array('rial_zibal', $methods, true)
+            || in_array('rial_aqayepardakht', $methods, true)
+            || in_array('crypto_tetra', $methods, true)
+            || in_array('crypto_auto', $methods, true)
+            || in_array('crypto', $methods, true)) {
+            $cards = DB::table('svp_cards')->where('active', true)->orderBy('priority')->get();
+            foreach ($cards as $card) {
+                $mk = (string) ($card->method_key ?? 'c2c');
+                $label = match ($mk) {
+                    'rial_zarinpal' => $this->texts->getForUser('btn.buy.pay_zarinpal', $user, 'ZarinPal'),
+                    'rial_zibal' => $this->texts->getForUser('btn.buy.pay_zibal', $user, 'Zibal'),
+                    'rial_aqayepardakht' => $this->texts->getForUser('btn.buy.pay_aqaye', $user, 'AqayePardakht'),
+                    'crypto_tetra' => $this->texts->getForUser('btn.buy.pay_tetra', $user, 'TetraPay'),
+                    'crypto_auto' => $this->texts->getForUser('btn.buy.pay_crypto_auto', $user, 'Crypto auto'),
+                    'crypto' => $this->texts->getForUser('btn.buy.pay_crypto_manual', $user, 'Crypto'),
+                    default => $this->texts->getForUser('btn.buy.pay_c2c', $user, 'Card'),
+                };
+                $rows[] = [['text' => $label, 'callback_data' => 'buy:pm:'.$txId.':'.(int) $card->id]];
             }
         }
         if (in_array('site_wallet', $methods, true)) {
@@ -416,6 +432,30 @@ class BuyHandler
 
     protected function startCardPaymentForTx(BotContext $ctx, SvpUser $user, int $chatId, int $txId, int $cardId): void
     {
+        $card = $cardId > 0
+            ? DB::table('svp_cards')->where('id', $cardId)->where('active', true)->first()
+            : DB::table('svp_cards')->where('active', true)->orderBy('priority')->first();
+        if ($card && BotCommerceCheckoutService::isGatewayMethod((string) ($card->method_key ?? ''))) {
+            $invoice = $this->checkout->startGatewayInvoice($user, $txId, $card, $ctx->platform);
+            if (! empty($invoice['ok'])) {
+                $this->runtime->sendMessage(
+                    $ctx,
+                    $chatId,
+                    (string) ($invoice['text'] ?? ''),
+                    ! empty($invoice['reply_markup']) ? ['reply_markup' => $invoice['reply_markup']] : []
+                );
+
+                return;
+            }
+            $this->runtime->sendMessage(
+                $ctx,
+                $chatId,
+                (string) ($invoice['message'] ?? $this->texts->getForUser('msg.buy.payment_failed', $user, 'Payment failed'))
+            );
+
+            return;
+        }
+
         $created = $this->checkout->createC2cReceipt($user, $txId, $cardId);
         if (empty($created['ok'])) {
             $this->runtime->sendMessage($ctx, $chatId, $this->texts->getForUser('msg.buy.payment_failed', $user, 'Payment failed'));

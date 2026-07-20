@@ -6,7 +6,11 @@ use App\Modules\Core\Bot\BotContext;
 use App\Modules\Core\Bot\Clients\BaleApiClient;
 use App\Modules\Core\Bot\Clients\TelegramApiClient;
 use App\Modules\Core\Bot\Services\BotRuntime;
+use App\Modules\Core\Bot\Services\UiActionRegistryService;
+use App\Modules\Core\Bot\Services\UiCustomGroupsService;
+use App\Modules\Core\Bot\Services\UiLayoutStudioService;
 use App\Modules\Relay\Services\TelegramRelayService;
+use App\Models\DashboardUser;
 use App\Services\Bot\WebhookDiagnosticsService;
 use App\Services\SettingsStore;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -20,6 +24,8 @@ class BotMutations
         protected BotRuntime $runtime,
         protected WebhookDiagnosticsService $diagnostics,
         protected TelegramRelayService $relay,
+        protected UiCustomGroupsService $uiGroups,
+        protected UiLayoutStudioService $uiLayoutStudio,
     ) {}
 
     /** @return array<string, array{0: class-string, 1: string}> */
@@ -45,6 +51,8 @@ class BotMutations
             'texts_reset' => [self::class, 'textsReset'],
             'bot_ui_layout_save' => [self::class, 'botUiLayoutSave'],
             'bot_ui_layout_reset' => [self::class, 'botUiLayoutReset'],
+            'bot_ui_group_create' => [self::class, 'botUiGroupCreate'],
+            'bot_ui_group_delete' => [self::class, 'botUiGroupDelete'],
         ];
     }
 
@@ -247,17 +255,77 @@ class BotMutations
     /** @param  array<string, mixed>  $payload */
     public function botUiLayoutSave(array $payload, ?Authenticatable $actor): array
     {
-        $this->settings->set('bot_ui_layout', $payload['layout'] ?? $payload);
+        if ($actor instanceof DashboardUser && $actor->role === 'reseller') {
+            return svp_err('forbidden');
+        }
+        $surfacesIn = isset($payload['surfaces']) && is_array($payload['surfaces'])
+            ? $payload['surfaces']
+            : (isset($payload['layout']['surfaces']) && is_array($payload['layout']['surfaces']) ? $payload['layout']['surfaces'] : []);
+        $validated = $this->uiLayoutStudio->validateSurfacesPayload($surfacesIn);
+        if (empty($validated['ok'])) {
+            return svp_err('validation_failed', ['errors' => $validated['errors'] ?? []]);
+        }
+        if (! empty($validated['surfaces'])) {
+            $this->uiLayoutStudio->saveSurfaces($validated['surfaces']);
+        }
 
-        return svp_ok();
+        return svp_ok([
+            'uiLayout' => $this->uiLayoutStudio->exportMergedForDashboard(),
+            'uiRegistry' => UiActionRegistryService::export_for_dashboard(),
+        ]);
     }
 
     /** @param  array<string, mixed>  $payload */
     public function botUiLayoutReset(array $payload, ?Authenticatable $actor): array
     {
-        $this->settings->set('bot_ui_layout', []);
+        if ($actor instanceof DashboardUser && $actor->role === 'reseller') {
+            return svp_err('forbidden');
+        }
+        $this->uiLayoutStudio->resetAll();
 
-        return svp_ok();
+        return svp_ok([
+            'uiLayout' => $this->uiLayoutStudio->exportMergedForDashboard(),
+            'uiRegistry' => UiActionRegistryService::export_for_dashboard(),
+        ]);
+    }
+
+    /** @param  array<string, mixed>  $payload */
+    public function botUiGroupCreate(array $payload, ?Authenticatable $actor): array
+    {
+        if ($actor instanceof DashboardUser && $actor->role === 'reseller') {
+            return svp_err('forbidden');
+        }
+        $res = $this->uiGroups->create($payload);
+        if (empty($res['ok'])) {
+            return $res;
+        }
+        $data = $res['data'] ?? [];
+        $data['customGroups'] = $this->uiGroups->exportForDashboard();
+        $data['uiRegistry'] = UiActionRegistryService::export_for_dashboard();
+
+        return ['ok' => true, 'data' => $data];
+    }
+
+    /** @param  array<string, mixed>  $payload */
+    public function botUiGroupDelete(array $payload, ?Authenticatable $actor): array
+    {
+        if ($actor instanceof DashboardUser && $actor->role === 'reseller') {
+            return svp_err('forbidden');
+        }
+        $gid = preg_replace('/[^a-z0-9_]/', '', strtolower((string) ($payload['group_id'] ?? $payload['groupId'] ?? ''))) ?? '';
+        if ($gid === '') {
+            return svp_err('missing_group_id');
+        }
+        $restore = ! isset($payload['restore_to_parent']) || ! empty($payload['restore_to_parent']);
+        $res = $this->uiGroups->delete($gid, $restore);
+        if (empty($res['ok'])) {
+            return $res;
+        }
+        $data = $res['data'] ?? [];
+        $data['customGroups'] = $this->uiGroups->exportForDashboard();
+        $data['uiRegistry'] = UiActionRegistryService::export_for_dashboard();
+
+        return ['ok' => true, 'data' => $data];
     }
 
     protected function botSetWebhookBale(): array

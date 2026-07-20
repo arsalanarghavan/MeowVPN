@@ -33,14 +33,13 @@ class TransactionFulfillService
             if ((string) $tx->status === 'approved') {
                 return ['ok' => true, 'reason' => 'already_approved'];
             }
-            if ((string) $tx->status === 'processing') {
-                return ['ok' => false, 'reason' => 'already_processing'];
-            }
-            if ((string) $tx->status !== 'pending') {
+            if (! in_array((string) $tx->status, ['pending', 'processing'], true)) {
                 return ['ok' => false, 'reason' => 'bad_tx'];
             }
 
-            DB::table('svp_transactions')->where('id', $txId)->update(['status' => 'processing']);
+            if ((string) $tx->status === 'pending') {
+                DB::table('svp_transactions')->where('id', $txId)->update(['status' => 'processing']);
+            }
 
             $tx = DB::table('svp_transactions')->where('id', $txId)->first();
             if (! $tx) {

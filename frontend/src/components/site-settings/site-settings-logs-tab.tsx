@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useTranslation } from "react-i18next"
+import { useTranslations } from "next-intl"
 
 import {
   AlertDialog,
@@ -24,7 +24,6 @@ import { getAdminJson, postAdminMutate } from "@/lib/dash-admin-mutate"
 import { parsePaginationMeta, type PaginationMeta } from "@/lib/dash-pagination"
 import { formatServiceExpiryLine } from "@/lib/format-locale"
 import { useDashLocale } from "@/lib/dash-locale-context"
-import { useAdminTp } from "@/lib/use-admin-tp"
 import { cn } from "@/lib/utils"
 import { DashDialogContent, DashDialogHeader } from "@/components/dash-dialog-content"
 import { Dialog, DialogTitle } from "@/components/ui/dialog"
@@ -41,8 +40,8 @@ const LOGS_TABLE_COLS = ["10%", "12%", "48%", "20%", "10%"]
 
 export function SiteSettingsLogsTab() {
   const { isFa, ltrCell } = useDashLocale()
-  const { t } = useTranslation()
-  const tp = useAdminTp("siteSettings.logs")
+  const t = useTranslations("siteSettings.logs")
+  const tp = t
   const [rows, setRows] = useState<LogRow[]>([])
   const [pagination, setPagination] = useState<PaginationMeta | null>(null)
   const [page, setPage] = useState(1)
@@ -154,10 +153,8 @@ export function SiteSettingsLogsTab() {
           </div>
         </div>
         <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button type="button" variant="destructive" disabled={clearing}>
-              {tp("clearBtn")}
-            </Button>
+          <AlertDialogTrigger render={<Button type="button" variant="destructive" disabled={clearing} />}>
+            {tp("clearBtn")}
           </AlertDialogTrigger>
           <AlertDialogContent className={cn("text-start")}>
             <AlertDialogHeader className={cn("text-start")}>

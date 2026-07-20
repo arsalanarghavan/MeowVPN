@@ -7,6 +7,10 @@ use App\Modules\Core\Bot\Jobs\DeferredCheckoutSweepJob;
 use App\Modules\Core\Bot\Jobs\DeferredConfigDeliveryCronJob;
 use App\Modules\Core\Bot\Jobs\ReceiptReminderCronJob;
 use App\Modules\Core\Jobs\InboundQueueDrainJob;
+use App\Modules\Core\Jobs\LiveMetricsCronJob;
+use App\Modules\Core\Jobs\ReceiptApproveRecoveryJob;
+use App\Modules\Core\Jobs\ReceiptNotifyRecoveryJob;
+use App\Modules\Core\Jobs\UsageSampleJob;
 use App\Modules\Core\Jobs\AutorenewJob;
 use App\Modules\Core\Jobs\ExpiryJob;
 use App\Modules\Core\Jobs\UsersBulkWorkerJob;
@@ -15,9 +19,13 @@ use App\Modules\Marketing\Jobs\IdleOffersJob;
 use App\Modules\Marketing\Jobs\MarketingJob;
 use App\Modules\XuiPanel\Jobs\InboundClientsCacheJob;
 use App\Modules\XuiPanel\Jobs\PanelEconomicsRenewalJob;
+use App\Modules\XuiPanel\Jobs\PanelLimitIpBackfillJob;
 use App\Modules\XuiPanel\Jobs\PanelOnlineJob;
 use App\Modules\XuiPanel\Jobs\PanelServiceSyncJob;
+use App\Modules\XuiPanel\Jobs\PanelSessionKeeperJob;
 use App\Modules\XuiPanel\Jobs\PurgeExpiredJob;
+use App\Modules\Tunnel\Jobs\TunnelHealthJob;
+use App\Modules\XrayCore\Jobs\XrayTrafficSyncJob;
 use App\Services\BackupIntervalResolver;
 use App\Support\Metrics\CronTimer;
 use Illuminate\Support\Facades\Schema;
@@ -46,6 +54,10 @@ if (svp_modules()->isEnabled('xui_panel')) {
     Schedule::job(new PanelOnlineJob)->everyTenMinutes()->name('svp:panel_online');
     Schedule::job(new PanelServiceSyncJob)->everyTenMinutes()->name('svp:panel_service_sync');
     Schedule::job(new InboundClientsCacheJob)->everyTenMinutes()->name('svp:inbound_clients_cache');
+    Schedule::job(new PanelSessionKeeperJob)->everyFifteenMinutes()->name('svp:panel_session_keeper');
+    Schedule::job(new LiveMetricsCronJob)->everyMinute()->name('svp:live_metrics');
+    // One-time batched backfill (no-ops after DONE option); mirrors WP simplevpbot_panel_limit_ip_backfill.
+    Schedule::job(new PanelLimitIpBackfillJob)->everyMinute()->name('svp:panel_limit_ip_backfill');
 }
 Schedule::job(new ExpiryJob)->hourly()->name('svp:expiry');
 Schedule::job(new AutorenewJob)->hourly()->name('svp:autorenew');
@@ -62,3 +74,12 @@ Schedule::job(new DeferredConfigDeliveryCronJob)->everyMinute()->name('svp:defer
 Schedule::job(new DeferredCheckoutSweepJob)->everyMinute()->name('svp:deferred_checkout_sweep');
 Schedule::job(new DeferredC2cSweepJob)->everyMinute()->name('svp:deferred_c2c_sweep');
 Schedule::job(new ReceiptReminderCronJob)->everyFiveMinutes()->name('svp:receipt_reminder');
+Schedule::job(new ReceiptNotifyRecoveryJob)->everyFiveMinutes()->name('svp:receipt_notify_recovery');
+Schedule::job(new ReceiptApproveRecoveryJob)->everyFiveMinutes()->name('svp:receipt_approve_recovery');
+Schedule::job(new UsageSampleJob)->everyFiveMinutes()->name('svp:usage_sample');
+if (svp_modules()->isEnabled('xray_core')) {
+    Schedule::job(new XrayTrafficSyncJob)->everyFiveMinutes()->name('svp:xray_traffic_sync');
+}
+if (svp_modules()->isEnabled('tunnel')) {
+    Schedule::job(new TunnelHealthJob)->everyTenMinutes()->name('svp:tunnel_health');
+}

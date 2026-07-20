@@ -57,6 +57,7 @@ trait CreatesSvpTestSchema
             $table->string('approved_by')->nullable();
             $table->unsignedBigInteger('invited_by')->nullable();
             $table->unsignedBigInteger('signup_reseller_svp_id')->nullable();
+            $table->unsignedBigInteger('last_tg_mirror_bot_id')->default(0);
             $table->timestamp('created_at')->nullable();
             $table->unique('tg_user_id', 'svp_users_tg');
             $table->unique('bale_user_id', 'svp_users_bale');
@@ -73,6 +74,8 @@ trait CreatesSvpTestSchema
             $table->string('panel_login_secret')->default('');
             $table->text('panel_api_token')->nullable();
             $table->string('panel_api_flavor')->default('unknown');
+            $table->string('panel_provider', 32)->default('xui');
+            $table->boolean('panel_template_required')->default(false);
             $table->text('subscription_public_base')->nullable();
             $table->integer('sort_order')->default(0);
             $table->boolean('active')->default(true);
@@ -86,11 +89,17 @@ trait CreatesSvpTestSchema
             $table->string('category')->default('normal');
             $table->unsignedBigInteger('panel_id')->default(1);
             $table->integer('inbound_id')->default(0);
+            $table->longText('inbound_ids')->nullable();
+            $table->unsignedInteger('panel_template_id')->nullable();
+            $table->unsignedBigInteger('wholesale_line_id')->nullable();
+            $table->unsignedBigInteger('owner_svp_user_id')->default(0);
             $table->string('service_type')->default('xray');
+            $table->unsignedBigInteger('l2tp_server_id')->nullable();
             $table->boolean('active')->default(true);
             $table->decimal('price', 15, 2)->default(0);
             $table->decimal('renew_price', 15, 2)->default(0);
             $table->string('pricing_type', 20)->default('fixed');
+            $table->string('quota_display_mode', 20)->default('show');
             $table->decimal('price_per_gb', 15, 2)->default(0);
             $table->integer('traffic_gb_min')->default(0);
             $table->integer('traffic_gb_max')->default(0);
@@ -139,6 +148,7 @@ trait CreatesSvpTestSchema
             $table->id();
             $table->string('platform', 8);
             $table->unsignedBigInteger('reseller_svp_user_id')->default(0);
+            $table->unsignedBigInteger('mirror_bot_id')->default(0);
             $table->longText('update_json');
             $table->string('status', 16)->default('pending');
             $table->integer('tries')->default(0);
@@ -147,12 +157,27 @@ trait CreatesSvpTestSchema
             $table->timestamp('processed_at')->nullable();
         });
 
+        Schema::dropIfExists('svp_telegram_mirror_bots');
+        Schema::create('svp_telegram_mirror_bots', function (Blueprint $table) {
+            $table->id();
+            $table->string('label')->default('');
+            $table->text('telegram_token')->nullable();
+            $table->string('telegram_bot_username', 128)->default('');
+            $table->string('webhook_secret', 512)->default('');
+            $table->string('telegram_secret_token', 255)->default('');
+            $table->boolean('enabled')->default(true);
+            $table->integer('sort_order')->default(0);
+            $table->timestamp('updated_at')->nullable();
+        });
+
         Schema::dropIfExists('svp_services');
         Schema::create('svp_services', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('user_id');
             $table->unsignedBigInteger('panel_id')->default(1);
+            $table->string('panel_driver')->default('xui');
             $table->unsignedBigInteger('inbound_id')->default(0);
+            $table->longText('inbound_ids')->nullable();
             $table->string('email')->nullable();
             $table->string('remark')->nullable();
             $table->unsignedBigInteger('plan_id')->nullable();
@@ -557,6 +582,15 @@ trait CreatesSvpTestSchema
             $table->string('platform', 20)->default('bale');
             $table->string('status', 20)->default('pending');
             $table->timestamp('created_at')->nullable();
+        });
+
+        Schema::dropIfExists('svp_service_usage_samples');
+        Schema::create('svp_service_usage_samples', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('service_id');
+            $table->timestamp('sampled_at');
+            $table->unsignedBigInteger('used_bytes')->default(0);
+            $table->index(['service_id', 'sampled_at']);
         });
 
         if (DB::table('dashboard_users')->where('role', 'admin')->count() < 1) {

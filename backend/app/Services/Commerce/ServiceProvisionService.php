@@ -239,7 +239,10 @@ class ServiceProvisionService
     {
         $panel = DB::table('svp_panels')->where('id', (int) ($svc->panel_id ?? 0))->first();
         if ($panel) {
-            $this->xui->syncService((array) $panel, (int) $svc->id);
+            $client = function_exists('svp_modules') && svp_modules()->isEnabled('pasarguard') && class_exists(\App\Modules\PasarGuard\Services\PanelClientFactory::class)
+                ? app(\App\Modules\PasarGuard\Services\PanelClientFactory::class)->forPanel($panel)
+                : $this->xui;
+            $client->syncService((array) $panel, (int) $svc->id);
         }
     }
 }

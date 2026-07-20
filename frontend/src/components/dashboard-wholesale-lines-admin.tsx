@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { useTranslation } from "react-i18next"
+import { useLocale, useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -12,7 +12,6 @@ import { DashSheetContent } from "@/components/dash-sheet-content"
 import { DashSelect } from "@/components/dash-select"
 import { postAdminMutate } from "@/lib/dash-admin-mutate"
 import { formatNumber } from "@/lib/format-locale"
-import { useDashLocale } from "@/lib/dash-locale-context"
 import { cn } from "@/lib/utils"
 
 type DashRecord = Record<string, unknown>
@@ -47,9 +46,9 @@ export function DashboardWholesaleLinesAdmin({
   l2tpServers?: DashRecord[]
   onMutateSuccess?: () => void
 }) {
-  const { isFa } = useDashLocale()
-  const { t } = useTranslation()
-  const tp = (k: string) => t(`wholesaleLinesAdmin.${k}`)
+  const t = useTranslations("wholesaleLinesAdmin")
+  const locale = useLocale()
+  const isFa = locale === "fa"
   const l2tpEnabled = l2tpServers.length > 0
 
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -133,7 +132,7 @@ export function DashboardWholesaleLinesAdmin({
         tiers: tierPayload,
       })
       if (!res.ok) {
-        setErr(res.message || res.code || tp("saveError"))
+        setErr(res.message || res.code || t("saveError"))
         return
       }
       setSheetOpen(false)
@@ -144,13 +143,13 @@ export function DashboardWholesaleLinesAdmin({
   }
 
   async function deleteLine(id: number) {
-    if (!id || !window.confirm(tp("confirmDelete"))) return
+    if (!id || !window.confirm(t("confirmDelete"))) return
     setBusy(true)
     setErr("")
     try {
       const res = await postAdminMutate("wholesale_line_delete", { line_id: id })
       if (!res.ok) {
-        setErr(res.message || tp("saveError"))
+        setErr(res.message || t("saveError"))
         return
       }
       onMutateSuccess?.()
@@ -163,11 +162,11 @@ export function DashboardWholesaleLinesAdmin({
     <div className={cn("space-y-6")}>
       <div className={cn("flex flex-wrap items-center justify-between gap-3")}>
         <div>
-          <h3 className="text-lg font-semibold tracking-tight">{tp("title")}</h3>
-          <p className="mt-1 text-sm text-muted-foreground">{tp("subtitle")}</p>
+          <h3 className="text-lg font-semibold tracking-tight">{t("title")}</h3>
+          <p className="mt-1 text-sm text-muted-foreground">{t("subtitle")}</p>
         </div>
         <Button type="button" onClick={openAdd}>
-          {tp("addLine")}
+          {t("addLine")}
         </Button>
       </div>
 
@@ -180,7 +179,7 @@ export function DashboardWholesaleLinesAdmin({
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {sortedCatalog.length === 0 ? (
           <Card className="md:col-span-2 xl:col-span-3">
-            <CardContent className="py-10 text-center text-sm text-muted-foreground">{tp("empty")}</CardContent>
+            <CardContent className="py-10 text-center text-sm text-muted-foreground">{t("empty")}</CardContent>
           </Card>
         ) : (
           sortedCatalog.map((row) => {
@@ -195,26 +194,26 @@ export function DashboardWholesaleLinesAdmin({
                   />
                   <CardTitle className="text-base">{String(row.label ?? "—")}</CardTitle>
                   <CardDescription>
-                    #{id} · {tp("panel")} #{num(row.panel_id)} · {String(row.default_service_type ?? "xray")}
+                    #{id} · {t("panel")} #{num(row.panel_id)} · {String(row.default_service_type ?? "xray")}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm">
                   <div className="space-y-1 rounded-md border bg-muted/30 px-2 py-2">
-                    <p className="text-xs font-medium text-muted-foreground">{tp("tiers")}</p>
+                    <p className="text-xs font-medium text-muted-foreground">{t("tiers")}</p>
                     <ul className="space-y-1 text-xs">
                       {tiersList.map((tr) => (
                         <li key={String(tr.id ?? tr.sort_order)}>
-                          <span className="tabular-nums font-medium">{formatNumber(num(tr.price_per_gb), isFa)}</span>
+                          <span className="font-medium tabular-nums">{formatNumber(num(tr.price_per_gb), isFa)}</span>
                           {" / "}
-                          {tp("gb")} · min {formatNumber(num(tr.min_total_gb), isFa)} {tp("gbShort")} ·{" "}
-                          {formatNumber(num(tr.min_total_toman), isFa)} {tp("toman")}
+                          {t("gb")} · min {formatNumber(num(tr.min_total_gb), isFa)} {t("gbShort")} ·{" "}
+                          {formatNumber(num(tr.min_total_toman), isFa)} {t("toman")}
                         </li>
                       ))}
                     </ul>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Button type="button" variant="secondary" size="sm" onClick={() => openEdit(row)}>
-                      {tp("edit")}
+                      {t("edit")}
                     </Button>
                     <Button
                       type="button"
@@ -223,7 +222,7 @@ export function DashboardWholesaleLinesAdmin({
                       disabled={busy}
                       onClick={() => void deleteLine(id)}
                     >
-                      {tp("delete")}
+                      {t("delete")}
                     </Button>
                   </div>
                 </CardContent>
@@ -234,17 +233,17 @@ export function DashboardWholesaleLinesAdmin({
       </div>
 
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <DashSheetContent side={isFa ? "left" : "right"} className="w-full overflow-y-auto sm:max-w-lg">
+        <DashSheetContent className="w-full overflow-y-auto sm:max-w-lg">
           <SheetHeader>
-            <SheetTitle>{editingId ? tp("editLine") : tp("addLine")}</SheetTitle>
+            <SheetTitle>{editingId ? t("editLine") : t("addLine")}</SheetTitle>
           </SheetHeader>
           <div className="flex flex-col gap-4 px-4 pb-4">
             <div className="space-y-2">
-              <Label>{tp("label")}</Label>
+              <Label>{t("label")}</Label>
               <Input value={label} onChange={(e) => setLabel(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>{tp("badgeColor")}</Label>
+              <Label>{t("badgeColor")}</Label>
               <Input
                 type="color"
                 className="h-10 w-24 p-1"
@@ -253,7 +252,7 @@ export function DashboardWholesaleLinesAdmin({
               />
             </div>
             <div className="space-y-2">
-              <Label>{tp("panel")}</Label>
+              <Label>{t("panel")}</Label>
               <DashSelect
                 value={String(panelId)}
                 onValueChange={(v) => setPanelId(num(v))}
@@ -265,7 +264,7 @@ export function DashboardWholesaleLinesAdmin({
             </div>
             {l2tpEnabled ? (
               <div className="space-y-2">
-                <Label>{tp("serviceType")}</Label>
+                <Label>{t("serviceType")}</Label>
                 <DashSelect
                   value={serviceType}
                   onValueChange={(v) => setServiceType(v === "l2tp" ? "l2tp" : "xray")}
@@ -278,12 +277,12 @@ export function DashboardWholesaleLinesAdmin({
             ) : null}
             {serviceType === "xray" ? (
               <div className="space-y-2">
-                <Label>{tp("inboundId")}</Label>
+                <Label>{t("inboundId")}</Label>
                 <Input value={inboundId} onChange={(e) => setInboundId(e.target.value)} dir="ltr" className="font-mono" />
               </div>
             ) : (
               <div className="space-y-2">
-                <Label>{tp("l2tpServer")}</Label>
+                <Label>{t("l2tpServer")}</Label>
                 <DashSelect
                   value={String(l2tpServerId)}
                   onValueChange={(v) => setL2tpServerId(num(v))}
@@ -299,18 +298,18 @@ export function DashboardWholesaleLinesAdmin({
             )}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label>{tp("sortOrder")}</Label>
+                <Label>{t("sortOrder")}</Label>
                 <Input type="number" value={sortOrder} onChange={(e) => setSortOrder(num(e.target.value))} />
               </div>
               <div className="flex items-end gap-2 pb-2">
                 <input type="checkbox" id="wl-active" checked={active} onChange={(e) => setActive(e.target.checked)} />
-                <Label htmlFor="wl-active">{tp("active")}</Label>
+                <Label htmlFor="wl-active">{t("active")}</Label>
               </div>
             </div>
             <Separator />
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
-                <Label>{tp("tiers")}</Label>
+                <Label>{t("tiers")}</Label>
                 <Button
                   type="button"
                   variant="outline"
@@ -327,16 +326,16 @@ export function DashboardWholesaleLinesAdmin({
                     ])
                   }
                 >
-                  {tp("addTier")}
+                  {t("addTier")}
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground">{tp("tiersHint")}</p>
+              <p className="text-xs text-muted-foreground">{t("tiersHint")}</p>
               <div className="space-y-3">
                 {tiers.map((ti, idx) => (
                   <div key={idx} className="space-y-2 rounded-md border p-3">
                     <div className="grid grid-cols-2 gap-2">
                       <div className="space-y-1">
-                        <Label className="text-xs">{tp("tierSort")}</Label>
+                        <Label className="text-xs">{t("tierSort")}</Label>
                         <Input
                           type="number"
                           value={ti.sort_order}
@@ -348,7 +347,7 @@ export function DashboardWholesaleLinesAdmin({
                         />
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-xs">{tp("pricePerGb")}</Label>
+                        <Label className="text-xs">{t("pricePerGb")}</Label>
                         <Input
                           value={ti.price_per_gb}
                           onChange={(e) =>
@@ -362,7 +361,7 @@ export function DashboardWholesaleLinesAdmin({
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div className="space-y-1">
-                        <Label className="text-xs">{tp("minTotalGb")}</Label>
+                        <Label className="text-xs">{t("minTotalGb")}</Label>
                         <Input
                           value={ti.min_total_gb}
                           onChange={(e) =>
@@ -374,7 +373,7 @@ export function DashboardWholesaleLinesAdmin({
                         />
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-xs">{tp("minTotalToman")}</Label>
+                        <Label className="text-xs">{t("minTotalToman")}</Label>
                         <Input
                           value={ti.min_total_toman}
                           onChange={(e) =>
@@ -393,7 +392,7 @@ export function DashboardWholesaleLinesAdmin({
                       className="text-destructive"
                       onClick={() => setTiers((prev) => prev.filter((_, i) => i !== idx))}
                     >
-                      {tp("removeTier")}
+                      {t("removeTier")}
                     </Button>
                   </div>
                 ))}
@@ -402,10 +401,10 @@ export function DashboardWholesaleLinesAdmin({
           </div>
           <SheetFooter className="flex-row gap-2 border-t px-4 py-3">
             <Button type="button" variant="outline" onClick={() => setSheetOpen(false)}>
-              {tp("cancel")}
+              {t("cancel")}
             </Button>
             <Button type="button" disabled={busy} onClick={() => void saveLine()}>
-              {busy ? "…" : tp("save")}
+              {busy ? "…" : t("save")}
             </Button>
           </SheetFooter>
         </DashSheetContent>

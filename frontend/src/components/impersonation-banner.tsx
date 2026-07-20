@@ -1,36 +1,23 @@
+"use client"
+
 import { useState } from "react"
-import { useTranslation } from "react-i18next"
+import { useLocale, useTranslations } from "next-intl"
 import { ChevronsUpDown } from "lucide-react"
-
 import { Button } from "@/components/ui/button"
-import { apiHeaders, ensureCsrfCookie, normalizeAdminApiPath } from "@/lib/api-base"
+import { stopImpersonation } from "@/lib/impersonation"
 
-export function ImpersonationBanner({
-  targetLabel,
-  restBase,
-  dashboardBaseUrl,
-}: {
-  targetLabel: string
-  restBase: string
-  dashboardBaseUrl: string
-}) {
-  const { t } = useTranslation()
+export function ImpersonationBanner({ targetLabel }: { targetLabel: string }) {
+  const t = useTranslations("layout")
+  const locale = useLocale()
   const [busy, setBusy] = useState(false)
 
   async function stop() {
-    if (busy || !restBase) return
+    if (busy) return
     setBusy(true)
     try {
-      await ensureCsrfCookie()
-      const base = restBase.replace(/\/$/, "")
-      const r = await fetch(`${base}${normalizeAdminApiPath("/dashboard/impersonate/stop")}`, {
-        method: "POST",
-        credentials: "include",
-        headers: apiHeaders(),
-      })
+      const r = await stopImpersonation()
       if (r.ok) {
-        const base = dashboardBaseUrl.replace(/\/?$/, "")
-        window.location.href = `${base}/`
+        window.location.href = `/${locale}/dashboard`
       }
     } finally {
       setBusy(false)
@@ -39,10 +26,11 @@ export function ImpersonationBanner({
 
   return (
     <div
+      data-testid="impersonation-banner"
       className="flex w-full shrink-0 flex-wrap items-center justify-between gap-3 border-b border-amber-200/80 bg-amber-50 px-4 py-2 text-sm dark:border-amber-900/50 dark:bg-amber-950/40"
     >
       <div className="flex min-w-0 flex-1 items-center gap-2">
-        <span className="shrink-0 text-muted-foreground">{t("layout.impersonationBarPrefix")}</span>
+        <span className="shrink-0 text-muted-foreground">{t("impersonationBarPrefix")}</span>
         <Button
           type="button"
           variant="outline"
@@ -63,7 +51,7 @@ export function ImpersonationBanner({
         onClick={() => void stop()}
         disabled={busy}
       >
-        {t("layout.impersonationSwitchToAdmin")}
+        {t("impersonationSwitchToAdmin")}
       </Button>
     </div>
   )

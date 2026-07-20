@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useTranslation } from "react-i18next"
+import { useTranslations } from "next-intl"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -32,9 +32,9 @@ export function SiteSettingsFinanceTab({
   features?: DashboardFeatures | null
   onMutateSuccess?: () => void
 }) {
-  const { t } = useTranslation()
+  const t = useTranslations("siteSettings.finance")
   const { ltrCell } = useDashLocale()
-  const tf = (k: string) => t(`siteSettings.finance.${k}`)
+  const tf = t
 
   const initial = useMemo(
     () => ({

@@ -16,10 +16,10 @@ class InboundQueueService
     }
 
     /** @param  array<string, mixed>  $update */
-    public function enqueue(string $platform, array $update, int $resellerSvpUserId = 0): ?int
+    public function enqueue(string $platform, array $update, int $resellerSvpUserId = 0, int $mirrorBotId = 0): ?int
     {
         if (! Schema::hasTable('svp_inbound_queue')) {
-            ProcessInboundUpdateJob::dispatch($platform, $update, $resellerSvpUserId);
+            ProcessInboundUpdateJob::dispatch($platform, $update, $resellerSvpUserId, $mirrorBotId);
 
             return null;
         }
@@ -29,14 +29,19 @@ class InboundQueueService
             return null;
         }
 
-        return DB::table('svp_inbound_queue')->insertGetId([
+        $row = [
             'platform' => $platform,
             'reseller_svp_user_id' => $resellerSvpUserId,
             'update_json' => $encoded,
             'status' => 'pending',
             'tries' => 0,
             'created_at' => now(),
-        ]);
+        ];
+        if (Schema::hasColumn('svp_inbound_queue', 'mirror_bot_id')) {
+            $row['mirror_bot_id'] = $mirrorBotId;
+        }
+
+        return DB::table('svp_inbound_queue')->insertGetId($row);
     }
 
     public function drainBatch(?int $limit = null): int
@@ -76,7 +81,8 @@ class InboundQueueService
             ProcessInboundUpdateJob::dispatchSync(
                 (string) $row->platform,
                 $update,
-                (int) $row->reseller_svp_user_id
+                (int) $row->reseller_svp_user_id,
+                (int) ($row->mirror_bot_id ?? 0)
             );
 
             DB::table('svp_inbound_queue')->where('id', $id)->update([

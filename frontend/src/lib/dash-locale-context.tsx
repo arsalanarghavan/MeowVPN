@@ -1,93 +1,75 @@
 "use client"
 
+import { createContext, useContext, useMemo, type ReactNode } from "react"
+import { useLocale } from "next-intl"
 import {
-  createContext,
-  useContext,
-  useMemo,
-  type ReactNode,
-} from "react"
-
-import {
-  dashDialogClass,
+  dashActionsClass,
   dashDir,
-  dashIconGapClass,
   dashLtrCell,
+  dashPageHeaderClass,
   dashPageRootClass,
-  dashSheetSide,
   dashTableCellClass,
   dashTableHeadClass,
+  dashSheetSide,
   isDashFa,
   type DashLang,
 } from "@/lib/dash-locale"
+import { cn } from "@/lib/utils"
 
 export type DashLocaleValue = {
   lang: DashLang
   isFa: boolean
   dir: "rtl" | "ltr"
-  sheetSide: "left" | "right"
   pageRootClass: (extra?: string) => string
-  dialogClass: (extra?: string) => string
+  pageHeaderClass: (extra?: string) => string
+  actionsClass: (extra?: string) => string
   tableHeadClass: (extra?: string) => string
   tableCellClass: (opts?: { numeric?: boolean; extra?: string }) => string
   ltrCell: (extra?: string) => string
   iconGapClass: (extra?: string) => string
+  dialogClass: (extra?: string) => string
+  sheetSide: "left" | "right"
 }
 
 const DashLocaleContext = createContext<DashLocaleValue | null>(null)
+
+function buildValue(lang: DashLang): DashLocaleValue {
+  const isFa = isDashFa(lang)
+  return {
+    lang,
+    isFa,
+    dir: dashDir(isFa),
+    pageRootClass: dashPageRootClass,
+    pageHeaderClass: dashPageHeaderClass,
+    actionsClass: dashActionsClass,
+    tableHeadClass: dashTableHeadClass,
+    tableCellClass: dashTableCellClass,
+    ltrCell: dashLtrCell,
+    iconGapClass: (extra?: string) => cn("inline-flex items-center gap-2", extra),
+    dialogClass: (extra?: string) => cn("text-start", extra),
+    sheetSide: dashSheetSide(isFa),
+  }
+}
 
 export function DashLocaleProvider({
   lang,
   children,
 }: {
-  lang: DashLang
+  lang?: DashLang
   children: ReactNode
 }) {
-  const value = useMemo((): DashLocaleValue => {
-    const isFa = isDashFa(lang)
-    return {
-      lang,
-      isFa,
-      dir: dashDir(isFa),
-      sheetSide: dashSheetSide(isFa),
-      pageRootClass: dashPageRootClass,
-      dialogClass: dashDialogClass,
-      tableHeadClass: dashTableHeadClass,
-      tableCellClass: dashTableCellClass,
-      ltrCell: dashLtrCell,
-      iconGapClass: dashIconGapClass,
-    }
-  }, [lang])
-
-  return (
-    <DashLocaleContext.Provider value={value}>{children}</DashLocaleContext.Provider>
-  )
+  const locale = useLocale()
+  const resolved: DashLang = lang ?? (locale === "fa" ? "fa" : "en")
+  const value = useMemo(() => buildValue(resolved), [resolved])
+  return <DashLocaleContext.Provider value={value}>{children}</DashLocaleContext.Provider>
 }
 
 export function useDashLocale(): DashLocaleValue {
   const ctx = useContext(DashLocaleContext)
-  if (!ctx) {
-    throw new Error("useDashLocale must be used within DashLocaleProvider")
-  }
-  return ctx
+  const locale = useLocale()
+  return ctx ?? buildValue(locale === "fa" ? "fa" : "en")
 }
 
-/** Safe when provider is absent (e.g. tests); falls back to FA. */
 export function useDashLocaleOptional(): DashLocaleValue {
-  const ctx = useContext(DashLocaleContext)
-  const lang: DashLang = ctx?.lang ?? "fa"
-  const isFa = isDashFa(lang)
-  return (
-    ctx ?? {
-      lang,
-      isFa,
-      dir: dashDir(isFa),
-      sheetSide: dashSheetSide(isFa),
-      pageRootClass: dashPageRootClass,
-      dialogClass: dashDialogClass,
-      tableHeadClass: dashTableHeadClass,
-      tableCellClass: dashTableCellClass,
-      ltrCell: dashLtrCell,
-      iconGapClass: dashIconGapClass,
-    }
-  )
+  return useDashLocale()
 }

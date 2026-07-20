@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useTranslation } from "react-i18next"
+import { useTranslations } from "next-intl"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -28,9 +28,9 @@ export function SiteSettingsProxyTab({
   settings: DashRecord | undefined
   onMutateSuccess?: () => void
 }) {
-  const { t } = useTranslation()
+  const t = useTranslations("siteSettings.proxy")
   const { ltrCell } = useDashLocale()
-  const tp = (k: string) => t(`siteSettings.proxy.${k}`)
+  const tp = t
   const s = settings ?? {}
 
   const initial = useMemo(

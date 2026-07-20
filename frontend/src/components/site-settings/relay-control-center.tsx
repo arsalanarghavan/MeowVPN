@@ -1,8 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useTranslation } from "react-i18next"
-
+import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -12,7 +11,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { postAdminMutate } from "@/lib/dash-admin-mutate"
 import { useSiteSettingsSave } from "@/lib/use-site-settings-save"
 import { SiteSettingsSaveFeedback } from "@/components/site-settings/site-settings-save-feedback"
-import { useDashLocale } from "@/lib/dash-locale-context"
 import { cn } from "@/lib/utils"
 
 type DashRecord = Record<string, unknown>
@@ -26,7 +24,7 @@ function bool(v: unknown): boolean {
 
 function asStringList(v: unknown): string[] {
   if (!Array.isArray(v)) return []
-  return v.map((x) => String(x)).filter(Boolean)
+  return v.map((x) => String(x).trim()).filter(Boolean)
 }
 
 export function RelayControlCenter({
@@ -36,13 +34,7 @@ export function RelayControlCenter({
   settings: DashRecord | undefined
   onMutateSuccess?: () => void
 }) {
-  const { t } = useTranslation()
-  const { ltrCell } = useDashLocale()
-  const tr = (k: string, fallback?: string) => {
-    const key = `siteSettings.relay.${k}`
-    const v = t(key)
-    return v === key && fallback ? fallback : v
-  }
+  const t = useTranslations("siteSettings.relay")
   const s = settings ?? {}
 
   const initial = useMemo(
@@ -53,13 +45,13 @@ export function RelayControlCenter({
       telegram_relay_admin_url: String(s.telegram_relay_admin_url ?? s.telegram_relay_base_url ?? ""),
       telegram_relay_public_url: String(s.telegram_relay_public_url ?? ""),
       telegram_relay_laravel_forward_url: String(
-        s.telegram_relay_laravel_forward_url ?? s.telegram_relay_wp_forward_url ?? "",
+        s.telegram_relay_laravel_forward_url ?? s.telegram_relay_wp_forward_url ?? ""
       ),
       telegram_relay_allowed_ips: String(s.telegram_relay_allowed_ips ?? ""),
       telegram_relay_admin_ssl_verify: bool(s.telegram_relay_admin_ssl_verify),
       telegram_relay_shared_secret: "",
     }),
-    [s],
+    [s]
   )
 
   const [form, setForm] = useState(initial)
@@ -80,7 +72,9 @@ export function RelayControlCenter({
   const refreshDashboard = useCallback(async () => {
     if (!form.telegram_relay_enabled && !form.telegram_relay_force) return
     const res = await postAdminMutate("telegram_relay_admin_dashboard", {})
-    if (res.ok && res.data && typeof res.data === "object") setDash(res.data as DashRecord)
+    if (res.ok && res.data && typeof res.data === "object") {
+      setDash(res.data as DashRecord)
+    }
   }, [form.telegram_relay_enabled, form.telegram_relay_force])
 
   useEffect(() => {
@@ -97,7 +91,7 @@ export function RelayControlCenter({
       try {
         const res = await postAdminMutate(op, payload)
         if (res.ok) {
-          setActionMsg(tr("actionOk", "Done"))
+          setActionMsg(t("actionOk"))
           if (op === "telegram_relay_admin_logs" && res.data && typeof res.data === "object") {
             setLogs(String((res.data as DashRecord).output ?? ""))
           }
@@ -105,14 +99,14 @@ export function RelayControlCenter({
           await refreshDashboard()
           onMutateSuccess?.()
         } else {
-          setActionMsg(res.message || tr("actionFail", "Failed"))
+          setActionMsg(res.message || t("actionFail"))
         }
         return res
       } finally {
         setBusy("")
       }
     },
-    [onMutateSuccess, refreshDashboard, setError, tr],
+    [onMutateSuccess, refreshDashboard, setError, t]
   )
 
   const onSave = useCallback(async () => {
@@ -142,29 +136,35 @@ export function RelayControlCenter({
     <div className="w-full space-y-4 text-start">
       <Card className={cn(PURPLE)}>
         <CardHeader>
-          <CardTitle className="text-base text-violet-200">{tr("hubTitle", "Relay Control Center")}</CardTitle>
+          <CardTitle className="text-base text-violet-200">{t("hubTitle")}</CardTitle>
           <CardDescription>
-            {tr("hubDesc", "Manage VPS relay from the Laravel dashboard. Admin via VPS IP (443). Domain is for Telegram only.")}{" "}
-            <a
-              href="https://github.com/simplevpbot/simplevpbot/blob/main/relay-server/SETUP-GUIDE-FA.md"
-              target="_blank"
-              rel="noreferrer"
-              className="text-violet-400 underline underline-offset-2"
+            {t("hubDesc")}{" "}
+            <Button
+              variant="link"
+              size="sm"
+              className="h-auto p-0 text-violet-400"
+              render={
+                <a
+                  href="https://github.com/simplevpbot/simplevpbot/blob/main/relay-server/SETUP-GUIDE-FA.md"
+                  target="_blank"
+                  rel="noreferrer"
+                />
+              }
             >
-              {tr("setupGuideLink", "Relay setup guide")}
-            </a>
+              {t("setupGuideLink")}
+            </Button>
           </CardDescription>
         </CardHeader>
       </Card>
 
       <Tabs defaultValue="overview" className="w-full">
         <TabsList className="flex h-auto flex-wrap gap-1 bg-violet-950/40 p-1">
-          <TabsTrigger value="overview">{tr("tabOverview", "Overview")}</TabsTrigger>
-          <TabsTrigger value="connection">{tr("tabConnection", "Connection")}</TabsTrigger>
-          <TabsTrigger value="telegram">{tr("tabTelegram", "Telegram")}</TabsTrigger>
-          <TabsTrigger value="ssl">{tr("tabSsl", "SSL")}</TabsTrigger>
-          <TabsTrigger value="server">{tr("tabServer", "Server")}</TabsTrigger>
-          <TabsTrigger value="wizard">{tr("tabWizard", "Setup")}</TabsTrigger>
+          <TabsTrigger value="overview">{t("tabOverview")}</TabsTrigger>
+          <TabsTrigger value="connection">{t("tabConnection")}</TabsTrigger>
+          <TabsTrigger value="telegram">{t("tabTelegram")}</TabsTrigger>
+          <TabsTrigger value="ssl">{t("tabSsl")}</TabsTrigger>
+          <TabsTrigger value="server">{t("tabServer")}</TabsTrigger>
+          <TabsTrigger value="wizard">{t("tabWizard")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4 pt-4">
@@ -178,16 +178,18 @@ export function RelayControlCenter({
               <Card key={k} className={PURPLE}>
                 <CardContent className="pt-4 text-sm">
                   <p className="text-muted-foreground">{k}</p>
-                  <p className="font-mono text-lg text-violet-100" dir="ltr">{v}</p>
+                  <p className="font-mono text-lg text-violet-100" dir="ltr">
+                    {v}
+                  </p>
                 </CardContent>
               </Card>
             ))}
           </div>
           <p className="text-sm text-muted-foreground">
-            {tr("tenantId", "Tenant")}: <span className="font-mono text-foreground" dir="ltr">{tenantId || "—"}</span>
+            {t("tenantId")}: <span className="font-mono text-foreground" dir="ltr">{tenantId || "—"}</span>
           </p>
           <Button type="button" variant="outline" disabled={busy !== ""} onClick={() => void refreshDashboard()}>
-            {tr("refreshStatus", "Refresh")}
+            {t("refreshStatus")}
           </Button>
         </TabsContent>
 
@@ -195,87 +197,102 @@ export function RelayControlCenter({
           <Card className={PURPLE}>
             <CardContent className="space-y-4 pt-6">
               <div className="flex items-center justify-between gap-3">
-                <Label>{tr("enabled", "Enabled")}</Label>
-                <Switch checked={form.telegram_relay_enabled} onCheckedChange={(v) => setForm((f) => ({ ...f, telegram_relay_enabled: v }))} />
+                <Label htmlFor="telegram_relay_enabled">{t("enabled")}</Label>
+                <Switch
+                  id="telegram_relay_enabled"
+                  checked={form.telegram_relay_enabled}
+                  onCheckedChange={(v) => setForm((f) => ({ ...f, telegram_relay_enabled: v }))}
+                />
               </div>
               <div className="space-y-2">
-                <Label>{tr("vpsIp", "VPS IP")}</Label>
+                <Label htmlFor="telegram_relay_vps_ip">{t("vpsIp")}</Label>
                 <Input
+                  id="telegram_relay_vps_ip"
                   value={form.telegram_relay_vps_ip}
                   onChange={(e) => setForm((f) => ({ ...f, telegram_relay_vps_ip: e.target.value }))}
                   placeholder="203.0.113.5"
                   dir="ltr"
-                  className={ltrCell("font-mono")}
+                  className="font-mono"
                 />
               </div>
               <div className="space-y-2">
-                <Label>{tr("adminUrl", "Admin URL (HTTPS IP)")}</Label>
+                <Label htmlFor="telegram_relay_admin_url">{t("adminUrl")}</Label>
                 <Input
+                  id="telegram_relay_admin_url"
                   value={form.telegram_relay_admin_url}
                   onChange={(e) => setForm((f) => ({ ...f, telegram_relay_admin_url: e.target.value }))}
                   placeholder="https://203.0.113.5"
                   dir="ltr"
-                  className={ltrCell("font-mono")}
+                  className="font-mono"
                 />
               </div>
               <div className="flex items-center justify-between gap-3">
-                <Label>{tr("adminSslVerify", "Verify admin SSL")}</Label>
+                <Label htmlFor="telegram_relay_admin_ssl_verify">{t("adminSslVerify")}</Label>
                 <Switch
+                  id="telegram_relay_admin_ssl_verify"
                   checked={form.telegram_relay_admin_ssl_verify}
                   onCheckedChange={(v) => setForm((f) => ({ ...f, telegram_relay_admin_ssl_verify: v }))}
                 />
               </div>
               <div className="space-y-2">
-                <Label>{tr("sharedSecret", "Shared secret")}</Label>
+                <Label htmlFor="telegram_relay_shared_secret">{t("sharedSecret")}</Label>
                 <Input
+                  id="telegram_relay_shared_secret"
                   type="password"
                   value={form.telegram_relay_shared_secret}
                   onChange={(e) => setForm((f) => ({ ...f, telegram_relay_shared_secret: e.target.value }))}
                   placeholder={secretSet ? "••••••••" : ""}
                   dir="ltr"
-                  className={ltrCell("font-mono")}
+                  className="font-mono"
                 />
               </div>
               <div className="space-y-2">
-                <Label>{tr("allowedIps", "Allowed WP IPs on relay")}</Label>
+                <Label htmlFor="telegram_relay_allowed_ips">{t("allowedIps")}</Label>
                 <Input
+                  id="telegram_relay_allowed_ips"
                   value={form.telegram_relay_allowed_ips}
                   onChange={(e) => setForm((f) => ({ ...f, telegram_relay_allowed_ips: e.target.value }))}
                   placeholder="auto-detected on save"
                   dir="ltr"
-                  className={ltrCell("font-mono")}
+                  className="font-mono"
                 />
               </div>
             </CardContent>
           </Card>
           <SiteSettingsSaveFeedback error={error} okMsg={okMsg} />
           <div className="flex flex-wrap gap-2">
-            <Button type="button" className={PURPLE_BTN} disabled={saving} onClick={() => void onSave()}>{tr("save", "Save")}</Button>
-            <Button type="button" variant="outline" disabled={busy !== ""} onClick={() => void runOp("telegram_relay_test")}>{tr("testConnection", "Test")}</Button>
+            <Button type="button" className={PURPLE_BTN} disabled={saving} onClick={() => void onSave()}>
+              {t("save")}
+            </Button>
+            <Button type="button" variant="outline" disabled={busy !== ""} onClick={() => void runOp("telegram_relay_test")}>
+              {t("testConnection")}
+            </Button>
           </div>
         </TabsContent>
 
         <TabsContent value="telegram" className="space-y-4 pt-4">
           <div className="space-y-2">
-            <Label>{tr("laravelForwardUrl", "Laravel forward URL")}</Label>
+            <Label htmlFor="telegram_relay_laravel_forward_url">{t("laravelForwardUrl")}</Label>
             <Input
+              id="telegram_relay_laravel_forward_url"
               value={form.telegram_relay_laravel_forward_url}
               onChange={(e) =>
                 setForm((f) => ({ ...f, telegram_relay_laravel_forward_url: e.target.value }))
               }
               placeholder="https://api.example.com"
               dir="ltr"
-              className={ltrCell("font-mono")}
+              className="font-mono"
             />
           </div>
           <div className="space-y-2">
-            <Label>{tr("publicUrl", "Telegram public URL (domain)")}</Label>
+            <Label htmlFor="telegram_relay_public_url">{t("publicUrl")}</Label>
             <Input
+              id="telegram_relay_public_url"
               value={form.telegram_relay_public_url}
               onChange={(e) => setForm((f) => ({ ...f, telegram_relay_public_url: e.target.value }))}
               placeholder="https://tg.example.com"
               dir="ltr"
-              className={ltrCell("font-mono")}
+              className="font-mono"
             />
           </div>
           <ul className="list-inside list-disc font-mono text-xs" dir="ltr">
@@ -284,9 +301,15 @@ export function RelayControlCenter({
             ))}
           </ul>
           <div className="flex flex-wrap gap-2">
-            <Button type="button" className={PURPLE_BTN} disabled={busy !== ""} onClick={() => void runOp("telegram_relay_sync")}>{tr("syncConfig", "Sync config")}</Button>
-            <Button type="button" variant="outline" disabled={busy !== ""} onClick={() => void runOp("telegram_relay_domains_sync")}>{tr("syncDomains", "Sync domains")}</Button>
-            <Button type="button" variant="outline" disabled={busy !== ""} onClick={() => void runOp("telegram_relay_set_webhook")}>{tr("setWebhook", "Set webhook")}</Button>
+            <Button type="button" className={PURPLE_BTN} disabled={busy !== ""} onClick={() => void runOp("telegram_relay_sync")}>
+              {t("syncConfig")}
+            </Button>
+            <Button type="button" variant="outline" disabled={busy !== ""} onClick={() => void runOp("telegram_relay_domains_sync")}>
+              {t("syncDomains")}
+            </Button>
+            <Button type="button" variant="outline" disabled={busy !== ""} onClick={() => void runOp("telegram_relay_set_webhook")}>
+              {t("setWebhook")}
+            </Button>
           </div>
         </TabsContent>
 
@@ -300,48 +323,74 @@ export function RelayControlCenter({
               type="button"
               className={PURPLE_BTN}
               disabled={busy !== "" || !sslDomain}
-              onClick={() => void runOp("telegram_relay_admin_ssl_issue", { domain: sslDomain, email: sslEmail, method: "certbot" })}
+              onClick={() =>
+                void runOp("telegram_relay_admin_ssl_issue", {
+                  domain: sslDomain,
+                  email: sslEmail,
+                  method: "certbot",
+                })
+              }
             >
-              {tr("sslIssue", "Issue SSL")}
+              {t("sslIssue")}
             </Button>
             <Button type="button" variant="outline" disabled={busy !== ""} onClick={() => void runOp("telegram_relay_admin_ssl_renew", { method: "certbot" })}>
-              {tr("sslRenew", "Renew")}
+              {t("sslRenew")}
             </Button>
             <Button type="button" variant="outline" disabled={busy !== ""} onClick={() => void runOp("telegram_relay_admin_ssl_status")}>
-              {tr("sslStatus", "Status")}
+              {t("sslStatus")}
             </Button>
           </div>
           {sslStatus ? (
-            <pre className="max-h-48 overflow-auto rounded-md border bg-muted/40 p-2 text-xs" dir="ltr">{JSON.stringify(sslStatus, null, 2)}</pre>
+            <pre className="max-h-48 overflow-auto rounded-md border bg-muted/40 p-2 text-xs" dir="ltr">
+              {JSON.stringify(sslStatus, null, 2)}
+            </pre>
           ) : null}
         </TabsContent>
 
         <TabsContent value="server" className="space-y-4 pt-4">
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" disabled={busy !== ""} onClick={() => void runOp("telegram_relay_admin_nginx_render")}>{tr("nginxRender", "Nginx render")}</Button>
-            <Button type="button" variant="outline" disabled={busy !== ""} onClick={() => void runOp("telegram_relay_admin_nginx_test")}>{tr("nginxTest", "Nginx test")}</Button>
-            <Button type="button" variant="outline" disabled={busy !== ""} onClick={() => void runOp("telegram_relay_admin_nginx_reload")}>{tr("nginxReload", "Nginx reload")}</Button>
-            <Button type="button" variant="outline" disabled={busy !== ""} onClick={() => void runOp("telegram_relay_admin_service_restart")}>{tr("serviceRestart", "Restart relay")}</Button>
-            <Button type="button" variant="outline" disabled={busy !== ""} onClick={() => void runOp("telegram_relay_admin_update")}>{tr("relayUpdate", "Update relay")}</Button>
-            <Button type="button" variant="outline" disabled={busy !== ""} onClick={() => void runOp("telegram_relay_admin_logs", { lines: 100 })}>{tr("viewLogs", "Logs")}</Button>
-            <Button type="button" variant="outline" disabled={busy !== ""} onClick={() => void runOp("telegram_relay_admin_doctor")}>{tr("doctor", "Doctor")}</Button>
+            <Button type="button" variant="outline" disabled={busy !== ""} onClick={() => void runOp("telegram_relay_admin_nginx_render")}>
+              {t("nginxRender")}
+            </Button>
+            <Button type="button" variant="outline" disabled={busy !== ""} onClick={() => void runOp("telegram_relay_admin_nginx_test")}>
+              {t("nginxTest")}
+            </Button>
+            <Button type="button" variant="outline" disabled={busy !== ""} onClick={() => void runOp("telegram_relay_admin_nginx_reload")}>
+              {t("nginxReload")}
+            </Button>
+            <Button type="button" variant="outline" disabled={busy !== ""} onClick={() => void runOp("telegram_relay_admin_service_restart")}>
+              {t("serviceRestart")}
+            </Button>
+            <Button type="button" variant="outline" disabled={busy !== ""} onClick={() => void runOp("telegram_relay_admin_update")}>
+              {t("relayUpdate")}
+            </Button>
+            <Button type="button" variant="outline" disabled={busy !== ""} onClick={() => void runOp("telegram_relay_admin_logs", { lines: 100 })}>
+              {t("viewLogs")}
+            </Button>
+            <Button type="button" variant="outline" disabled={busy !== ""} onClick={() => void runOp("telegram_relay_admin_doctor")}>
+              {t("doctor")}
+            </Button>
           </div>
-          {logs ? <pre className="max-h-64 overflow-auto rounded-md border bg-muted/40 p-2 text-xs" dir="ltr">{logs}</pre> : null}
+          {logs ? (
+            <pre className="max-h-64 overflow-auto rounded-md border bg-muted/40 p-2 text-xs" dir="ltr">
+              {logs}
+            </pre>
+          ) : null}
         </TabsContent>
 
         <TabsContent value="wizard" className="space-y-4 pt-4">
           <Card className={PURPLE}>
             <CardContent className="space-y-2 pt-6 text-sm">
-              <p>1. {tr("wizInstall", "Install relay on VPS: curl install-from-github.sh")}</p>
-              <p>2. {tr("wizIp", "Enter VPS IP in Connection tab")}</p>
-              <p>3. {tr("wizSecret", "Copy RELAY_MASTER_SECRET to shared secret")}</p>
-              <p>4. {tr("wizSave", "Save — auto sync runs")}</p>
-              <p>5. {tr("wizDomain", "Set Telegram domain + Sync domains + SSL")}</p>
-              <p>6. {tr("wizWebhook", "Set webhook via relay")}</p>
+              <p>1. {t("wizInstall")}</p>
+              <p>2. {t("wizIp")}</p>
+              <p>3. {t("wizSecret")}</p>
+              <p>4. {t("wizSave")}</p>
+              <p>5. {t("wizDomain")}</p>
+              <p>6. {t("wizWebhook")}</p>
             </CardContent>
           </Card>
           <Button type="button" className={PURPLE_BTN} disabled={busy !== ""} onClick={() => void runOp("telegram_relay_auto_sync")}>
-            {tr("runAutoSync", "Run full auto-sync")}
+            {t("runAutoSync")}
           </Button>
         </TabsContent>
       </Tabs>

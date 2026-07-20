@@ -30,23 +30,23 @@ export function htmlToBalePreviewMarkdown(html: string): string {
     .replace(/<p[^>]*>/gi, "")
     .replace(/<\/p>/gi, "\n")
 
-  t = t.replace(/<(b|strong)>(.*?)<\/\1>/gis, (_, __, inner: string) => baleBold(inner))
-  t = t.replace(/<(i|em)>(.*?)<\/\1>/gis, (_, __, inner: string) => baleItalic(inner))
+  t = t.replace(/<(b|strong)>(.*?)<\/\1>/gi, (_, __, inner: string) => baleBold(inner))
+  t = t.replace(/<(i|em)>(.*?)<\/\1>/gi, (_, __, inner: string) => baleItalic(inner))
   t = t.replace(
-    /<a\b[^>]*href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gis,
+    /<a\b[^>]*href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi,
     (_, href: string, label: string) => {
       const lab = stripTags(label).trim() || href
       return `[${escapeLinkLabel(lab)}](${href})`
     },
   )
-  t = t.replace(/<pre[^>]*>(.*?)<\/pre>/gis, (_, inner: string) => `\n${stripTags(inner).trim()}\n`)
-  t = t.replace(/<code[^>]*>(.*?)<\/code>/gis, (_, inner: string) => stripTags(inner))
-  t = t.replace(/<blockquote[^>]*>(.*?)<\/blockquote>/gis, (_, inner: string) => {
+  t = t.replace(/<pre[^>]*>(.*?)<\/pre>/gi, (_, inner: string) => `\n${stripTags(inner).trim()}\n`)
+  t = t.replace(/<code[^>]*>(.*?)<\/code>/gi, (_, inner: string) => stripTags(inner))
+  t = t.replace(/<blockquote[^>]*>(.*?)<\/blockquote>/gi, (_, inner: string) => {
     const plain = stripTags(inner).replace(/\s+/g, " ").trim()
     return plain ? `\n« ${plain} »\n` : ""
   })
-  t = t.replace(/<tg-spoiler[^>]*>(.*?)<\/tg-spoiler>/gis, (_, inner: string) => `▒${stripTags(inner).trim()}▒`)
-  t = t.replace(/<span[^>]*class=["'][^"']*tg-spoiler[^"']*["'][^>]*>(.*?)<\/span>/gis, (_, inner: string) =>
+  t = t.replace(/<tg-spoiler[^>]*>(.*?)<\/tg-spoiler>/gi, (_, inner: string) => `▒${stripTags(inner).trim()}▒`)
+  t = t.replace(/<span[^>]*class=["'][^"']*tg-spoiler[^"']*["'][^>]*>(.*?)<\/span>/gi, (_, inner: string) =>
     `▒${stripTags(inner).trim()}▒`,
   )
   t = stripTags(t)

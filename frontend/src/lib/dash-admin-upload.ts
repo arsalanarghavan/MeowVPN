@@ -1,18 +1,14 @@
-import { apiBase, apiHeaders, normalizeAdminApiPath } from "./api-base"
+import { apiBase, apiHeaders, ensureCsrfCookie } from "@/lib/api"
 
 export type MediaUploadResult = { ok: true; url: string } | { ok: false; message: string }
 
 export async function postDashboardMediaUpload(file: File): Promise<MediaUploadResult> {
-  const boot = window.__SIMPLEVPBOT_DASH__ || {}
-  const restBase = apiBase(boot as Record<string, unknown>)
-  if (!restBase) {
-    return { ok: false, message: "no_rest" }
-  }
+  await ensureCsrfCookie()
   const fd = new FormData()
   fd.append("file", file)
-  const headers = apiHeaders() as Record<string, string>
-  delete headers["Content-Type"]
-  const res = await fetch(`${restBase}${normalizeAdminApiPath("/dashboard/admin/media")}`, {
+  const headers = apiHeaders()
+  headers.delete("Content-Type")
+  const res = await fetch(`${apiBase()}/admin/media`, {
     method: "POST",
     headers,
     credentials: "include",
@@ -24,17 +20,16 @@ export async function postDashboardMediaUpload(file: File): Promise<MediaUploadR
     try {
       json = JSON.parse(text) as Record<string, unknown>
     } catch {
-      const snippet = text.replace(/\s+/g, " ").trim().slice(0, 120)
-      return {
-        ok: false,
-        message: snippet ? `bad_json (${res.status}: ${snippet})` : `bad_json (${res.status})`,
-      }
+      return { ok: false, message: `bad_json (${res.status})` }
     }
   } else if (!res.ok) {
     return { ok: false, message: `http_${res.status}` }
   }
   if (!json.ok) {
-    return { ok: false, message: typeof json.message === "string" ? json.message : "upload_failed" }
+    return {
+      ok: false,
+      message: typeof json.message === "string" ? json.message : "upload_failed",
+    }
   }
   const url = typeof json.url === "string" ? json.url : ""
   if (!url) return { ok: false, message: "no_url" }

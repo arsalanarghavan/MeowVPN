@@ -4,6 +4,7 @@ namespace App\Modules\Marketing\Services;
 
 use App\Models\SvpUser;
 use App\Modules\Core\Services\UserBotNotifyService;
+use App\Services\Marketing\MarketingGuardService;
 use App\Services\SettingsStore;
 use Illuminate\Support\Facades\DB;
 
@@ -15,16 +16,21 @@ class MarketingAutomationService
         protected MarketingSegmentService $segments,
         protected UserBotNotifyService $notify,
         protected SettingsStore $settings,
+        protected MarketingGuardService $guard,
     ) {}
 
     /** @return array{processed:int, sent:int} */
     public function runCron(): array
     {
-        if (! $this->settings->get('enabled', true)) {
+        $this->guard->expireStaleOffers();
+        if ($this->guard->cronBlockReason() !== '') {
+            $stats = ['processed' => 0, 'sent' => 0, 'skipped' => 0];
+            $this->guard->touchLastCronRun($stats);
+
             return ['processed' => 0, 'sent' => 0];
         }
 
-        $stats = ['processed' => 0, 'sent' => 0];
+        $stats = ['processed' => 0, 'sent' => 0, 'skipped' => 0];
         $owners = DB::table('svp_marketing_rules')
             ->where('enabled', true)
             ->distinct()
@@ -36,15 +42,18 @@ class MarketingAutomationService
             $part = $this->runForOwner($owner, self::BATCH_PER_RULE);
             $stats['processed'] += $part['processed'];
             $stats['sent'] += $part['sent'];
+            $stats['skipped'] += $part['skipped'] ?? 0;
         }
 
-        return $stats;
+        $this->guard->touchLastCronRun($stats);
+
+        return ['processed' => $stats['processed'], 'sent' => $stats['sent']];
     }
 
-    /** @return array{processed:int, sent:int} */
+    /** @return array{processed:int, sent:int, skipped:int} */
     public function runForOwner(int $ownerSvpUserId, int $limit = 40): array
     {
-        $stats = ['processed' => 0, 'sent' => 0];
+        $stats = ['processed' => 0, 'sent' => 0, 'skipped' => 0];
         $rules = DB::table('svp_marketing_rules')
             ->where('enabled', true)
             ->where('owner_svp_user_id', $ownerSvpUserId)
@@ -54,8 +63,19 @@ class MarketingAutomationService
         foreach ($rules as $rule) {
             foreach ($this->segments->eligibleUserIdsForRule($rule, $ownerSvpUserId, $limit) as $uid) {
                 ++$stats['processed'];
+                $user = SvpUser::query()->find($uid);
+                $check = $this->guard->canSendToUser($user, $rule, false);
+                if (! ($check['ok'] ?? false)) {
+                    ++$stats['skipped'];
+                    if ($user && (int) ($rule->id ?? 0) > 0) {
+                        $this->guard->recordSkip($rule, $uid, (string) ($check['reason'] ?? 'blocked'));
+                    }
+                    continue;
+                }
                 if ($this->issueAndSendForUser($rule, $uid)) {
                     ++$stats['sent'];
+                } else {
+                    ++$stats['skipped'];
                 }
             }
         }
@@ -280,5 +300,61 @@ class MarketingAutomationService
         }
 
         return 'telegram';
+    }
+
+    /** Enable owner=0 lifecycle rules and mark confirmed (WP confirm_lifecycle_defaults). */
+    public function confirmLifecycleDefaults(): int
+    {
+        DB::table('svp_marketing_rules')
+            ->where('owner_svp_user_id', 0)
+            ->update(['enabled' => true, 'updated_at' => now()]);
+
+        $this->settings->set('marketing_lifecycle_confirmed', true);
+
+        return (int) DB::table('svp_marketing_rules')
+            ->where('owner_svp_user_id', 0)
+            ->where('enabled', true)
+            ->count();
+    }
+
+    /**
+     * Preview merged marketing message for a rule (WP Marketing_Automation::preview_message).
+     *
+     * @return array{ok:bool, message?:string, code?:string}
+     */
+    public function previewMessage(int $ruleId, int $userId = 0): array
+    {
+        if ($ruleId < 1) {
+            return ['ok' => false, 'message' => 'invalid_rule'];
+        }
+        $rule = DB::table('svp_marketing_rules')->where('id', $ruleId)->first();
+        if (! $rule) {
+            return ['ok' => false, 'message' => 'rule_not_found'];
+        }
+
+        $user = $userId > 0 ? SvpUser::query()->find($userId) : null;
+        if (! $user) {
+            $user = new SvpUser([
+                'id' => 0,
+                'first_name' => 'مشتری',
+                'status' => 'approved',
+            ]);
+        }
+
+        $codeRow = (object) [
+            'code' => 'PREVIEW-CODE',
+            'discount_type' => (string) ($rule->discount_type ?? 'percent'),
+            'discount_value' => (float) ($rule->discount_value ?? 10),
+            'max_discount_toman' => $rule->max_discount_toman ?? null,
+            'valid_until' => now()->addDays(3)->toDateTimeString(),
+        ];
+
+        $text = $this->buildMessage($rule, $user, $codeRow, 0);
+
+        return [
+            'ok' => true,
+            'message' => $text,
+            'code' => 'PREVIEW-CODE',
+        ];
     }
 }

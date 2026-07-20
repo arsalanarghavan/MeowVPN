@@ -22,11 +22,11 @@ class AdminStateContext
         public bool $isReseller,
         public bool $isAdmin,
         public int $actorSvpUserId,
+        public Request $request,
         /** @var array<int, int> */
         public array $moderatableUserIds = [],
         /** @var array<int, int> */
         public array $allowedPanelIds = [],
-        public Request $request,
     ) {}
 
     public static function fromRequest(Request $request, DashboardUser $actor): self
@@ -70,7 +70,7 @@ class AdminStateContext
 
     public function needsPanelHealth(): bool
     {
-        return in_array($this->activeTab, ['dashboard', 'monitoring', 'xui_panels'], true)
+        return in_array($this->activeTab, ['dashboard', 'monitoring', 'xui_panels', 'vpn_server', 'xray_core'], true)
             || $this->refreshPanelHealth;
     }
 
@@ -88,6 +88,7 @@ class AdminStateContext
         return in_array($this->activeTab, [
             'plans', 'plan_cats', 'cards', 'monitoring', 'xui_panels', 'reseller_panels',
             'resellers', 'reseller_xui_panels', 'dashboard', 'discounts', 'l2tp_servers',
+            'xray_core', 'xray_inbounds', 'xray_hosts', 'vpn_server', 'tunnel_nodes',
             'users', 'users_bulk', 'configs', 'site_settings',
         ], true) || $this->isReseller;
     }
@@ -112,12 +113,22 @@ class AdminStateContext
             return true;
         }
 
-        return ! $this->isReseller && in_array($this->activeTab, ['resellers', 'reseller_xui_panels', 'dashboard'], true);
+        return ! $this->isReseller && in_array($this->activeTab, ['resellers', 'reseller_xui_panels', 'dashboard', 'site_settings'], true);
     }
 
     public function needsReceipts(): bool
     {
-        return $this->activeTab === 'receipts' || $this->activeTab === 'dashboard';
+        return $this->needsPayments();
+    }
+
+    public function needsPayments(): bool
+    {
+        return in_array($this->activeTab, ['payments', 'receipts', 'dashboard'], true);
+    }
+
+    public function needsPanelFinancialReports(): bool
+    {
+        return $this->activeTab === 'panel_financial_reports';
     }
 
     public function needsBroadcasts(): bool
@@ -147,7 +158,7 @@ class AdminStateContext
 
     public function needsMonitoring(): bool
     {
-        return in_array($this->activeTab, ['dashboard', 'monitoring', 'xui_panels'], true);
+        return in_array($this->activeTab, ['dashboard', 'monitoring', 'xui_panels', 'vpn_server', 'xray_core', 'tunnel_nodes'], true);
     }
 
     public function needsReferral(): bool

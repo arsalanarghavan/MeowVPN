@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useId, useRef, useState } from "react"
-import { useTranslation } from "react-i18next"
+import { useTranslations } from "next-intl"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -25,32 +25,31 @@ export function ImageUrlField({
   placeholder?: string
   onUploadError?: (message: string) => void
 }) {
-  const { ltrCell } = useDashLocale()
-  const { t } = useTranslation()
-  const tp = (k: string) => t(`siteSettings.whitelabel.${k}`)
   const autoId = useId()
-  const id = idProp ?? autoId
   const fileRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
+  const { ltrCell } = useDashLocale()
+  const t = useTranslations("siteSettings.whitelabel")
+  const id = idProp ?? autoId
 
   const onPickFile = useCallback(
     async (files: FileList | null) => {
-      const f = files?.item(0)
-      if (!f) return
+      const file = files?.item(0)
+      if (!file) return
       setUploading(true)
       try {
-        const r = await postDashboardMediaUpload(f)
-        if (!r.ok) {
-          onUploadError?.(r.message || tp("uploadError"))
+        const res = await postDashboardMediaUpload(file)
+        if (!res.ok) {
+          onUploadError?.(res.message || t("uploadError"))
           return
         }
-        onChange(r.url)
+        onChange(res.url)
       } finally {
         setUploading(false)
         if (fileRef.current) fileRef.current.value = ""
       }
     },
-    [onChange, onUploadError, tp]
+    [onChange, onUploadError, t]
   )
 
   const preview = value.trim()
@@ -58,11 +57,12 @@ export function ImageUrlField({
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>{label}</Label>
-      <div className={cn("flex flex-wrap items-start gap-2")}>
+      <div className="flex flex-wrap items-start gap-2">
         {preview ? (
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={preview}
-            alt={tp("imagePreview")}
+            alt={t("imagePreview")}
             className="size-12 shrink-0 rounded-md border object-cover"
           />
         ) : null}
@@ -73,9 +73,9 @@ export function ImageUrlField({
             onChange={(e) => onChange(e.target.value)}
             placeholder={placeholder}
             dir="ltr"
-            className={ltrCell("font-mono")}
+            className={cn(ltrCell("font-mono"))}
           />
-          <div className={cn("flex gap-2")}>
+          <div className="flex gap-2">
             <input
               ref={fileRef}
               type="file"
@@ -90,7 +90,7 @@ export function ImageUrlField({
               disabled={uploading}
               onClick={() => fileRef.current?.click()}
             >
-              {uploading ? tp("uploading") : tp("upload")}
+              {uploading ? t("uploading") : t("upload")}
             </Button>
           </div>
         </div>

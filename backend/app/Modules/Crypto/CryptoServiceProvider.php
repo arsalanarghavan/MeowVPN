@@ -24,8 +24,7 @@ class CryptoServiceProvider extends AbstractModuleServiceProvider
         if ($handlers !== []) {
             $this->app->make(MutationRegistry::class)->registerMany($handlers);
         }
-        if (svp_modules()->isEnabled($this->moduleKey())) {
-            $this->loadRoutesFrom(__DIR__.'/routes.php');
-        }
+        // Always register IPN/callback routes; controllers gate on module enablement.
+        $this->loadRoutesFrom(__DIR__.'/routes.php');
     }
 }

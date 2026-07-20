@@ -14,8 +14,10 @@ class SvpPlan extends Model
 
     protected $fillable = [
         'name', 'category', 'duration_days', 'traffic_gb', 'price', 'pricing_type',
-        'price_per_gb', 'traffic_gb_min', 'traffic_gb_max', 'clients_count', 'inbound_id',
-        'panel_id', 'wholesale_line_id', 'service_type', 'l2tp_server_id', 'active', 'sort_order', 'created_at',
+        'quota_display_mode', 'price_per_gb', 'traffic_gb_min', 'traffic_gb_max', 'clients_count',
+        'inbound_id', 'inbound_ids', 'panel_template_id', 'panel_id', 'wholesale_line_id',
+        'owner_svp_user_id', 'service_type', 'l2tp_server_id', 'active', 'sort_order', 'created_at',
+        'panel_driver', 'xray_inbound_ref',
     ];
 
     protected function casts(): array

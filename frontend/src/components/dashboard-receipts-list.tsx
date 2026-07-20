@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useTranslation } from "react-i18next"
+import { useTranslations } from "next-intl"
 
 import { DashboardDateTimePicker } from "@/components/dashboard-datetime-picker"
 import { Badge } from "@/components/ui/badge"
@@ -197,9 +197,10 @@ export function DashboardReceiptsList({
   embedEmptyHint?: string
 }) {
   const { isFa } = useDashLocale()
-  const { t } = useTranslation()
-  const tp = (k: string, opts?: Record<string, string | number>) => t(`receiptsAdmin.${k}`, opts)
-  const tw = (k: string, opts?: Record<string, string | number>) => t(`resellerFinance.${k}`, opts)
+  const tReceipts = useTranslations("receiptsAdmin")
+  const tFinance = useTranslations("resellerFinance")
+  const tp = (k: string, opts?: Record<string, string | number>) => tReceipts(k, opts)
+  const tw = (k: string, opts?: Record<string, string | number>) => tFinance(k, opts)
 
   const hideUserColumns = variant === "userEmbed"
   const compactTableOnly = variant === "userEmbed"
@@ -462,8 +463,8 @@ export function DashboardReceiptsList({
 
       <p className="text-xs text-muted-foreground">
         {pagination
-          ? t("receiptsAdmin.listPaginationHint", { total: formatNumber(pagination.total, isFa) })
-          : t("receiptsAdmin.sampleHint", { n: receipts.length })}
+          ? tp("listPaginationHint", { total: formatNumber(pagination.total, isFa) })
+          : tp("sampleHint", { n: receipts.length })}
       </p>
 
       <Separator />

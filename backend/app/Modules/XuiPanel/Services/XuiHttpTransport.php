@@ -9,6 +9,16 @@ class XuiHttpTransport
 {
     private int $requestTimeoutSec = 90;
 
+    /** @var array<string, bool> */
+    protected array $readyState = [];
+
+    /** @var array{login_attempts:int, session_reuse:int, probes:int} */
+    protected array $sessionStats = [
+        'login_attempts' => 0,
+        'session_reuse' => 0,
+        'probes' => 0,
+    ];
+
     public function __construct(
         protected XuiPanelContext $ctx,
         protected XuiSessionStore $sessions,
@@ -19,6 +29,132 @@ class XuiHttpTransport
         $this->sessions->clear($this->ctx->panelId);
         $this->ctx->resolvedAuthBase = '';
         $this->ctx->lastAuthFlow = '';
+        $this->readyState = [];
+    }
+
+    /** @return array{login_attempts:int, session_reuse:int, probes:int, panel_id:int} */
+    public function getSessionStats(): array
+    {
+        return array_merge($this->sessionStats, ['panel_id' => $this->ctx->panelId]);
+    }
+
+    protected function bumpSessionStat(string $stat): void
+    {
+        if (isset($this->sessionStats[$stat])) {
+            $this->sessionStats[$stat]++;
+        }
+    }
+
+    protected function readyCacheKey(bool $cookieOnly): string
+    {
+        return ($cookieOnly ? 'cookie:' : 'api:').(string) $this->ctx->panelId;
+    }
+
+    protected function probeHttpOk(int $code): bool
+    {
+        return $code >= 200 && $code < 300;
+    }
+
+    public function probePanelSession(bool $cookieOnly = false): bool
+    {
+        if ($this->ctx->panelRoot() === '') {
+            return false;
+        }
+        $this->bumpSessionStat('probes');
+        $url = $this->resolveUrl('server/status', 'api');
+        $headers = ['Accept' => 'application/json'];
+        $creds = $this->ctx->credentials();
+        $token = $cookieOnly ? '' : trim((string) ($creds['panel_api_token'] ?? ''));
+        if ($token !== '') {
+            $headers['Authorization'] = 'Bearer '.$token;
+        } else {
+            $cookie = $this->sessions->getCookie($this->ctx->panelId);
+            if ($cookie === '') {
+                return false;
+            }
+            $headers['Cookie'] = $cookie;
+            $csrf = $this->sessions->getCsrf($this->ctx->panelId);
+            if ($csrf !== '') {
+                $headers['X-CSRF-Token'] = $csrf;
+            }
+        }
+        $code = Http::timeout(12)->withHeaders($headers)->get($url)->status();
+
+        return $this->probeHttpOk($code);
+    }
+
+    public function ensureReady(bool $forceReauth = false, bool $cookieOnly = false): bool
+    {
+        $cacheKey = $this->readyCacheKey($cookieOnly);
+        if (! $forceReauth && isset($this->readyState[$cacheKey])) {
+            return $this->readyState[$cacheKey];
+        }
+        if ($this->ctx->panelRoot() === '') {
+            $this->readyState[$cacheKey] = false;
+
+            return false;
+        }
+        if (! $cookieOnly && $this->ctx->hasApiToken()) {
+            if (! $forceReauth && $this->probePanelSession(false)) {
+                $this->bumpSessionStat('session_reuse');
+                $this->ctx->lastAuthFlow = 'bearer';
+                $this->readyState[$cacheKey] = true;
+
+                return true;
+            }
+            $this->readyState[$cacheKey] = false;
+
+            return false;
+        }
+        if (! $this->ctx->hasCookieCredentials()) {
+            $this->readyState[$cacheKey] = false;
+
+            return false;
+        }
+        if (! $forceReauth && $this->sessions->getCookie($this->ctx->panelId) !== ''
+            && $this->probePanelSession(true)) {
+            $this->bumpSessionStat('session_reuse');
+            $this->readyState[$cacheKey] = true;
+
+            return true;
+        }
+        if ($this->loginWithCookieSession(6, 350000)) {
+            $this->bumpSessionStat('login_attempts');
+            $this->readyState[$cacheKey] = true;
+
+            return true;
+        }
+        $this->readyState[$cacheKey] = false;
+
+        return false;
+    }
+
+    public function diagUrl(string $path, string $scope = 'api'): string
+    {
+        return $this->resolveUrl($path, $scope);
+    }
+
+    /** @param  array{ok?:bool, json?:array|null}  $r */
+    public function parseConfigJsonResponse(array $r): string|false
+    {
+        if (empty($r['ok']) || ! is_array($r['json'] ?? null)) {
+            return false;
+        }
+        $json = $r['json'];
+        if (! isset($json['obj'])) {
+            return false;
+        }
+        $obj = $json['obj'];
+        if (is_string($obj)) {
+            return $obj;
+        }
+        if (is_array($obj)) {
+            $encoded = json_encode($obj, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+            return is_string($encoded) ? $encoded : false;
+        }
+
+        return false;
     }
 
     public function loginWithRetries(int $maxAttempts = 6, int $delayUs = 350000): bool
@@ -64,6 +200,14 @@ class XuiHttpTransport
         return $this->loginViaCookieSession();
     }
 
+    public function setRequestTimeout(int $seconds): int
+    {
+        $prev = $this->requestTimeoutSec;
+        $this->requestTimeoutSec = max(5, $seconds);
+
+        return $prev;
+    }
+
     /**
      * @param  array<string, mixed>  $body
      * @return array{ok:bool, code:int, body:string, json:array|null, url:string}
@@ -74,10 +218,11 @@ class XuiHttpTransport
         array $body = [],
         bool $sessionOnly = false,
         int $retry = 2,
+        bool $binary = false,
     ): array {
         $path = ltrim($path, '/');
         $url = $this->resolveUrl($path, 'api');
-        $headers = ['Accept' => 'application/json'];
+        $headers = ['Accept' => $binary ? 'application/octet-stream,*/*' : 'application/json'];
         $creds = $this->ctx->credentials();
         $token = $sessionOnly ? '' : trim((string) ($creds['panel_api_token'] ?? ''));
         if ($token !== '') {
@@ -95,18 +240,18 @@ class XuiHttpTransport
 
         $pending = Http::timeout($this->requestTimeoutSec)->withHeaders($headers);
         $response = strtoupper($method) === 'POST'
-            ? $pending->post($url, $body)
+            ? ($body === [] ? $pending->post($url) : $pending->post($url, $body))
             : $pending->get($url);
 
         $code = $response->status();
         $raw = (string) $response->body();
-        $json = json_decode($raw, true);
+        $json = $binary ? null : json_decode($raw, true);
         $json = is_array($json) ? $json : null;
 
         if (in_array($code, [401, 403], true) && $retry > 0 && $token === '') {
             $this->clearSession();
             if ($this->loginWithCookieSession(4, 300000)) {
-                return $this->request($path, $method, $body, $sessionOnly, $retry - 1);
+                return $this->request($path, $method, $body, $sessionOnly, $retry - 1, $binary);
             }
         }
 
@@ -117,6 +262,74 @@ class XuiHttpTransport
             'json' => $json,
             'url' => $url,
         ];
+    }
+
+    /**
+     * Multipart POST server/importDB (SQLite upload).
+     *
+     * @return array{ok:bool, message?:string, code?:int, json?:array|null}
+     */
+    public function requestImportDb(string $dbPath, string $filename = 'x-ui.db', int $retry = 2): array
+    {
+        if ($dbPath === '' || ! is_readable($dbPath)) {
+            return ['ok' => false, 'message' => 'unreadable_db'];
+        }
+        $data = (string) file_get_contents($dbPath);
+        if ($data === '') {
+            return ['ok' => false, 'message' => 'read_failed'];
+        }
+        $fn = preg_replace('/[^a-zA-Z0-9._-]/', '', $filename) ?: 'x-ui.db';
+        $boundary = '----'.bin2hex(random_bytes(8));
+        $body = "--{$boundary}\r\n";
+        $body .= "Content-Disposition: form-data; name=\"db\"; filename=\"{$fn}\"\r\n";
+        $body .= "Content-Type: application/octet-stream\r\n\r\n";
+        $body .= $data."\r\n";
+        $body .= "--{$boundary}--\r\n";
+
+        $url = $this->resolveUrl('server/importDB', 'api');
+        $headers = [
+            'Content-Type' => 'multipart/form-data; boundary='.$boundary,
+            'Accept' => 'application/json',
+        ];
+        $creds = $this->ctx->credentials();
+        $token = trim((string) ($creds['panel_api_token'] ?? ''));
+        if ($token !== '') {
+            $headers['Authorization'] = 'Bearer '.$token;
+        } else {
+            $cookie = $this->sessions->getCookie($this->ctx->panelId);
+            if ($cookie !== '') {
+                $headers['Cookie'] = $cookie;
+            }
+            $csrf = $this->sessions->getCsrf($this->ctx->panelId);
+            if ($csrf !== '') {
+                $headers['X-CSRF-Token'] = $csrf;
+            }
+        }
+
+        $res = Http::timeout(max(60, $this->requestTimeoutSec))->withHeaders($headers)->withBody($body, 'multipart/form-data; boundary='.$boundary)->post($url);
+        $code = $res->status();
+        $json = json_decode((string) $res->body(), true);
+        if (in_array($code, [401, 403], true) && $retry > 0 && $token === '') {
+            $this->clearSession();
+            if ($this->loginWithCookieSession(4, 300000)) {
+                return $this->requestImportDb($dbPath, $filename, $retry - 1);
+            }
+        }
+        if ($code >= 200 && $code < 300 && $this->responseIsSuccess(is_array($json) ? $json : null)) {
+            return ['ok' => true, 'code' => $code, 'json' => is_array($json) ? $json : null];
+        }
+
+        return [
+            'ok' => false,
+            'code' => $code,
+            'message' => is_array($json) ? $this->panelJsonMsg($json) : trim(substr((string) $res->body(), 0, 200)),
+            'json' => is_array($json) ? $json : null,
+        ];
+    }
+
+    public function panelJsonMsg(mixed $json): string
+    {
+        return is_array($json) ? trim((string) ($json['msg'] ?? '')) : '';
     }
 
     public function apiHttpOk(array $r): bool
@@ -365,7 +578,7 @@ class XuiHttpTransport
         return $out;
     }
 
-    protected function resolveUrl(string $path, string $scope = 'api'): string
+    public function resolveUrl(string $path, string $scope = 'api'): string
     {
         if ($scope === 'api') {
             return rtrim($this->ctx->apiRoot(), '/').'/'.ltrim($path, '/');

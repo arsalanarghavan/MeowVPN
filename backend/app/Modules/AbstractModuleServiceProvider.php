@@ -22,16 +22,21 @@ abstract class AbstractModuleServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        if (! svp_modules()->isEnabled($this->moduleKey())) {
+        $key = $this->moduleKey();
+        if (! svp_modules()->isEnabled($key)) {
             return;
         }
 
-        $handlers = $this->mutationHandlers();
-        if ($handlers !== []) {
-            $this->app->make(MutationRegistry::class)->registerMany($handlers);
-        }
+        try {
+            $handlers = $this->mutationHandlers();
+            if ($handlers !== []) {
+                $this->app->make(MutationRegistry::class)->registerMany($handlers);
+            }
 
-        $this->bootEnabled();
+            $this->bootEnabled();
+        } catch (\Throwable $e) {
+            throw new \RuntimeException("Module boot failed [{$key}]: ".$e->getMessage(), 0, $e);
+        }
     }
 
     protected function bootEnabled(): void

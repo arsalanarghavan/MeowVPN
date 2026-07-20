@@ -171,7 +171,7 @@ class AdminPanelHandler extends AbstractAdminHandler
             'texts' => $this->textsHandler->openTab($ctx, $chatId, $user),
             'bots', 'site_settings', 'notifications', 'bot_ui', 'proxy', 'force_join', 'purge_expired', 'finance' => $this->settings->openTab($ctx, $chatId, $user, $tabKey),
             'relay' => $this->relay->openTab($ctx, $chatId, $user, $tabKey),
-            'xui_panels', 'configs', 'l2tp_servers' => $this->inbound->openTab($ctx, $chatId, $user, $tabKey),
+            'xui_panels', 'configs', 'l2tp_servers', 'xray_core', 'xray_inbounds', 'xray_hosts', 'tunnel_nodes' => $this->inbound->openTab($ctx, $chatId, $user, $tabKey),
             'reseller_settings' => $this->resellers->openResellerSettings($ctx, $chatId, $user),
             default => $this->send($ctx, $chatId, $this->texts->getForUser($this->nav->introKey('tab', $tabKey), $user, $tabKey)),
         };

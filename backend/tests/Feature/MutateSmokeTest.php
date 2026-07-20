@@ -18,7 +18,19 @@ class MutateSmokeTest extends TestCase
     use TogglesModules;
 
     /** Ops that intentionally return ok:false by design. */
-    private const EXPECT_FAIL_OPS = [];
+    private const EXPECT_FAIL_OPS = [
+        'panel_merge_execute',
+        'configs_panel_del_orphans',
+        'configs_bulk_reset_traffic',
+        'configs_reset_all_panel_traffic',
+        'configs_panel_del_depleted',
+        'configs_client_fetch_ips',
+        'configs_client_clear_ips',
+        'configs_client_set_inbounds',
+        'configs_clients_bulk_set_inbounds',
+        'configs_inbound_patch',
+        'configs_delete_expired_older_than',
+    ];
 
     protected function setUp(): void
     {

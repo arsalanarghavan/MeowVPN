@@ -5,8 +5,8 @@ namespace App\Modules\XuiPanel\Services;
 use App\Models\SvpUser;
 use App\Modules\Core\Services\UserBotNotifyService;
 use App\Modules\L2tp\Services\L2tpProvisionerService;
+use App\Services\NotificationDedupService;
 use App\Services\SettingsStore;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -18,6 +18,7 @@ class PurgeExpiredService
         protected SettingsStore $settings,
         protected XuiClient $xui,
         protected UserBotNotifyService $notify,
+        protected NotificationDedupService $dedup,
     ) {}
 
     /** @return array{purged:int,warned:int,failed:int,grace:int,source:string} */
@@ -236,8 +237,7 @@ class PurgeExpiredService
         $bucketKey = $isPurgeDay
             ? 'svc'.$sid.':purge_day'
             : 'svc'.$sid.':purge_warn:'.$daysUntilPurge;
-        $cacheKey = 'svp_purge_bucket:'.md5($bucketKey);
-        if (Cache::has($cacheKey)) {
+        if (! $this->dedup->claim('purge_expired', $bucketKey, 90)) {
             return false;
         }
         $user = SvpUser::query()->find((int) ($svc->user_id ?? 0));
@@ -254,7 +254,6 @@ class PurgeExpiredService
         if (Schema::hasColumn('svp_services', 'last_warn_sent_at')) {
             DB::table('svp_services')->where('id', $sid)->update(['last_warn_sent_at' => now()]);
         }
-        Cache::put($cacheKey, 1, now()->addDays(90));
 
         return true;
     }

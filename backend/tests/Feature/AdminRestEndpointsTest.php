@@ -21,9 +21,13 @@ class AdminRestEndpointsTest extends TestCase
         $this->createSvpTestSchema();
     }
 
-    public function test_me_state_requires_auth(): void
+    public function test_me_state_without_auth_returns_logged_out_payload(): void
     {
-        $this->getJson('/api/v1/me/state')->assertUnauthorized();
+        $this->getJson('/api/v1/me/state')
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('isLoggedIn', false)
+            ->assertJsonPath('loggedIn', false);
     }
 
     public function test_me_state_returns_boot_payload(): void

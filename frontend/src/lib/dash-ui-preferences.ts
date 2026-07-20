@@ -1,3 +1,5 @@
+import { apiBase, apiHeaders, ensureCsrfCookie, normalizeAdminApiPath } from "@/lib/api"
+
 export type UiLang = "fa" | "en"
 export type UiTheme = "light" | "dark" | "system"
 export type UiSidebar = "expanded" | "collapsed"
@@ -9,16 +11,9 @@ export type UiPreferencesPatch = {
   ui_sidebar?: UiSidebar
 }
 
-import { apiHeaders, ensureCsrfCookie, normalizeAdminApiPath } from "@/lib/api-base"
-
-export async function saveUiPreferences(
-  patch: UiPreferencesPatch,
-  opts: { restUrl: string }
-): Promise<void> {
-  const base = String(opts.restUrl || "").replace(/\/$/, "")
-  if (!base) return
+export async function saveUiPreferences(patch: UiPreferencesPatch): Promise<void> {
   await ensureCsrfCookie()
-  await fetch(`${base}${normalizeAdminApiPath("/dashboard/ui-preferences")}`, {
+  await fetch(`${apiBase()}${normalizeAdminApiPath("/dashboard/ui-preferences")}`, {
     method: "POST",
     headers: apiHeaders(),
     credentials: "include",

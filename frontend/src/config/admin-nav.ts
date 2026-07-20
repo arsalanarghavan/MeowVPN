@@ -51,6 +51,7 @@ export const ADMIN_ONLY_TAB_KEYS = new Set<string>([
   "unit_economics",
   "bots",
   "xui_panels",
+  "vpn_server",
 ])
 
 /**
@@ -255,7 +256,9 @@ export const ADMIN_NAV_SECTIONS: AdminNavSection[] = [
         children: [
           { tabKey: "plans" },
           { tabKey: "unit_economics" },
+          { tabKey: "panel_financial_reports" },
           { tabKey: "cards" },
+          { tabKey: "payments" },
           { tabKey: "receipts" },
           { tabKey: "referral_reports" },
         ],
@@ -291,6 +294,7 @@ export const ADMIN_NAV_SECTIONS: AdminNavSection[] = [
         labelKey: "sidebar.groups.servers",
         children: [
           { tabKey: "xui_panels" },
+          { tabKey: "vpn_server" },
           { tabKey: "configs" },
         ],
       },
@@ -321,7 +325,9 @@ export const ADMIN_TAB_KEYS: string[] = [
   "broadcast",
   "plans",
   "unit_economics",
+  "panel_financial_reports",
   "cards",
+  "payments",
   "receipts",
   "referral",
   "referral_reports",
@@ -334,6 +340,7 @@ export const ADMIN_TAB_KEYS: string[] = [
   "bots",
   "reseller_xui_panels",
   "xui_panels",
+  "vpn_server",
   "configs",
   "l2tp_servers",
   "backup",
@@ -344,6 +351,8 @@ export const ADMIN_TAB_KEYS: string[] = [
 
 export type DashboardFeatures = {
   xui_panel?: boolean
+  xray_core?: boolean
+  tunnel?: boolean
   backup?: boolean
   marketing?: boolean
   reseller?: boolean
@@ -385,6 +394,9 @@ export function filterAdminNavByFeatures(
     }
     if (BOT_PLATFORM_TABS.has(tabKey)) {
       return features.telegram === true || features.bale === true
+    }
+    if (tabKey === "vpn_server") {
+      return features.xray_core === true || features.tunnel === true
     }
     const feat = FEATURE_TAB_MAP[tabKey]
     if (!feat) return true

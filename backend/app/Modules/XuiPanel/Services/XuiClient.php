@@ -44,9 +44,28 @@ class XuiClient
         $this->http->clearSession();
     }
 
+    public function ensureReady(bool $forceReauth = false, bool $cookieOnly = false): bool
+    {
+        return $this->http->ensureReady($forceReauth, $cookieOnly);
+    }
+
+    /** @return array{login_attempts:int, session_reuse:int, probes:int, panel_id:int} */
+    public function getSessionStats(): array
+    {
+        return $this->http->getSessionStats();
+    }
+
     public function loginWithRetries(int $maxAttempts = 6, int $delayUs = 350000): bool
     {
         return $this->http->loginWithRetries($maxAttempts, $delayUs);
+    }
+
+    /** @return array<string, mixed>|null */
+    public function serverStatus(): ?array
+    {
+        $r = $this->http->request('server/status', 'GET');
+
+        return is_array($r['json'] ?? null) ? $r['json'] : null;
     }
 
     public function isV3ClientsApi(): bool
@@ -159,13 +178,51 @@ class XuiClient
             return null;
         }
         if ($this->isV3ClientsApi()) {
-            $r = $this->http->request('clients/ips/'.rawurlencode($email), 'POST', []);
-
-            return is_array($r['json'] ?? null) ? $r['json'] : null;
+            return $this->clientIpsV3($email);
         }
         $r = $this->http->request('inbounds/clientIps/'.rawurlencode($email), 'POST', []);
 
         return is_array($r['json'] ?? null) ? $r['json'] : null;
+    }
+
+    /** @return array<string, mixed>|null */
+    public function clientIpsV3(string $email): ?array
+    {
+        $em = trim($email);
+        if ($em === '') {
+            return null;
+        }
+        $r = $this->http->request('clients/ips/'.rawurlencode($em), 'POST', []);
+
+        return is_array($r['json'] ?? null) ? $r['json'] : null;
+    }
+
+    /** @return array<string, mixed>|null */
+    public function clearClientIps(string $email): ?array
+    {
+        if ($this->isV3ClientsApi()) {
+            return $this->clientClearIpsV3($email);
+        }
+        $r = $this->http->request('inbounds/clearClientIps/'.rawurlencode(trim($email)), 'POST', []);
+
+        return is_array($r['json'] ?? null) ? $r['json'] : null;
+    }
+
+    /** @return array<string, mixed>|null */
+    public function clientClearIpsV3(string $email): ?array
+    {
+        $em = trim($email);
+        if ($em === '') {
+            return null;
+        }
+        $r = $this->http->request('clients/clearIps/'.rawurlencode($em), 'POST', []);
+
+        return is_array($r['json'] ?? null) ? $r['json'] : null;
+    }
+
+    public function clientExistsV3(string $email): bool
+    {
+        return $this->clientGetV3($email) !== null;
     }
 
     /** @return array<int, string> */
@@ -181,27 +238,50 @@ class XuiClient
             $decoded = json_decode($obj, true);
             $ips = is_array($decoded) ? $decoded : preg_split('/[\s,]+/', $obj);
         } elseif (is_array($obj)) {
-            foreach ($obj as $item) {
-                if (is_string($item) && trim($item) !== '') {
-                    $ips[] = trim($item);
-                } elseif (is_array($item)) {
-                    if (! empty($item['ip'])) {
-                        $ips[] = trim((string) $item['ip']);
-                    } elseif (! empty($item['Ip'])) {
-                        $ips[] = trim((string) $item['Ip']);
-                    }
+            $mapKeysAreIps = false;
+            foreach ($obj as $key => $item) {
+                if (is_string($key) && $this->isValidClientIpString(trim($key))) {
+                    $mapKeysAreIps = true;
+                    break;
                 }
             }
-            if ($ips === []) {
-                $ips = $obj;
+            if ($mapKeysAreIps) {
+                foreach ($obj as $key => $item) {
+                    if (is_string($key)) {
+                        $k = trim($key);
+                        if ($this->isValidClientIpString($k)) {
+                            $ips[] = $k;
+                        }
+                    }
+                }
+            } else {
+                foreach ($obj as $item) {
+                    if (is_string($item) && trim($item) !== '') {
+                        $ips[] = trim($item);
+                    } elseif (is_array($item)) {
+                        if (! empty($item['ip'])) {
+                            $ips[] = trim((string) $item['ip']);
+                        } elseif (! empty($item['Ip'])) {
+                            $ips[] = trim((string) $item['Ip']);
+                        }
+                    }
+                }
+                if ($ips === []) {
+                    $ips = $obj;
+                }
             }
         }
 
         return array_slice(
-            array_values(array_unique(array_filter(array_map('trim', array_map('strval', (array) $ips))))),
+            array_values(array_unique(array_filter(array_map('trim', array_map('strval', (array) $ips)), fn ($ip) => $ip !== '' && $ip !== 'No IP Record' && $this->isValidClientIpString($ip)))),
             0,
             $lim
         );
+    }
+
+    public function isValidClientIpString(string $ip): bool
+    {
+        return $ip !== '' && filter_var($ip, FILTER_VALIDATE_IP) !== false;
     }
 
     /** @return array<int, string> */
@@ -302,6 +382,11 @@ class XuiClient
     public function panelJsonMsg(mixed $json): string
     {
         return is_array($json) ? trim((string) ($json['msg'] ?? '')) : '';
+    }
+
+    public function responseIsSuccess(mixed $res): bool
+    {
+        return $this->http->responseIsSuccess($res);
     }
 
     /** @return array<string, mixed>|null */
@@ -691,6 +776,36 @@ class XuiClient
     }
 
     /**
+     * @param  array<string, mixed>  $client
+     * @return array{id:string, subId:string}
+     */
+    public function extractClientIdentityFromRow(array $client): array
+    {
+        return [
+            'id' => trim((string) ($client['id'] ?? $client['uuid'] ?? '')),
+            'subId' => trim((string) ($client['subId'] ?? '')),
+        ];
+    }
+
+    /**
+     * @return array{id:string, subId:string}|null
+     */
+    public function fetchClientIdentityFromPanel(string $email, int $inboundId = 0): ?array
+    {
+        unset($inboundId);
+        $client = $this->clientGetV3($email);
+        if (! is_array($client)) {
+            return null;
+        }
+        $ident = $this->extractClientIdentityFromRow($client);
+        if ($ident['id'] === '' && $ident['subId'] === '') {
+            return null;
+        }
+
+        return $ident;
+    }
+
+    /**
      * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */
@@ -746,5 +861,973 @@ class XuiClient
         }
 
         return $lines;
+    }
+
+    protected string $lastGetDbStep = '';
+
+    protected int $lastGetDbHttp = 0;
+
+    /** @param  array<int, string>  $emails */
+    protected function normalizeClientEmails(array $emails): array
+    {
+        return array_values(array_unique(array_filter(array_map(
+            static fn ($e) => trim((string) $e),
+            $emails
+        ), static fn ($e) => $e !== '')));
+    }
+
+    /** @return array<string, mixed>|null */
+    public function clientAttachV3(string $email, array $inboundIds): ?array
+    {
+        $em = trim($email);
+        $ids = array_values(array_filter(array_map('intval', $inboundIds), fn ($v) => $v > 0));
+        if ($em === '' || $ids === []) {
+            return ['success' => false, 'msg' => 'bad_params'];
+        }
+        $r = $this->http->request('clients/'.rawurlencode($em).'/attach', 'POST', ['inboundIds' => $ids]);
+
+        return is_array($r['json'] ?? null) ? $r['json'] : null;
+    }
+
+    /** @return array<string, mixed>|null */
+    public function clientDetachV3(string $email, array $inboundIds): ?array
+    {
+        $em = trim($email);
+        $ids = array_values(array_filter(array_map('intval', $inboundIds), fn ($v) => $v > 0));
+        if ($em === '' || $ids === []) {
+            return ['success' => false, 'msg' => 'bad_params'];
+        }
+        $r = $this->http->request('clients/'.rawurlencode($em).'/detach', 'POST', ['inboundIds' => $ids]);
+
+        return is_array($r['json'] ?? null) ? $r['json'] : null;
+    }
+
+    /** @return array<string, mixed>|null */
+    public function clientCreateV3(array $client, array $inboundIds): ?array
+    {
+        $ids = array_values(array_filter(array_map('intval', $inboundIds), fn ($v) => $v > 0));
+        if ($ids === []) {
+            return null;
+        }
+
+        $res = $this->addClientRequest([
+            'id' => $ids[0],
+            'settings' => json_encode(['clients' => [$client]], JSON_UNESCAPED_UNICODE),
+        ]);
+        if (! $this->addClientRequestOk($res)) {
+            return is_array($res['json'] ?? null) ? $res['json'] : null;
+        }
+
+        return is_array($res['json'] ?? null) ? $res['json'] : ['ok' => true];
+    }
+
+    /** @return array<string, mixed>|null */
+    public function clientPatchV3(string $email, array $patch, array $inboundIds = []): ?array
+    {
+        return $this->clientUpdateV3($email, $patch, $inboundIds);
+    }
+
+    /** @param  array<int, string>  $emails */
+    public function clientsBulkResetTrafficV3(array $emails): ?array
+    {
+        $list = $this->normalizeClientEmails($emails);
+        if ($list === []) {
+            return null;
+        }
+        $r = $this->http->request('clients/bulkResetTraffic', 'POST', ['emails' => $list]);
+
+        return is_array($r['json'] ?? null) ? $r['json'] : null;
+    }
+
+    public function clientsDelDepletedV3(): ?array
+    {
+        $r = $this->http->request('clients/delDepleted', 'POST', []);
+
+        return is_array($r['json'] ?? null) ? $r['json'] : null;
+    }
+
+    public function clientsDelOrphansV3(): ?array
+    {
+        $r = $this->http->request('clients/delOrphans', 'POST', []);
+
+        return is_array($r['json'] ?? null) ? $r['json'] : null;
+    }
+
+    /** @param  array<int, string>  $emails */
+    public function clientsBulkAttachV3(array $emails, array $inboundIds): ?array
+    {
+        $list = $this->normalizeClientEmails($emails);
+        $ids = array_values(array_filter(array_map('intval', $inboundIds), fn ($v) => $v > 0));
+        if ($list === [] || $ids === []) {
+            return null;
+        }
+        $r = $this->http->request('clients/bulkAttach', 'POST', ['emails' => $list, 'inboundIds' => $ids]);
+
+        return is_array($r['json'] ?? null) ? $r['json'] : null;
+    }
+
+    /** @param  array<int, string>  $emails */
+    public function clientsBulkDetachV3(array $emails, array $inboundIds): ?array
+    {
+        $list = $this->normalizeClientEmails($emails);
+        $ids = array_values(array_filter(array_map('intval', $inboundIds), fn ($v) => $v > 0));
+        if ($list === [] || $ids === []) {
+            return null;
+        }
+        $r = $this->http->request('clients/bulkDetach', 'POST', ['emails' => $list, 'inboundIds' => $ids]);
+
+        return is_array($r['json'] ?? null) ? $r['json'] : null;
+    }
+
+    /** @param  array<int, string>  $emails */
+    public function clientsBulkAdjustV3(array $emails, int $addDays = 0, int $addBytes = 0): ?array
+    {
+        $list = $this->normalizeClientEmails($emails);
+        if ($list === []) {
+            return null;
+        }
+        $body = ['emails' => $list];
+        if ($addDays > 0) {
+            $body['addDays'] = $addDays;
+        }
+        if ($addBytes > 0) {
+            $body['addBytes'] = $addBytes;
+        }
+        $r = $this->http->request('clients/bulkAdjust', 'POST', $body);
+
+        return is_array($r['json'] ?? null) ? $r['json'] : null;
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function clientGroupsListV3(): array
+    {
+        $r = $this->http->request('clients/groups/list', 'GET');
+        if (! $this->http->apiHttpOk($r)) {
+            return [];
+        }
+
+        return $this->parseGroupsListResponse($r['json'] ?? null);
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function parseGroupsListResponse(mixed $json): array
+    {
+        if (! is_array($json)) {
+            return [];
+        }
+        $arr = isset($json['obj']) && is_array($json['obj']) ? $json['obj'] : (array_values($json) === $json ? $json : null);
+        if (! is_array($arr)) {
+            return [];
+        }
+        $out = [];
+        foreach ($arr as $row) {
+            if (is_array($row)) {
+                $out[] = $row;
+            } elseif (is_string($row) && trim($row) !== '') {
+                $out[] = ['name' => trim($row)];
+            }
+        }
+
+        return $out;
+    }
+
+    /** @param  array<int, string>  $emails */
+    public function clientGroupsBulkAddV3(array $emails, string $groupName): ?array
+    {
+        $list = $this->normalizeClientEmails($emails);
+        $grp = trim($groupName);
+        if ($list === [] || $grp === '') {
+            return ['success' => false, 'msg' => 'emails and group required'];
+        }
+        $r = $this->http->request('clients/groups/bulkAdd', 'POST', ['emails' => $list, 'group' => $grp]);
+
+        return is_array($r['json'] ?? null) ? $r['json'] : null;
+    }
+
+    /** @param  array<int, string>  $emails */
+    public function clientGroupsBulkRemoveV3(array $emails): ?array
+    {
+        $list = $this->normalizeClientEmails($emails);
+        if ($list === []) {
+            return ['success' => false, 'msg' => 'emails required'];
+        }
+        $r = $this->http->request('clients/groups/bulkRemove', 'POST', ['emails' => $list]);
+
+        return is_array($r['json'] ?? null) ? $r['json'] : null;
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function nodesListV3(): array
+    {
+        $r = $this->http->request('nodes/list', 'GET');
+        if (! $this->http->apiHttpOk($r)) {
+            return [];
+        }
+
+        return $this->parseNodesListResponse($r['json'] ?? null);
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function parseNodesListResponse(mixed $json): array
+    {
+        if (! is_array($json)) {
+            return [];
+        }
+        $arr = isset($json['obj']) && is_array($json['obj']) ? $json['obj'] : (array_values($json) === $json ? $json : null);
+        if (! is_array($arr)) {
+            return [];
+        }
+        $out = [];
+        foreach ($arr as $row) {
+            if (is_array($row)) {
+                $out[] = $row;
+            }
+        }
+
+        return $out;
+    }
+
+    /** @return array<int, string> */
+    public function clientLinksV3(string $email): array
+    {
+        $em = trim($email);
+        if ($em === '') {
+            return [];
+        }
+        $r = $this->http->request('clients/links/'.rawurlencode($em), 'GET');
+        if (! $this->http->apiHttpOk($r)) {
+            return [];
+        }
+
+        return $this->parseLinkLines($r['json'] ?? null);
+    }
+
+    /** @return array<int, string> */
+    public function clientSubLinksV3(string $subId): array
+    {
+        $sid = trim($subId);
+        if ($sid === '') {
+            return [];
+        }
+        $r = $this->http->request('clients/subLinks/'.rawurlencode($sid), 'GET');
+        if (! $this->http->apiHttpOk($r)) {
+            return [];
+        }
+
+        return $this->parseLinkLines($r['json'] ?? null);
+    }
+
+    /** @return array<int, string> */
+    protected function parseLinkLines(mixed $json): array
+    {
+        if (! is_array($json)) {
+            return [];
+        }
+        $obj = $json['obj'] ?? $json;
+        if (is_string($obj) && $obj !== '') {
+            return array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', $obj) ?: [])));
+        }
+        if (! is_array($obj)) {
+            return [];
+        }
+        $lines = [];
+        foreach ($obj as $line) {
+            if (is_string($line) && trim($line) !== '') {
+                $lines[] = trim($line);
+            }
+        }
+
+        return $lines;
+    }
+
+    /** @return array<string, mixed>|null */
+    public function inboundUpdate(array $inbound): ?array
+    {
+        $id = (int) ($inbound['id'] ?? 0);
+        if ($id < 1) {
+            return null;
+        }
+        $r = $this->http->request('inbounds/update/'.$id, 'POST', $inbound);
+        if (! $this->http->apiHttpOk($r)) {
+            return is_array($r['json'] ?? null) ? $r['json'] : null;
+        }
+
+        return is_array($r['json'] ?? null) ? $r['json'] : ['ok' => true];
+    }
+
+    /** @return array<string, mixed>|null */
+    public function inboundDelete(int $id): ?array
+    {
+        if ($id < 1) {
+            return null;
+        }
+        $r = $this->http->request('inbounds/del/'.$id, 'POST', ['id' => $id]);
+        if (! $this->http->apiHttpOk($r)) {
+            return is_array($r['json'] ?? null) ? $r['json'] : null;
+        }
+
+        return is_array($r['json'] ?? null) ? $r['json'] : ['ok' => true];
+    }
+
+    /** @return array<string, mixed>|null */
+    public function getClientTraffics(string $email): ?array
+    {
+        if ($this->isV3ClientsApi()) {
+            return $this->clientTrafficV3($email);
+        }
+        $r = $this->http->request('inbounds/getClientTraffics/'.rawurlencode(trim($email)), 'GET');
+
+        return is_array($r['json'] ?? null) ? $r['json'] : null;
+    }
+
+    /** @return array<string, mixed>|null */
+    public function clientTrafficV3(string $email): ?array
+    {
+        $r = $this->http->request('clients/traffic/'.rawurlencode(trim($email)), 'GET');
+        $j = $r['json'] ?? null;
+
+        return is_array($j) ? $j : null;
+    }
+
+    public function isSqliteBytes(string $raw): bool
+    {
+        return strlen($raw) >= 16 && str_starts_with($raw, 'SQLite format 3');
+    }
+
+    /** @return string|false */
+    protected function parseDbBinaryResponse(array $r): string|false
+    {
+        $code = (int) ($r['code'] ?? 0);
+        $this->lastGetDbHttp = $code;
+        $raw = (string) ($r['body'] ?? '');
+        if (empty($r['ok']) || $raw === '') {
+            $this->lastGetDbStep = in_array($code, [401, 403], true) ? 'auth' : 'http_'.$code;
+
+            return false;
+        }
+        $trim = ltrim($raw);
+        if ($trim !== '' && ($trim[0] === '{' || $trim[0] === '[')) {
+            $this->lastGetDbStep = 'invalid_response';
+
+            return false;
+        }
+        if ($trim !== '' && ($trim[0] === '<' || stripos($trim, '<!DOCTYPE') === 0 || stripos($trim, '<html') !== false)) {
+            $this->lastGetDbStep = 'invalid_response';
+
+            return false;
+        }
+        if (! $this->isSqliteBytes($raw)) {
+            $this->lastGetDbStep = 'invalid_response';
+
+            return false;
+        }
+        $this->lastGetDbStep = '';
+
+        return $raw;
+    }
+
+    /** @return string|false */
+    protected function getDbBinaryInner(): string|false
+    {
+        $c = $this->ctx->credentials();
+        $hasToken = trim((string) ($c['panel_api_token'] ?? '')) !== '';
+        $hasCookie = trim((string) ($c['panel_username'] ?? '')) !== ''
+            && trim((string) ($c['panel_password'] ?? '')) !== '';
+        if (! $hasToken && ! $hasCookie) {
+            $this->lastGetDbStep = 'missing_cookie_creds';
+
+            return false;
+        }
+        if ($hasToken) {
+            $r = $this->http->request('server/getDb', 'GET', [], false, 2, true);
+            $db = $this->parseDbBinaryResponse($r);
+            if ($db !== false) {
+                return $db;
+            }
+        }
+        if ($hasCookie) {
+            if (! $this->loginWithRetries(3, 350000)) {
+                if ($this->lastGetDbStep === '') {
+                    $this->lastGetDbStep = 'login';
+                }
+
+                return false;
+            }
+            $r = $this->http->request('server/getDb', 'GET', [], true, 2, true);
+            $db = $this->parseDbBinaryResponse($r);
+            if ($db !== false) {
+                return $db;
+            }
+        }
+        if ($this->lastGetDbStep === '') {
+            $this->lastGetDbStep = 'bearer_getdb_failed';
+        }
+
+        return false;
+    }
+
+    /** @return string|false */
+    public function getDbBinary(): string|false
+    {
+        return $this->getDbBinaryInner();
+    }
+
+    /** @return string|false */
+    public function getDbBinaryForBackup(): string|false
+    {
+        $prev = $this->http->setRequestTimeout(max(60, 90));
+        try {
+            return $this->getDbBinaryInner();
+        } finally {
+            $this->http->setRequestTimeout($prev);
+        }
+    }
+
+    /** @return string|false */
+    public function getDbBinaryWithRetries(int $attempts = 3, bool $forBackup = false): string|false
+    {
+        $max = max(1, $attempts);
+        for ($i = 0; $i < $max; $i++) {
+            $db = $forBackup ? $this->getDbBinaryForBackup() : $this->getDbBinary();
+            if ($db !== false && $db !== '') {
+                return $db;
+            }
+            if ($i + 1 < $max) {
+                usleep($forBackup ? 250000 + $i * 150000 : 400000 + $i * 300000);
+            }
+        }
+
+        return false;
+    }
+
+    /** @return array{ok:bool, message?:string, code?:int} */
+    public function importDbFromPath(string $dbPath): array
+    {
+        if ($dbPath === '' || ! is_readable($dbPath)) {
+            return ['ok' => false, 'message' => 'unreadable_db'];
+        }
+        if ((int) @filesize($dbPath) < 512) {
+            return ['ok' => false, 'message' => 'db_too_small'];
+        }
+        if (! $this->loginWithRetries()) {
+            return ['ok' => false, 'message' => 'login_fail'];
+        }
+
+        return $this->http->requestImportDb($dbPath);
+    }
+
+    public function lastGetDbStep(): string
+    {
+        return $this->lastGetDbStep;
+    }
+
+    public function lastGetDbHttp(): int
+    {
+        return $this->lastGetDbHttp;
+    }
+
+    /** @param  array<int, string>  $emails */
+    public function resetClientsTrafficBulk(array $emails): array
+    {
+        if ($this->isV3ClientsApi()) {
+            $res = $this->clientsBulkResetTrafficV3($emails);
+
+            return [
+                'ok' => $this->http->responseIsSuccess($res),
+                'json' => $res,
+                'message' => $this->panelJsonMsg($res),
+            ];
+        }
+        $ok = 0;
+        $fail = 0;
+        foreach ($this->normalizeClientEmails($emails) as $em) {
+            $r = $this->resetClientTraffic(0, $em);
+            if ($this->http->responseIsSuccess($r)) {
+                $ok++;
+            } else {
+                $fail++;
+            }
+        }
+
+        return ['ok' => $fail === 0, 'succeeded' => $ok, 'failed' => $fail];
+    }
+
+    /** @return array<string, mixed>|null */
+    public function clientsResetAllTrafficV3(): ?array
+    {
+        $r = $this->http->request('clients/resetAllTraffics', 'POST', []);
+
+        return is_array($r['json'] ?? null) ? $r['json'] : null;
+    }
+
+    /** @param  array<int, string>  $emails */
+    public function clientsLastOnlineV3(array $emails = []): ?array
+    {
+        $body = [];
+        $list = $this->normalizeClientEmails($emails);
+        if ($list !== []) {
+            $body['emails'] = $list;
+        }
+        $r = $this->http->request('clients/lastOnline', 'POST', $body);
+
+        return is_array($r['json'] ?? null) ? $r['json'] : null;
+    }
+
+    /** @return array<string, mixed>|null */
+    public function clientExternalLinksV3(string $email): ?array
+    {
+        $em = trim($email);
+        if ($em === '') {
+            return ['success' => false, 'msg' => 'email required'];
+        }
+        $r = $this->http->request('clients/'.rawurlencode($em).'/externalLinks', 'POST', []);
+
+        return is_array($r['json'] ?? null) ? $r['json'] : null;
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function clientsForInboundId(int $inboundId): array
+    {
+        $iid = (int) $inboundId;
+        if ($iid < 1) {
+            return [];
+        }
+        if ($this->isV3ClientsApi()) {
+            $out = [];
+            $page = 1;
+            while ($page <= 20) {
+                $batch = $this->clientsListPagedV3($page, 500);
+                if (! is_array($batch) || empty($batch['clients'])) {
+                    break;
+                }
+                foreach ($batch['clients'] as $c) {
+                    if (! is_array($c) || empty($c['email'])) {
+                        continue;
+                    }
+                    $inboundIds = $c['inboundIds'] ?? $c['inbound_ids'] ?? [];
+                    if (! is_array($inboundIds)) {
+                        $inboundIds = [];
+                    }
+                    foreach ($inboundIds as $ciid) {
+                        if ((int) $ciid === $iid) {
+                            $out[] = $c;
+                            break;
+                        }
+                    }
+                }
+                if (count($batch['clients']) < 500) {
+                    break;
+                }
+                $page++;
+            }
+
+            return $out;
+        }
+        $inbound = $this->inboundGet($iid);
+        if (! is_array($inbound)) {
+            return [];
+        }
+        $settings = $inbound['settings'] ?? '';
+        $dec = is_string($settings) ? json_decode($settings, true) : (is_array($settings) ? $settings : []);
+        if (! is_array($dec) || empty($dec['clients']) || ! is_array($dec['clients'])) {
+            return [];
+        }
+
+        return $dec['clients'];
+    }
+
+    /** @return string|false */
+    public function getConfigJson(): string|false
+    {
+        $c = $this->ctx->credentials();
+        if (trim((string) ($c['panel_api_token'] ?? '')) !== '') {
+            $r = $this->http->request('server/getConfigJson', 'GET');
+            $out = $this->http->parseConfigJsonResponse($r);
+            if ($out !== false) {
+                return $out;
+            }
+        }
+        if ($this->ctx->hasCookieCredentials() && $this->http->loginWithCookieSession(2, 200000)) {
+            $r = $this->http->request('server/getConfigJson', 'GET', [], true);
+
+            return $this->http->parseConfigJsonResponse($r);
+        }
+
+        return false;
+    }
+
+    /** @return array{ok:bool, step:string, url:string, http:int, bytes:int} */
+    public function probeGetDb(): array
+    {
+        $url = $this->http->diagUrl('server/getDb', 'api');
+        $c = $this->ctx->credentials();
+        $hasToken = trim((string) ($c['panel_api_token'] ?? '')) !== '';
+        $hasCookie = trim((string) ($c['panel_username'] ?? '')) !== ''
+            && trim((string) ($c['panel_password'] ?? '')) !== '';
+        if (! $hasToken && ! $hasCookie) {
+            return [
+                'ok' => false,
+                'step' => 'missing_cookie_creds',
+                'url' => $url,
+                'http' => 0,
+                'bytes' => 0,
+            ];
+        }
+        $db = $this->getDbBinaryWithRetries(2, false);
+        if ($db !== false && $db !== '') {
+            $http = $this->lastGetDbHttp();
+
+            return [
+                'ok' => true,
+                'step' => '',
+                'url' => $url,
+                'http' => $http > 0 ? $http : 200,
+                'bytes' => strlen($db),
+            ];
+        }
+        $step = $this->lastGetDbStep();
+        if ($step === '') {
+            $step = 'download';
+        }
+        $http = $this->lastGetDbHttp();
+        if ($http === 404 && $step !== 'http_404') {
+            $step = 'http_404';
+        }
+
+        return [
+            'ok' => false,
+            'step' => $step,
+            'url' => $url,
+            'http' => $http,
+            'bytes' => 0,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>|null
+     */
+    public function updateClient(string $clientId, array $payload): ?array
+    {
+        $r = $this->http->request('inbounds/updateClient/'.rawurlencode($clientId), 'POST', $payload);
+
+        return is_array($r['json'] ?? null) ? $r['json'] : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $fullSettingsDec
+     * @param  array<string, mixed>  $singleClient
+     * @param  array<int, string>  $pathIdCandidates
+     * @return array<string, mixed>|null
+     */
+    public function updateInboundClientSequential(
+        int $inboundId,
+        array $fullSettingsDec,
+        array $singleClient,
+        array $pathIdCandidates = [],
+    ): ?array {
+        $iid = (int) $inboundId;
+        $targetEmail = trim((string) ($singleClient['email'] ?? ''));
+        $singleWork = $singleClient;
+        if ($this->isV3ClientsApi()) {
+            if ($targetEmail !== '') {
+                $singleWork['email'] = $targetEmail;
+            }
+            if ($targetEmail !== '' && ! empty($fullSettingsDec['clients']) && is_array($fullSettingsDec['clients'])) {
+                foreach ($fullSettingsDec['clients'] as $cl) {
+                    if (! is_array($cl) || ! isset($cl['email']) || (string) $cl['email'] !== $targetEmail) {
+                        continue;
+                    }
+                    $singleWork = array_merge($cl, $singleWork);
+                    $singleWork['email'] = $targetEmail;
+                    break;
+                }
+            }
+            $panelCl = $this->clientGetV3($targetEmail);
+            if (is_array($panelCl)) {
+                $singleWork = array_merge($panelCl, $singleWork);
+                $singleWork['email'] = $targetEmail;
+            }
+            $scope = [];
+            if (is_array($panelCl) && ! empty($panelCl['inboundIds']) && is_array($panelCl['inboundIds'])) {
+                $scope = array_values(array_filter(array_map('intval', $panelCl['inboundIds'])));
+            }
+            if ($scope === [] && $iid > 0) {
+                $scope = [$iid];
+            }
+            $bodyPatch = [];
+            if (is_array($panelCl)) {
+                foreach ($singleWork as $wk => $wv) {
+                    if (! array_key_exists($wk, $panelCl) || $panelCl[$wk] !== $wv) {
+                        $bodyPatch[$wk] = $wv;
+                    }
+                }
+            } else {
+                $bodyPatch = $singleWork;
+            }
+
+            return $this->clientUpdateV3($targetEmail, $bodyPatch, $scope);
+        }
+        $ids = [];
+        if ($targetEmail !== '') {
+            $singleWork['email'] = $targetEmail;
+        }
+        if ($targetEmail !== '' && ! empty($fullSettingsDec['clients']) && is_array($fullSettingsDec['clients'])) {
+            foreach ($fullSettingsDec['clients'] as $cl) {
+                if (! is_array($cl) || ! isset($cl['email']) || (string) $cl['email'] !== $targetEmail) {
+                    continue;
+                }
+                $singleWork = array_merge($cl, $singleWork);
+                $singleWork['email'] = $targetEmail;
+                break;
+            }
+        }
+        $inbound = $this->inboundGet($iid);
+        $protocol = $this->normalizeInboundProtocol($inbound);
+        $this->ensureClientProtocolFields($singleWork, $protocol);
+        $pathPrimary = is_array($inbound)
+            ? $this->resolveClientPathIdForUpdate('', $inbound, $targetEmail)
+            : null;
+        if (is_string($pathPrimary) && $pathPrimary !== '') {
+            $ids[] = $pathPrimary;
+        }
+        foreach ($pathIdCandidates as $c) {
+            $t = trim((string) $c);
+            if ($t !== '' && ! in_array($t, $ids, true)) {
+                $ids[] = $t;
+            }
+        }
+        if ($ids === []) {
+            return null;
+        }
+        $last = null;
+        for ($attempt = 0; $attempt < 4; $attempt++) {
+            if ($attempt > 0) {
+                usleep(320000 + $attempt * 120000);
+                $this->clearSession();
+                $this->loginWithRetries(4, 280000);
+                if ($targetEmail !== '' && $singleClient !== []) {
+                    $fresh = $this->inboundGet($iid);
+                    if (is_array($fresh)) {
+                        $inbound = $fresh;
+                        $protocol = $this->normalizeInboundProtocol($inbound);
+                        $panelCl = $this->inboundClientByEmail($fresh, $targetEmail);
+                        if (is_array($panelCl)) {
+                            $singleWork = array_merge($panelCl, $singleClient);
+                            $singleWork['email'] = $targetEmail;
+                        }
+                    }
+                }
+            }
+            $this->ensureClientProtocolFields($singleWork, $protocol);
+            $payloadDec = ['clients' => [$singleWork]];
+            foreach ($ids as $pid) {
+                $last = $this->updateClient($pid, [
+                    'id' => $iid,
+                    'settings' => json_encode($payloadDec, JSON_UNESCAPED_UNICODE),
+                ]);
+                if ($this->http->responseIsSuccess($last)) {
+                    return $last;
+                }
+            }
+        }
+
+        return $last;
+    }
+
+    /**
+     * Merge desired client fields into fresh inbound settings (preserves sibling clients).
+     *
+     * @param  array<string, mixed>|null  $inbound
+     * @param  array<string, mixed>  $singleClient
+     * @return array<string, mixed>|null
+     */
+    public function mergeClientIntoInboundSettings(?array $inbound, string $email, array $singleClient): ?array
+    {
+        if (! is_array($inbound)) {
+            return null;
+        }
+        $settings = $inbound['settings'] ?? '';
+        $dec = is_string($settings) ? json_decode($settings, true) : (is_array($settings) ? $settings : []);
+        if (! is_array($dec) || empty($dec['clients']) || ! is_array($dec['clients'])) {
+            return null;
+        }
+        $want = trim($email);
+        $matched = false;
+        foreach ($dec['clients'] as &$cl) {
+            if (! is_array($cl) || ! isset($cl['email']) || (string) $cl['email'] !== $want) {
+                continue;
+            }
+            $cl = array_merge($cl, $singleClient);
+            $cl['email'] = $want;
+            $this->ensureClientPanelId($cl);
+            $matched = true;
+            break;
+        }
+        unset($cl);
+
+        return $matched ? $dec : null;
+    }
+
+    /**
+     * 3x-ui updateClient payload: settings with exactly one client in `clients`.
+     *
+     * @param  array<string, mixed>  $singleClient
+     * @return array{clients: array<int, array<string, mixed>>}
+     */
+    public function buildUpdateClientSettingsPayload(array $singleClient): array
+    {
+        return ['clients' => [$singleClient]];
+    }
+
+    /** @param  array<string, mixed>|null  $inbound */
+    public function normalizeInboundProtocol(?array $inbound): string
+    {
+        if (! is_array($inbound)) {
+            return 'vless';
+        }
+
+        return strtolower(trim((string) ($inbound['protocol'] ?? 'vless')));
+    }
+
+    /** @param  array<string, mixed>  $client */
+    public function ensureClientPanelId(array &$client): bool
+    {
+        if (! is_array($client)) {
+            return false;
+        }
+        $parsed = $this->parseUuidValue($client['id'] ?? null);
+        if (is_string($parsed)) {
+            $client['id'] = $parsed;
+
+            return true;
+        }
+        $cur = trim((string) ($client['id'] ?? ''));
+        if ($this->isLikelyClientUuid($cur)) {
+            $client['id'] = $cur;
+
+            return true;
+        }
+        foreach (['password', 'subId'] as $k) {
+            if (! array_key_exists($k, $client)) {
+                continue;
+            }
+            $pv = $this->parseUuidValue($client[$k]);
+            if (is_string($pv)) {
+                $client['id'] = $pv;
+
+                return true;
+            }
+            $t = trim((string) $client[$k]);
+            if ($this->isLikelyClientUuid($t)) {
+                $client['id'] = $t;
+
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** @param  array<string, mixed>  $client */
+    public function ensureClientProtocolFields(array &$client, string $protocol): bool
+    {
+        if (! is_array($client)) {
+            return false;
+        }
+        $protocol = strtolower(trim($protocol));
+        $this->ensureClientPanelId($client);
+        $uuid = trim((string) ($client['id'] ?? ''));
+        if (! $this->isLikelyClientUuid($uuid)) {
+            $uuid = '';
+        }
+        switch ($protocol) {
+            case 'trojan':
+                $pw = trim((string) ($client['password'] ?? ''));
+                if ($pw === '' && $uuid !== '') {
+                    $client['password'] = $uuid;
+                    $pw = $uuid;
+                }
+                if ($pw === '') {
+                    foreach (['password', 'subId'] as $k) {
+                        $t = trim((string) ($client[$k] ?? ''));
+                        if ($t !== '') {
+                            $client['password'] = $t;
+                            $pw = $t;
+                            break;
+                        }
+                    }
+                }
+
+                return $pw !== '';
+            case 'shadowsocks':
+                return trim((string) ($client['email'] ?? '')) !== '';
+            case 'hysteria':
+            case 'hysteria2':
+                $auth = trim((string) ($client['auth'] ?? ''));
+                if ($auth === '' && $uuid !== '') {
+                    $client['auth'] = $uuid;
+                    $auth = $uuid;
+                }
+
+                return $auth !== '';
+            default:
+                if ($uuid !== '') {
+                    $client['id'] = $uuid;
+
+                    return true;
+                }
+
+                return $this->ensureClientPanelId($client);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $inbound
+     * @return string|null
+     */
+    public function resolveClientPathIdForUpdate(string $dbId, array $inbound, string $email): ?string
+    {
+        $protocol = $this->normalizeInboundProtocol($inbound);
+        $sid = trim($dbId);
+        $cl = $this->inboundClientByEmail($inbound, $email);
+        if (is_array($cl)) {
+            $row = $cl;
+            $this->ensureClientProtocolFields($row, $protocol);
+            $key = match ($protocol) {
+                'trojan' => trim((string) ($row['password'] ?? '')),
+                'shadowsocks' => trim((string) ($row['email'] ?? $email)),
+                'hysteria', 'hysteria2' => trim((string) ($row['auth'] ?? '')),
+                default => trim((string) ($row['id'] ?? '')),
+            };
+            if ($key !== '') {
+                return $key;
+            }
+        }
+        if ($this->isLikelyClientUuid($sid) && strcasecmp($sid, 'array') !== 0) {
+            return $sid;
+        }
+        if ($protocol === 'shadowsocks') {
+            $em = trim($email);
+
+            return $em !== '' ? $em : null;
+        }
+        if ($protocol === 'trojan' && $sid !== '') {
+            return $sid;
+        }
+        $em = trim($email);
+
+        return $em !== '' ? $em : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $inbound
+     * @return string|null
+     */
+    public function resolveClientKeyForUpdate(string $dbId, array $inbound, string $email): ?string
+    {
+        $path = $this->resolveClientPathIdForUpdate($dbId, $inbound, $email);
+
+        return is_string($path) && $path !== '' ? $path : null;
     }
 }

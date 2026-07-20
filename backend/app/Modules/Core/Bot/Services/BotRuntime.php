@@ -60,6 +60,19 @@ class BotRuntime
 
     public function tokenForContext(BotContext $ctx): string
     {
+        if ($ctx->isMirrorBot()) {
+            $stored = trim((string) ($ctx->mirrorProfile['telegram_token'] ?? ''));
+            if ($stored === '') {
+                return '';
+            }
+
+            try {
+                return Crypt::decryptString($stored);
+            } catch (\Throwable) {
+                return $stored;
+            }
+        }
+
         if ($ctx->isResellerBot()) {
             $profile = $ctx->resellerProfile ?? [];
             $key = $ctx->platform === 'bale' ? 'bale_token' : 'telegram_token';
@@ -92,6 +105,16 @@ class BotRuntime
     public function sendPhoto(BotContext $ctx, array $params): ?array
     {
         return $this->client($ctx)?->sendPhoto($params);
+    }
+
+    public function sendLocalPhoto(BotContext $ctx, int $chatId, string $path, string $caption = ''): ?array
+    {
+        $client = $this->client($ctx);
+        if (! $client) {
+            return null;
+        }
+
+        return $client->sendPhotoFile($chatId, $path, $caption);
     }
 
     /** @return array<string, mixed>|null */
@@ -150,6 +173,23 @@ class BotRuntime
 
     public function webhookUrl(string $platform, string $secret, int $resellerId = 0): string
     {
+        $base = $this->publicWebhookBase($platform);
+        if ($resellerId > 0) {
+            return "{$base}/api/v1/webhook/{$platform}/reseller/{$resellerId}/".rawurlencode($secret);
+        }
+
+        return "{$base}/api/v1/webhook/{$platform}/".rawurlencode($secret);
+    }
+
+    public function mirrorWebhookUrl(int $mirrorId, string $secret): string
+    {
+        $base = $this->publicWebhookBase('telegram');
+
+        return "{$base}/api/v1/webhook/telegram/mirror/{$mirrorId}/".rawurlencode($secret);
+    }
+
+    protected function publicWebhookBase(string $platform): string
+    {
         $overrideKey = match ($platform) {
             'bale' => 'bale_public_webhook_base',
             'telegram' => 'telegram_public_webhook_base',
@@ -163,10 +203,7 @@ class BotRuntime
         } else {
             $base = rtrim($base, '/');
         }
-        if ($resellerId > 0) {
-            return "{$base}/api/v1/webhook/{$platform}/reseller/{$resellerId}/".rawurlencode($secret);
-        }
 
-        return "{$base}/api/v1/webhook/{$platform}/".rawurlencode($secret);
+        return $base;
     }
 }

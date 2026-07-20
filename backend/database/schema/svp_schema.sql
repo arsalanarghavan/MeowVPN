@@ -307,6 +307,7 @@ CREATE TABLE svp_services (
 			user_id bigint(20) unsigned NOT NULL,
 			panel_id bigint(20) unsigned NOT NULL DEFAULT 1,
 			inbound_id int NOT NULL,
+			inbound_ids longtext NULL,
 			xui_client_id varchar(191) DEFAULT NULL,
 			xui_client_uuid varchar(64) DEFAULT NULL,
 			email varchar(191) NOT NULL,
@@ -376,24 +377,29 @@ CREATE TABLE svp_plans (
 			traffic_gb bigint NOT NULL DEFAULT 0,
 			price decimal(15,2) NOT NULL DEFAULT 0,
 			pricing_type varchar(20) NOT NULL DEFAULT 'fixed',
+			quota_display_mode varchar(20) NOT NULL DEFAULT 'show',
 			price_per_gb decimal(15,2) NOT NULL DEFAULT 0,
 			traffic_gb_min int NOT NULL DEFAULT 0,
 			traffic_gb_max int NOT NULL DEFAULT 0,
 			clients_count int NOT NULL DEFAULT 1,
 			inbound_id int NOT NULL DEFAULT 0,
+			inbound_ids longtext NULL,
+			panel_template_id int unsigned DEFAULT NULL,
 			panel_id bigint(20) unsigned NOT NULL DEFAULT 1,
 			wholesale_line_id bigint(20) unsigned DEFAULT NULL,
 			service_type varchar(16) NOT NULL DEFAULT 'xray',
 			l2tp_server_id bigint(20) unsigned DEFAULT NULL,
 			active tinyint(1) NOT NULL DEFAULT 1,
 			sort_order int NOT NULL DEFAULT 0,
+			owner_svp_user_id bigint(20) unsigned NOT NULL DEFAULT 0,
 			created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY (id),
 			KEY category (category),
 			KEY active (active),
 			KEY service_type (service_type),
 			KEY panel_id (panel_id),
-			KEY wholesale_line_id (wholesale_line_id)
+			KEY wholesale_line_id (wholesale_line_id),
+			KEY owner_svp_user (owner_svp_user_id)
 		) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE svp_plan_categories (
@@ -420,6 +426,8 @@ CREATE TABLE svp_panels (
 			panel_login_secret varchar(255) NOT NULL DEFAULT '',
 			panel_api_token text NULL,
 			panel_api_flavor varchar(32) NOT NULL DEFAULT 'unknown',
+			panel_provider varchar(32) NOT NULL DEFAULT 'xui',
+			panel_template_required tinyint(1) NOT NULL DEFAULT 0,
 			subscription_public_base text NULL,
 			sort_order int NOT NULL DEFAULT 0,
 			active tinyint(1) NOT NULL DEFAULT 1,
@@ -470,6 +478,7 @@ CREATE TABLE svp_users (
 			bot_locale varchar(5) NOT NULL DEFAULT '',
 			invited_by bigint(20) unsigned DEFAULT NULL,
 			signup_reseller_svp_id bigint(20) unsigned DEFAULT NULL,
+			last_tg_mirror_bot_id bigint(20) unsigned NOT NULL DEFAULT 0,
 			wp_user_id bigint(20) unsigned DEFAULT NULL,
 			created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY (id),
@@ -708,6 +717,7 @@ CREATE TABLE svp_inbound_queue (
 			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 			platform varchar(8) NOT NULL,
 			reseller_svp_user_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			mirror_bot_id bigint(20) unsigned NOT NULL DEFAULT 0,
 			update_json longtext NOT NULL,
 			status varchar(16) NOT NULL DEFAULT 'pending',
 			tries int NOT NULL DEFAULT 0,
@@ -716,4 +726,18 @@ CREATE TABLE svp_inbound_queue (
 			processed_at datetime DEFAULT NULL,
 			PRIMARY KEY (id),
 			KEY status_created (status, created_at)
+		) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE svp_telegram_mirror_bots (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			label varchar(255) NOT NULL DEFAULT '',
+			telegram_token text NULL,
+			telegram_bot_username varchar(128) NOT NULL DEFAULT '',
+			webhook_secret varchar(512) NOT NULL DEFAULT '',
+			telegram_secret_token varchar(255) NOT NULL DEFAULT '',
+			enabled tinyint(1) NOT NULL DEFAULT 1,
+			sort_order int NOT NULL DEFAULT 0,
+			updated_at datetime DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+			PRIMARY KEY (id),
+			KEY enabled_sort (enabled, sort_order)
 		) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

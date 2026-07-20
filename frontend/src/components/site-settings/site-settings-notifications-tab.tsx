@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useTranslation } from "react-i18next"
+import { useTranslations } from "next-intl"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -37,11 +37,10 @@ export function SiteSettingsNotificationsTab({
   settings: DashRecord | undefined
   onMutateSuccess?: () => void
 }) {
-  const { t } = useTranslation()
+  const t = useTranslations("siteSettings.notifications")
   const { iconGapClass, ltrCell } = useDashLocale()
-  const tp = (k: string) => t(`siteSettings.notifications.${k}`)
-  const tn = (k: string, opts?: Record<string, string | number>) =>
-    t(`notificationsAdmin.${k}`, opts)
+  const tp = t
+  const tn = useTranslations("notificationsAdmin")
   const s = settings ?? {}
 
   const initial = useMemo(

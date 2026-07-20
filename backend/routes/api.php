@@ -5,9 +5,14 @@ use App\Http\Controllers\Api\V1\AdminUserController;
 use App\Http\Controllers\Api\V1\AuditController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BootstrapController;
+use App\Modules\Core\Http\PortalUsageController;
+use App\Http\Controllers\Api\V1\CronStatusController;
+use App\Http\Controllers\Api\V1\DashboardLoginController;
+use App\Http\Controllers\Api\V1\DashboardMagicLinkController;
 use App\Http\Controllers\Api\V1\DashboardSessionController;
 use App\Http\Controllers\Api\V1\ImpersonationController;
 use App\Http\Controllers\Api\V1\InboundDisplayCatalogController;
+use App\Http\Controllers\Api\V1\LiveStreamController;
 use App\Http\Controllers\Api\V1\LogsController;
 use App\Http\Controllers\Api\V1\MediaController;
 use App\Http\Controllers\Api\V1\MutateController;
@@ -23,14 +28,22 @@ use App\Modules\Backup\Http\BackupController;
 use App\Modules\Marketing\Http\BroadcastController;
 use App\Modules\XuiPanel\Http\ConfigsController;
 use App\Modules\XuiPanel\Http\PanelController;
+use App\Modules\XuiPanel\Http\PanelOrphanClientsController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
     Route::post('auth/login', [AuthController::class, 'login'])
         ->middleware(['web', 'install.wizard.complete']);
+    Route::get('dashboard/login', [DashboardLoginController::class, 'show'])->middleware('web');
+    Route::post('dashboard/login', [AuthController::class, 'login'])->middleware(['web', 'install.wizard.complete']);
+    Route::post('dashboard/login/telegram', [DashboardLoginController::class, 'telegram'])->middleware(['web', 'install.wizard.complete']);
+    Route::post('dashboard/login/magic/issue', [DashboardMagicLinkController::class, 'issue'])->middleware(['web', 'install.wizard.complete']);
+    Route::match(['get', 'post'], 'dashboard/login/magic', [DashboardMagicLinkController::class, 'consume'])->middleware(['web', 'install.wizard.complete']);
+    Route::get('me/state', [DashboardSessionController::class, 'meState'])->middleware(['web', 'install.wizard.complete']);
     Route::post('auth/token', [AuthController::class, 'token'])
         ->middleware('install.wizard.complete');
     Route::get('bootstrap', BootstrapController::class)->middleware('web');
+    Route::get('portal/usage', PortalUsageController::class)->middleware('web');
 
     Route::get('setup/status', [SetupWizardController::class, 'status']);
 
@@ -47,7 +60,6 @@ Route::prefix('v1')->group(function () {
 
     Route::middleware(['web', 'auth:sanctum', 'dashboard.enabled', 'reseller.scope'])->group(function () {
         Route::post('auth/logout', [AuthController::class, 'logout']);
-        Route::get('me/state', [DashboardSessionController::class, 'meState']);
         Route::get('me/portal', UserPortalController::class);
         Route::post('dashboard/persona', [DashboardSessionController::class, 'setPersona']);
         Route::post('dashboard/ui-preferences', [DashboardSessionController::class, 'uiPreferences']);
@@ -59,6 +71,10 @@ Route::prefix('v1')->group(function () {
             Route::get("{$adminPrefix}/state", AdminStateController::class)->middleware([
                 EnsureAdminOrReseller::class,
                 'admin.state.module',
+                AdminDashboardRateLimit::class.':state',
+            ]);
+            Route::get("{$adminPrefix}/live-stream", LiveStreamController::class)->middleware([
+                EnsureAdminOrReseller::class,
                 AdminDashboardRateLimit::class.':state',
             ]);
             Route::get("{$adminPrefix}/audit", [AuditController::class, 'index'])->middleware([EnsureAdminOrReseller::class, EnsureAdmin::class]);
@@ -80,13 +96,22 @@ Route::prefix('v1')->group(function () {
                 Route::get("{$adminPrefix}/configs-snapshot", [ConfigsController::class, 'snapshot']);
                 Route::get("{$adminPrefix}/configs-portal-payload", [ConfigsController::class, 'portalPayload']);
                 Route::post("{$adminPrefix}/configs-sync", [ConfigsController::class, 'sync']);
+                Route::post("{$adminPrefix}/configs-live-traffic", [ConfigsController::class, 'liveTraffic']);
                 Route::get("{$adminPrefix}/panel-inbounds", [PanelController::class, 'inbounds']);
+                Route::get("{$adminPrefix}/panel-templates", [PanelController::class, 'templates']);
                 Route::get("{$adminPrefix}/panel-inbound-clients", [PanelController::class, 'inboundClients']);
                 Route::get("{$adminPrefix}/panel/inbound-map", [PanelController::class, 'inboundMapGet']);
                 Route::post("{$adminPrefix}/panel/inbound-map", [PanelController::class, 'inboundMapSave']);
                 Route::post("{$adminPrefix}/panel/rebuild-from-db", [PanelController::class, 'rebuildFromDb'])->middleware(EnsureAdmin::class);
                 Route::post("{$adminPrefix}/panel/fix-51200-traffic", [PanelController::class, 'fix51200Traffic'])->middleware(EnsureAdmin::class);
+                Route::match(['get', 'post'], "{$adminPrefix}/panel/orphan-clients/scan", [PanelOrphanClientsController::class, 'scan']);
+                Route::match(['get', 'post'], "{$adminPrefix}/panel/orphan-clients/delete", [PanelOrphanClientsController::class, 'delete']);
             });
+
+            Route::get("{$adminPrefix}/cron-status", CronStatusController::class)->middleware([
+                EnsureAdminOrReseller::class,
+                EnsureAdmin::class,
+            ]);
 
             Route::get("{$adminPrefix}/broadcast-queue", [BroadcastController::class, 'queue'])
                 ->middleware(['marketing.module', EnsureAdminOrReseller::class, 'reseller.perm:broadcast.send']);

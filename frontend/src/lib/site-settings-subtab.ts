@@ -1,4 +1,7 @@
 export const SITE_SETTINGS_SUBTABS = [
+  "landing",
+  "subscription_portal",
+  "cron",
   "whitelabel",
   "service_naming",
   "proxy",
@@ -27,11 +30,4 @@ export function writeSiteSubtabToUrl(subtab: SiteSettingsSubtab) {
   const url = new URL(window.location.href)
   url.searchParams.set("site_subtab", subtab)
   window.history.replaceState(window.history.state, "", url.toString())
-}
-
-/** Legacy top-level tabs folded into site settings hub. */
-export function resolveLegacySiteTab(tab: string): { tab: string; subtab?: SiteSettingsSubtab } {
-  if (tab === "notifications") return { tab: "site_settings", subtab: "notifications" }
-  if (tab === "logs") return { tab: "site_settings", subtab: "logs" }
-  return { tab }
 }

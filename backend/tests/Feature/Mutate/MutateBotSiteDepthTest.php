@@ -99,13 +99,18 @@ class MutateBotSiteDepthTest extends TestCase
 
     public function test_bot_ui_layout_save_and_reset(): void
     {
-        $layout = ['rows' => [['id' => 'buy', 'visible' => true]]];
+        $surfaces = [
+            'user_main' => [[
+                ['id' => 'user.main.buy', 'enabled' => true, 'glass' => false],
+            ]],
+        ];
         $this->actingAsAdmin()->postJson('/api/v1/admin/mutate', [
             'op' => 'bot_ui_layout_save',
-            'layout' => $layout,
+            'surfaces' => $surfaces,
         ])->assertOk()->assertJsonPath('ok', true);
 
-        $this->assertSame($layout, app(SettingsStore::class)->get('bot_ui_layout'));
+        $stored = app(SettingsStore::class)->get('bot_ui_layout', []);
+        $this->assertSame($surfaces['user_main'], $stored['surfaces']['user_main'] ?? null);
 
         $this->actingAsAdmin()->postJson('/api/v1/admin/mutate', [
             'op' => 'bot_ui_layout_reset',

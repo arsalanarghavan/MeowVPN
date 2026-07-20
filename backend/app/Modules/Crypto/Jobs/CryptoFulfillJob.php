@@ -14,14 +14,17 @@ class CryptoFulfillJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public function __construct(public int $transactionId) {}
+    public function __construct(
+        public int $transactionId,
+        public string $source = 'nowpayments',
+    ) {}
 
     public function handle(PurchaseFulfillService $fulfill): void
     {
-        $key = 'svp_crypto_fulfill_try_'.$this->transactionId;
+        $key = 'svp_crypto_fulfill_try_'.$this->source.'_'.$this->transactionId;
         $attempt = (int) Cache::get($key, 0);
 
-        $res = $fulfill->fulfillByTransaction($this->transactionId, 'nowpayments');
+        $res = $fulfill->fulfillByTransaction($this->transactionId, $this->source);
         if (! empty($res['ok'])) {
             Cache::forget($key);
 
@@ -40,6 +43,6 @@ class CryptoFulfillJob implements ShouldQueue
         }
 
         Cache::put($key, $attempt + 1, 3600);
-        self::dispatch($this->transactionId)->delay(now()->addSeconds(30 * ($attempt + 1)));
+        self::dispatch($this->transactionId, $this->source)->delay(now()->addSeconds(30 * ($attempt + 1)));
     }
 }

@@ -10,6 +10,8 @@ use App\Modules\Core\Bot\Services\BotRuntime;
 use App\Modules\Core\Bot\Services\KeyboardBuilder;
 use App\Modules\Core\Bot\Services\TextService;
 use App\Modules\Core\Bot\Services\UserResolver;
+use App\Services\Auth\DashboardMagicLinkService;
+use App\Services\Auth\DashboardTelegramAuth;
 use App\Services\SettingsStore;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -23,6 +25,8 @@ class StartHandler
         protected KeyboardBuilder $keyboards,
         protected SettingsStore $settings,
         protected AdminGuard $adminGuard,
+        protected DashboardTelegramAuth $dashboardAuth,
+        protected DashboardMagicLinkService $magicLink,
     ) {}
 
     /** @param  array<string, mixed>  $payload */
@@ -35,6 +39,10 @@ class StartHandler
 
         if (! $user instanceof SvpUser) {
             $user = $this->users->findOrCreateFromStart($ctx, $from, $text);
+        }
+
+        if ($this->maybeSendDashboardMagicLink($ctx, $user, $text, $chatId, (int) ($from['id'] ?? 0))) {
+            return;
         }
 
         if (preg_match('#ref_(\d+)#i', $text, $refMatch)) {
@@ -106,6 +114,40 @@ class StartHandler
         app(\App\Modules\Core\Bot\Handlers\Admin\AdminPanelHandler::class)->sendPanelEntry($ctx, $chatId, $user);
         $user->admin_mode = true;
         $user->save();
+    }
+
+    protected function maybeSendDashboardMagicLink(BotContext $ctx, SvpUser $user, string $startText, int $chatId, int $fromId): bool
+    {
+        $payload = trim((string) preg_replace('#^/start(?:@\S+)?#iu', '', trim($startText)));
+        if (strtolower($payload) !== 'dlogin') {
+            return false;
+        }
+        if ($chatId < 1 || $fromId < 1) {
+            return true;
+        }
+        $platform = $ctx->platform;
+        $dashUser = $this->dashboardAuth->resolveDashboardUserForPlatform($platform, $fromId);
+        if (! $dashUser) {
+            $this->runtime->sendMessage(
+                $ctx,
+                $chatId,
+                $this->texts->getForUser('msg.dashboard_login_not_linked', $user, 'Dashboard account not linked.')
+            );
+
+            return true;
+        }
+        $url = $this->magicLink->buildUrl($platform, $fromId);
+        $msg = $this->texts->format(
+            $this->texts->getForUser(
+                'msg.dashboard_login_magic_link',
+                $user,
+                "One-time dashboard login link (5 min):\n{link}"
+            ),
+            ['link' => $url]
+        );
+        $this->runtime->sendMessage($ctx, $chatId, $msg);
+
+        return true;
     }
 
     protected function notifyAdminsPending(BotContext $ctx, SvpUser $user): void

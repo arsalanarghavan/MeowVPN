@@ -31,6 +31,8 @@ class MarketingMutations
             'marketing_rule_delete' => [self::class, 'marketingRuleDelete'],
             'marketing_send_manual' => [self::class, 'marketingSendManual'],
             'marketing_run_rule_now' => [self::class, 'marketingRunRuleNow'],
+            'marketing_lifecycle_confirm_defaults' => [self::class, 'marketingLifecycleConfirmDefaults'],
+            'marketing_preview_message' => [self::class, 'marketingPreviewMessage'],
         ];
     }
 
@@ -154,5 +156,53 @@ class MarketingMutations
         $stats = $this->marketing->runRuleNow($ruleId, (int) ($payload['limit'] ?? 80));
 
         return svp_ok($stats);
+    }
+
+    /** @param  array<string, mixed>  $payload */
+    public function marketingLifecycleConfirmDefaults(array $payload, ?Authenticatable $actor): array
+    {
+        if (! $actor instanceof DashboardUser || $actor->role !== 'admin') {
+            return svp_err('forbidden');
+        }
+
+        $enabled = $this->marketing->confirmLifecycleDefaults();
+
+        return svp_ok([
+            'enabled_rules' => $enabled,
+            'lifecycle_confirmed' => true,
+        ]);
+    }
+
+    /** @param  array<string, mixed>  $payload */
+    public function marketingPreviewMessage(array $payload, ?Authenticatable $actor): array
+    {
+        $ruleId = (int) ($payload['rule_id'] ?? 0);
+        $userId = (int) ($payload['svp_user_id'] ?? $payload['user_id'] ?? 0);
+        if ($ruleId < 1) {
+            return svp_err('invalid_rule');
+        }
+
+        $rule = DB::table('svp_marketing_rules')->where('id', $ruleId)->first();
+        if (! $rule) {
+            return svp_err('not_found');
+        }
+
+        if ($actor instanceof DashboardUser && $actor->role === 'reseller') {
+            if ((int) ($rule->owner_svp_user_id ?? 0) !== (int) ($actor->svp_user_id ?? 0)) {
+                return svp_err('forbidden_scope');
+            }
+        }
+
+        $res = $this->marketing->previewMessage($ruleId, $userId);
+
+        if (empty($res['ok'])) {
+            return svp_err((string) ($res['message'] ?? 'failed'));
+        }
+
+        return [
+            'ok' => true,
+            'message' => (string) ($res['message'] ?? ''),
+            'code' => (string) ($res['code'] ?? 'PREVIEW-CODE'),
+        ];
     }
 }

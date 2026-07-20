@@ -8,15 +8,14 @@ import { useDashLocale } from "@/lib/dash-locale-context"
 import { cn } from "@/lib/utils"
 
 function normalizeHex(raw: string): string {
-  const t = raw.trim()
-  if (!t) return ""
-  return t.startsWith("#") ? t : `#${t}`
+  const value = raw.trim()
+  if (!value) return ""
+  return value.startsWith("#") ? value : `#${value}`
 }
 
-function hexForColorInput(value: string, fallback: string): string {
-  const v = normalizeHex(value)
-  if (/^#[0-9a-fA-F]{6}$/.test(v)) return v
-  return fallback
+function colorInputValue(value: string, fallback: string): string {
+  const hex = normalizeHex(value)
+  return /^#[0-9a-fA-F]{6}$/.test(hex) ? hex : fallback
 }
 
 export function ColorHexField({
@@ -32,19 +31,18 @@ export function ColorHexField({
   onChange: (hex: string) => void
   fallback?: string
 }) {
-  const { ltrCell } = useDashLocale()
   const autoId = useId()
+  const { ltrCell } = useDashLocale()
   const id = idProp ?? autoId
-  const pickerValue = hexForColorInput(value, fallback)
 
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>{label}</Label>
-      <div className={cn("flex items-center gap-2")}>
+      <div className="flex items-center gap-2">
         <Input
           type="color"
           className="h-10 w-14 shrink-0 cursor-pointer p-1"
-          value={pickerValue}
+          value={colorInputValue(value, fallback)}
           onChange={(e) => onChange(e.target.value)}
           aria-label={label}
         />
@@ -54,7 +52,7 @@ export function ColorHexField({
           onChange={(e) => onChange(e.target.value)}
           placeholder={fallback}
           dir="ltr"
-          className={ltrCell("font-mono")}
+          className={cn(ltrCell("font-mono"))}
         />
       </div>
     </div>

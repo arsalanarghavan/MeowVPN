@@ -66,6 +66,18 @@ class MutationPipeline
             return ['result' => svp_err('module_disabled'), 'http_status' => 403];
         }
 
+        if (str_starts_with($op, 'xray_') && ! svp_modules()->isEnabled('xray_core')) {
+            return ['result' => svp_err('module_disabled'), 'http_status' => 403];
+        }
+
+        if (str_starts_with($op, 'vpn_server_') && ! svp_modules()->isEnabled('xray_core')) {
+            return ['result' => svp_err('module_disabled'), 'http_status' => 403];
+        }
+
+        if (str_starts_with($op, 'tunnel_') && ! svp_modules()->isEnabled('tunnel')) {
+            return ['result' => svp_err('module_disabled'), 'http_status' => 403];
+        }
+
         if ($this->isXuiPanelOp($op) && ! svp_modules()->isEnabled('xui_panel')) {
             return ['result' => svp_err('module_disabled'), 'http_status' => 403];
         }
@@ -83,7 +95,10 @@ class MutationPipeline
         $botOps = ['bot_toggle_enabled', 'bot_toggle_platform_enabled', 'bot_test_telegram', 'bot_test_bale',
             'bot_diagnostics', 'bot_set_webhook', 'bot_delete_webhook', 'bot_admin_id_add', 'bot_admin_id_remove',
             'force_join_publish', 'telegram_proxy_test', 'texts_save', 'text_reset_one', 'texts_reset',
-            'bot_ui_layout_save', 'bot_ui_layout_reset'];
+            'bot_ui_layout_save', 'bot_ui_layout_reset', 'bot_ui_group_create', 'bot_ui_group_delete',
+            'telegram_mirror_save', 'telegram_mirror_delete', 'telegram_mirror_set_webhook',
+            'telegram_mirror_delete_webhook', 'telegram_mirror_toggle', 'telegram_mirror_test',
+            'telegram_mirror_diagnostics'];
         if (in_array($op, $botOps, true)
             && ! svp_modules()->isEnabled('telegram')
             && ! svp_modules()->isEnabled('bale')) {
@@ -155,13 +170,22 @@ class MutationPipeline
         if (in_array($msg, ['invalid_reseller_context', 'missing_op', 'bad_request'], true)) {
             return 400;
         }
+        if ($msg === 'module_disabled') {
+            return 403;
+        }
 
         return 422;
     }
 
     /** @var list<string> */
     private const XUI_PANEL_OPS = [
-        'panel_xp', 'panel_test', 'service_panel_sync', 'service_panel_refresh',
+        'panel_xp', 'panel_test', 'panel_merge_preview', 'panel_merge_execute',
+        'configs_panel_del_orphans', 'panels_repair_identities',
+        'configs_bulk_reset_traffic', 'configs_reset_all_panel_traffic', 'configs_panel_del_depleted',
+        'configs_client_fetch_ips', 'configs_client_clear_ips',
+        'configs_client_set_inbounds', 'configs_clients_bulk_set_inbounds',
+        'configs_inbound_patch', 'configs_delete_expired_older_than',
+        'service_panel_sync', 'service_panel_refresh',
         'service_panel_delete_client', 'service_panel_transfer', 'service_apply_canonical_panel_identity',
         'user_create_service', 'user_renew_service', 'user_add_volume', 'user_reduce_volume',
         'user_add_days', 'user_reduce_days', 'user_service_reduce_slots', 'user_service_transfer',
@@ -179,6 +203,7 @@ class MutationPipeline
     private const MARKETING_OPS = [
         'broadcast_send', 'broadcast_cancel', 'broadcast_run_worker',
         'marketing_rule_save', 'marketing_rule_delete', 'marketing_send_manual', 'marketing_run_rule_now',
+        'marketing_lifecycle_confirm_defaults', 'marketing_preview_message',
     ];
 
     protected function isXuiPanelOp(string $op): bool

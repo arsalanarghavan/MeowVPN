@@ -1,19 +1,11 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useTranslation } from "react-i18next"
-
+import { useTranslations } from "next-intl"
 import { BOT_PLATFORMS } from "@/config/bot-platforms"
 import { mainEnabledPlatforms } from "@/lib/enabled-platforms"
-import { DashPage } from "@/components/dash-page"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -21,7 +13,6 @@ import { postAdminMutate } from "@/lib/dash-admin-mutate"
 import { cn } from "@/lib/utils"
 
 type DashRecord = Record<string, unknown>
-
 type PlatformId = "telegram" | "bale"
 
 type PlatformForm = {
@@ -77,9 +68,8 @@ export function DashboardForceJoinAdmin({
   settings: DashRecord | undefined
   onMutateSuccess?: () => void
 }) {
-
-  const { t } = useTranslation()
-  const tp = (k: string) => t(`forceJoinAdmin.${k}`)
+  const t = useTranslations("forceJoinAdmin")
+  const tBots = useTranslations("botsAdmin")
   const s = settings ?? {}
 
   const initial = useMemo(
@@ -125,15 +115,15 @@ export function DashboardForceJoinAdmin({
         ...payloadFromForm("bale", forms.bale),
       })
       if (!res.ok) {
-        setError(res.message || tp("saveError"))
+        setError(res.message || t("saveError"))
         return
       }
-      setOkMsg(tp("saved"))
+      setOkMsg(t("saved"))
       onMutateSuccess?.()
     } finally {
       setSaving(false)
     }
-  }, [forms, onMutateSuccess, tp])
+  }, [forms, onMutateSuccess, t])
 
   const onPublish = useCallback(
     async (platform: PlatformId) => {
@@ -143,17 +133,20 @@ export function DashboardForceJoinAdmin({
       try {
         const res = await postAdminMutate("force_join_publish", { platform })
         if (!res.ok) {
-          setError(res.message || tp("publishError"))
+          setError(res.message || t("publishError"))
           return
         }
-        setOkMsg(tp("publishOk"))
+        setOkMsg(t("publishOk"))
         onMutateSuccess?.()
       } finally {
         setPublishing("")
       }
     },
-    [onMutateSuccess, tp]
+    [onMutateSuccess, t]
   )
+
+  const platformTitle = (platform: PlatformId) =>
+    platform === "telegram" ? tBots("platformTelegram") : tBots("platformBale")
 
   const platformCard = (platform: PlatformId, title: string) => {
     const f = forms[platform]
@@ -161,7 +154,7 @@ export function DashboardForceJoinAdmin({
       <Card key={platform}>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">{title}</CardTitle>
-          <CardDescription className="text-xs">{tp("cardDesc")}</CardDescription>
+          <CardDescription className="text-xs">{t("cardDesc")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <label className={cn("flex items-center gap-2 text-sm")}>
@@ -172,10 +165,10 @@ export function DashboardForceJoinAdmin({
               disabled={busy}
               onChange={(e) => setPlatform(platform, { enabled: e.target.checked })}
             />
-            {tp("enabled")}
+            {t("enabled")}
           </label>
           <div className="space-y-2">
-            <Label>{tp("chatId")}</Label>
+            <Label>{t("chatId")}</Label>
             <Input
               type="number"
               dir="ltr"
@@ -184,10 +177,10 @@ export function DashboardForceJoinAdmin({
               placeholder="-100…"
               onChange={(e) => setPlatform(platform, { chat_id: e.target.value })}
             />
-            <p className="text-xs text-muted-foreground">{tp("chatIdHint")}</p>
+            <p className="text-xs text-muted-foreground">{t("chatIdHint")}</p>
           </div>
           <div className="space-y-2">
-            <Label>{tp("username")}</Label>
+            <Label>{t("username")}</Label>
             <Input
               dir="ltr"
               value={f.username}
@@ -197,7 +190,7 @@ export function DashboardForceJoinAdmin({
             />
           </div>
           <div className="space-y-2">
-            <Label>{tp("inviteLink")}</Label>
+            <Label>{t("inviteLink")}</Label>
             <Input
               dir="ltr"
               value={f.invite_link}
@@ -205,20 +198,20 @@ export function DashboardForceJoinAdmin({
               placeholder="https://…"
               onChange={(e) => setPlatform(platform, { invite_link: e.target.value })}
             />
-            <p className="text-xs text-muted-foreground">{tp("inviteLinkHint")}</p>
+            <p className="text-xs text-muted-foreground">{t("inviteLinkHint")}</p>
           </div>
           <div className="space-y-2">
-            <Label>{tp("promptText")}</Label>
+            <Label>{t("promptText")}</Label>
             <Textarea
               rows={4}
               value={f.prompt_text}
               disabled={busy}
               onChange={(e) => setPlatform(platform, { prompt_text: e.target.value })}
             />
-            <p className="text-xs text-muted-foreground">{tp("promptTextHint")}</p>
+            <p className="text-xs text-muted-foreground">{t("promptTextHint")}</p>
           </div>
           <div className="space-y-2 border-t border-border pt-3">
-            <Label>{tp("announceText")}</Label>
+            <Label>{t("announceText")}</Label>
             <Textarea
               rows={4}
               value={f.announce_text}
@@ -232,7 +225,7 @@ export function DashboardForceJoinAdmin({
               disabled={busy}
               onClick={() => void onPublish(platform)}
             >
-              {publishing === platform ? tp("publishing") : tp("publishPin")}
+              {publishing === platform ? t("publishing") : t("publishPin")}
             </Button>
           </div>
         </CardContent>
@@ -241,10 +234,10 @@ export function DashboardForceJoinAdmin({
   }
 
   return (
-    <DashPage className={"space-y-4"}>
+    <div className="space-y-4">
       <div>
-        <h3 className="text-base font-medium">{tp("sectionTitle")}</h3>
-        <p className="text-sm text-muted-foreground">{tp("sectionDesc")}</p>
+        <h3 className="text-base font-medium">{t("sectionTitle")}</h3>
+        <p className="text-sm text-muted-foreground">{t("sectionDesc")}</p>
       </div>
       {error ? (
         <div
@@ -254,19 +247,15 @@ export function DashboardForceJoinAdmin({
           {error}
         </div>
       ) : null}
-      {okMsg && !error ? (
-        <p className="text-sm text-emerald-600 dark:text-emerald-400">{okMsg}</p>
-      ) : null}
+      {okMsg && !error ? <p className="text-sm text-emerald-600 dark:text-emerald-400">{okMsg}</p> : null}
       <div className="grid gap-4 lg:grid-cols-2">
-        {visiblePlatforms.map((plat) =>
-          platformCard(plat.id, t(plat.titleKey))
-        )}
+        {visiblePlatforms.map((plat) => platformCard(plat.id, platformTitle(plat.id)))}
       </div>
       <div className={cn("flex flex-wrap gap-2")}>
         <Button type="button" size="sm" disabled={busy} onClick={() => void onSave()}>
-          {saving ? tp("saving") : tp("save")}
+          {saving ? t("saving") : t("save")}
         </Button>
       </div>
-    </DashPage>
+    </div>
   )
 }

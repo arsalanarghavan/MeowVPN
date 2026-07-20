@@ -1,23 +1,14 @@
 "use client"
 
+import Link from "next/link"
 import type { ReactNode } from "react"
-import { useTranslation } from "react-i18next"
-import { formatNumber, formatServiceExpiryLine } from "@/lib/format-locale"
-import { broadcastRowStatusLabel } from "@/lib/broadcast-labels"
-
+import { useTranslations } from "next-intl"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { overviewAccentOutlineBtn } from "@/lib/chart-accent"
+import { receiptSelectedService } from "@/lib/format-receipt"
 import {
   formatOverviewAmount,
   formatOverviewDate,
@@ -28,46 +19,38 @@ import {
   userStatusBadgeVariant,
   type DashRecord,
 } from "@/lib/overview-rows"
-import { receiptSelectedService } from "@/lib/format-receipt"
-import { cn } from "@/lib/utils"
 import { useDashLocale } from "@/lib/dash-locale-context"
+import { cn } from "@/lib/utils"
 
-export function OverviewSectionCard({
+function OverviewSectionCard({
   title,
   description,
+  viewAllHref,
   viewAllLabel,
-  onViewAll,
   children,
   className,
 }: {
   title: string
   description?: string
+  viewAllHref: string
   viewAllLabel: string
-  onViewAll: () => void
-children: ReactNode
+  children: ReactNode
   className?: string
 }) {
-
   return (
     <Card className={cn("overflow-hidden border-border/80 shadow-sm", className)}>
       <CardHeader className="border-b border-border/60 bg-muted/20 pb-3">
-        <div
-          className={cn(
-            "flex flex-wrap items-start justify-between gap-2"
-          )}
-        >
-          <div className={cn("min-w-0 space-y-0.5")}>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0 space-y-0.5">
             <CardTitle className="text-base">{title}</CardTitle>
-            {description ? (
-              <CardDescription className="text-pretty">{description}</CardDescription>
-            ) : null}
+            {description ? <CardDescription className="text-pretty">{description}</CardDescription> : null}
           </div>
           <Button
+            render={<Link href={viewAllHref} />}
             type="button"
             variant="outline"
             size="sm"
             className={cn("shrink-0", overviewAccentOutlineBtn)}
-            onClick={onViewAll}
           >
             {viewAllLabel}
           </Button>
@@ -79,20 +62,10 @@ children: ReactNode
 }
 
 function OverviewEmpty({ message }: { message: string }) {
-  return (
-    <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-      {message}
-    </p>
-  )
+  return <p className="px-4 py-8 text-center text-sm text-muted-foreground">{message}</p>
 }
 
-function OverviewDataTable({
-  headers,
-  rows,
-}: {
-  headers: string[]
-  rows: ReactNode[]
-}) {
+function OverviewDataTable({ headers, rows }: { headers: string[]; rows: ReactNode[] }) {
   if (rows.length === 0) return null
   return (
     <Table>
@@ -110,62 +83,74 @@ function OverviewDataTable({
   )
 }
 
-function ClickableRow({
-  onClick,
-  children,
-}: {
-  onClick: () => void
-  children: ReactNode
-}) {
+function ClickableRow({ href, children }: { href: string; children: ReactNode }) {
   return (
-    <TableRow
-      className="cursor-pointer hover:bg-primary/5"
-      onClick={onClick}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault()
-          onClick()
-        }
-      }}
-      tabIndex={0}
-      role="button"
-    >
-      {children}
+    <TableRow className="cursor-pointer hover:bg-primary/5">
+      <Link href={href} className="contents">
+        {children}
+      </Link>
     </TableRow>
   )
 }
 
-export function OverviewRecentUsers({
-  rows,
-  onViewAll,
-  onOpenUser,
+export function OverviewPreviewGrid({
+  dashboardBaseUrl,
+  recentUsers,
+  recentReceipts,
+  pendingUsersPreview,
+  recentResellers,
+  recentBroadcasts,
+  showResellers = true,
+  showBroadcast = true,
 }: {
-  rows: DashRecord[]
-onViewAll: () => void
-  onOpenUser: (id: number) => void
+  dashboardBaseUrl: string
+  recentUsers: DashRecord[]
+  recentReceipts: DashRecord[]
+  pendingUsersPreview: DashRecord[]
+  recentResellers: DashRecord[]
+  recentBroadcasts: DashRecord[]
+  showResellers?: boolean
+  showBroadcast?: boolean
 }) {
+  const t = useTranslations("dashboardOverview")
+  const tUsers = useTranslations("usersAdmin")
+  const tReceipts = useTranslations("receiptsAdmin")
+  const tBroadcast = useTranslations("broadcastAdmin")
   const { isFa } = useDashLocale()
-  const { t } = useTranslation()
-  const tp = (k: string) => t(`dashboardOverview.${k}`)
-  const statusLabel = (st: string) =>
-    t(`usersAdmin.status_${st}`, { defaultValue: st || "—" })
+  const base = dashboardBaseUrl.replace(/\/?$/, "")
 
-  const tableRows = rows.map((u) => {
+  const userStatusLabel = (st: string) => {
+    const key = `status_${st}` as "status_pending"
+    const translated = tUsers(key)
+    return translated !== key ? translated : st || "—"
+  }
+
+  const receiptStatusLabel = (st: string) => {
+    if (st === "pending") return tReceipts("statusPending")
+    if (st === "processing") return tReceipts("statusProcessing")
+    if (st === "approved") return tReceipts("statusApproved")
+    if (st === "rejected") return tReceipts("statusRejected")
+    return st || "—"
+  }
+
+  const broadcastStatusLabel = (st: string) => {
+    const key = `status_${st}` as "status_draft"
+    const translated = tBroadcast(key)
+    return translated !== key ? translated : st || "—"
+  }
+
+  const userRows = recentUsers.slice(0, 8).map((u) => {
     const id = overviewNum(u.id)
     const st = String(u.status ?? "")
     return (
-      <ClickableRow key={id} onClick={() => id > 0 && onOpenUser(id)}>
-        <TableCell className={cn("font-medium")}>
-          {userDisplayLabel(u)}
-        </TableCell>
+      <ClickableRow key={id} href={`${base}/users/u/${id}/`}>
+        <TableCell className="font-medium">{userDisplayLabel(u)}</TableCell>
         <TableCell className="text-start">
           <Badge variant={userStatusBadgeVariant(st)} className="font-normal">
-            {statusLabel(st)}
+            {userStatusLabel(st)}
           </Badge>
         </TableCell>
-        <TableCell
-          className={cn("text-muted-foreground tabular-nums text-xs")}
-        >
+        <TableCell className="text-muted-foreground text-xs tabular-nums">
           <span dir="ltr" className="inline-block">
             {formatOverviewDate(u.created_at, isFa)}
           </span>
@@ -174,63 +159,22 @@ onViewAll: () => void
     )
   })
 
-  return (
-    <OverviewSectionCard
-      title={tp("recentUsers")}
-      viewAllLabel={tp("viewAll")}
-      onViewAll={onViewAll}
-        >
-      {tableRows.length === 0 ? (
-        <OverviewEmpty message={tp("emptyPreview")}
-        />
-      ) : (
-        <OverviewDataTable
-        headers={[tp("colUser"), tp("colStatus"), tp("colDate")]}
-          rows={tableRows}
-        />
-      )}
-    </OverviewSectionCard>
-  )
-}
-
-export function OverviewRecentReceipts({
-  rows,
-  onViewAll,
-  onOpenReceipt,
-}: {
-  rows: DashRecord[]
-onViewAll: () => void
-  onOpenReceipt: (row: DashRecord) => void
-}) {
-  const { isFa } = useDashLocale()
-  const { t } = useTranslation()
-  const tp = (k: string) => t(`dashboardOverview.${k}`)
-  const rt = (k: string) => t(`receiptsAdmin.${k}`, { defaultValue: k })
-
-  const receiptStatusLabel = (st: string) => {
-    if (st === "pending") return rt("statusPending")
-    if (st === "processing") return rt("statusProcessing")
-    if (st === "approved") return rt("statusApproved")
-    if (st === "rejected") return rt("statusRejected")
-    return st || "—"
-  }
-
-  const tableRows = rows.map((r) => {
+  const receiptRows = recentReceipts.slice(0, 8).map((r) => {
     const id = overviewNum(r.id)
     const st = String(r.status ?? "").toLowerCase()
     const label = String(r.user_label ?? r.user_name ?? "").trim() || userDisplayLabel(r)
     const amt = receiptAmount(r)
+    const paymentsHref =
+      st === "pending" || st === "processing"
+        ? `${base}/payments/?payments_view=receipts&receipts_status=${st}`
+        : `${base}/payments/?payments_view=receipts`
     return (
-      <ClickableRow key={id} onClick={() => onOpenReceipt(r)}>
-        <TableCell className={cn("max-w-[10rem] truncate font-medium")}>
-          {label}
-        </TableCell>
-        <TableCell className={cn("max-w-[10rem] truncate text-sm")}>
-          {receiptSelectedService(r)}
-        </TableCell>
-        <TableCell className={cn("tabular-nums")}>
+      <ClickableRow key={id} href={paymentsHref}>
+        <TableCell className="max-w-[10rem] truncate font-medium">{label}</TableCell>
+        <TableCell className="max-w-[10rem] truncate text-sm">{receiptSelectedService(r)}</TableCell>
+        <TableCell className="tabular-nums">
           <span dir="ltr" className="inline-block">
-            {formatOverviewAmount(amt, isFa, rt("amountFree"))}
+            {formatOverviewAmount(amt, isFa, tReceipts("amountFree"))}
           </span>
         </TableCell>
         <TableCell className="text-start">
@@ -238,9 +182,7 @@ onViewAll: () => void
             {receiptStatusLabel(st)}
           </Badge>
         </TableCell>
-        <TableCell
-          className={cn("text-muted-foreground tabular-nums text-xs")}
-        >
+        <TableCell className="text-muted-foreground text-xs tabular-nums">
           <span dir="ltr" className="inline-block">
             {formatOverviewDate(r.created_at, isFa)}
           </span>
@@ -249,48 +191,12 @@ onViewAll: () => void
     )
   })
 
-  return (
-    <OverviewSectionCard
-      title={tp("recentReceipts")}
-      viewAllLabel={tp("viewAll")}
-      onViewAll={onViewAll}
-        >
-      {tableRows.length === 0 ? (
-        <OverviewEmpty message={tp("emptyPreview")}
-        />
-      ) : (
-        <OverviewDataTable
-        headers={[tp("colUser"), rt("colSelectedService"), tp("colAmount"), tp("colStatus"), tp("colDate")]}
-          rows={tableRows}
-        />
-      )}
-    </OverviewSectionCard>
-  )
-}
-
-export function OverviewPendingUsers({
-  rows,
-  onViewAll,
-  onOpenUser,
-}: {
-  rows: DashRecord[]
-onViewAll: () => void
-  onOpenUser: (id: number) => void
-}) {
-  const { isFa } = useDashLocale()
-  const { t } = useTranslation()
-  const tp = (k: string) => t(`dashboardOverview.${k}`)
-
-  const tableRows = rows.map((u) => {
+  const pendingRows = pendingUsersPreview.slice(0, 8).map((u) => {
     const id = overviewNum(u.id)
     return (
-      <ClickableRow key={id} onClick={() => id > 0 && onOpenUser(id)}>
-        <TableCell className={cn("font-medium")}>
-          {userDisplayLabel(u)}
-        </TableCell>
-        <TableCell
-          className={cn("text-muted-foreground tabular-nums text-xs")}
-        >
+      <ClickableRow key={id} href={`${base}/users/u/${id}/`}>
+        <TableCell className="font-medium">{userDisplayLabel(u)}</TableCell>
+        <TableCell className="text-muted-foreground text-xs tabular-nums">
           <span dir="ltr" className="inline-block">
             {formatOverviewDate(u.created_at, isFa)}
           </span>
@@ -299,209 +205,113 @@ onViewAll: () => void
     )
   })
 
-  return (
-    <OverviewSectionCard
-      title={tp("pendingApprovals")}
-      description={tp("pendingApprovalsHint")}
-      viewAllLabel={tp("viewAll")}
-      onViewAll={onViewAll}
-        >
-      {tableRows.length === 0 ? (
-        <OverviewEmpty message={tp("emptyPreview")}
-        />
-      ) : (
-        <OverviewDataTable
-        headers={[tp("colUser"), tp("colDate")]}
-          rows={tableRows}
-        />
-      )}
-    </OverviewSectionCard>
-  )
-}
-
-export function OverviewRecentResellers({
-  rows,
-  onViewAll,
-  onOpenReseller,
-}: {
-  rows: DashRecord[]
-onViewAll: () => void
-  onOpenReseller: (id: number) => void
-}) {
-  const { isFa } = useDashLocale()
-  const { t } = useTranslation()
-  const tp = (k: string) => t(`dashboardOverview.${k}`)
-  const statusLabel = (st: string) =>
-    t(`usersAdmin.status_${st}`, { defaultValue: st || "—" })
-
-  const tableRows = rows.map((u) => {
+  const resellerRows = recentResellers.slice(0, 8).map((u) => {
     const id = overviewNum(u.id)
     const st = String(u.status ?? "")
     return (
-      <ClickableRow key={id} onClick={() => id > 0 && onOpenReseller(id)}>
-        <TableCell className={cn("font-medium")}>
-          {userDisplayLabel(u)}
-        </TableCell>
+      <ClickableRow key={id} href={`${base}/resellers/`}>
+        <TableCell className="font-medium">{userDisplayLabel(u)}</TableCell>
         <TableCell className="text-start">
           <Badge variant={userStatusBadgeVariant(st)} className="font-normal">
-            {statusLabel(st)}
+            {userStatusLabel(st)}
           </Badge>
         </TableCell>
-        <TableCell className={cn("tabular-nums")}>
+        <TableCell className="tabular-nums">
           <span dir="ltr" className="inline-block">
-            {formatNumber(overviewNum(u.svc_count), isFa)}
+            {formatOverviewAmount(overviewNum(u.svc_count), isFa, "0")}
           </span>
         </TableCell>
       </ClickableRow>
     )
   })
 
-  return (
-    <OverviewSectionCard
-      title={tp("recentResellers")}
-      viewAllLabel={tp("viewAll")}
-      onViewAll={onViewAll}
-        >
-      {tableRows.length === 0 ? (
-        <OverviewEmpty message={tp("emptyPreview")}
-        />
-      ) : (
-        <OverviewDataTable
-        headers={[tp("colUser"), tp("colStatus"), tp("colServices")]}
-          rows={tableRows}
-        />
-      )}
-    </OverviewSectionCard>
-  )
-}
-
-export function OverviewRecentBroadcasts({
-  rows,
-  onViewAll,
-  onOpenBroadcast,
-}: {
-  rows: DashRecord[]
-onViewAll: () => void
-  onOpenBroadcast: () => void
-}) {
-  const { isFa } = useDashLocale()
-  const { t } = useTranslation()
-  const tp = (k: string) => t(`dashboardOverview.${k}`)
-
-  const tableRows = rows.map((b) => {
+  const broadcastRows = recentBroadcasts.slice(0, 5).map((b) => {
     const id = overviewNum(b.id)
-    const title = String(b.title ?? b.name ?? "").trim() || `#${id}`
     const st = String(b.status ?? "")
     return (
-      <ClickableRow key={id} onClick={onOpenBroadcast}>
-        <TableCell className={cn("max-w-[14rem] truncate font-medium")}>
-          {title}
-        </TableCell>
+      <ClickableRow key={id} href={`${base}/broadcast/`}>
+        <TableCell className="font-medium">{String(b.title ?? b.subject ?? `#${id}`)}</TableCell>
         <TableCell className="text-start">
           <Badge variant="secondary" className="font-normal">
-            {broadcastRowStatusLabel(st, t)}
+            {broadcastStatusLabel(st)}
           </Badge>
         </TableCell>
-        <TableCell className={cn("text-muted-foreground text-xs")}>
-          {b.created_at ? formatServiceExpiryLine(String(b.created_at), isFa) : "—"}
+        <TableCell className="text-muted-foreground text-xs">
+          {formatOverviewDate(b.created_at, isFa)}
         </TableCell>
       </ClickableRow>
     )
   })
 
   return (
-    <OverviewSectionCard
-      title={tp("recentBroadcasts")}
-      viewAllLabel={tp("viewAll")}
-      onViewAll={onViewAll}
-        >
-      {tableRows.length === 0 ? (
-        <OverviewEmpty message={tp("emptyPreview")}
-        />
-      ) : (
-        <OverviewDataTable
-        headers={[tp("colTitle"), tp("colStatus"), tp("colDate")]}
-          rows={tableRows}
-        />
-      )}
-    </OverviewSectionCard>
-  )
-}
-
-export function OverviewPreviewGrid({
-  isReseller,
-  allowTab,
-  recentUsers,
-  recentReceipts,
-  pendingUsersPreview,
-  recentResellers,
-  recentBroadcasts,
-  onSelectTab,
-  onOpenUserDetail,
-  onOpenResellerWorkspace,
-  onReceiptsFilterNavigate,
-}: {
-isReseller: boolean
-  allowTab: (tab: string) => boolean
-  recentUsers: DashRecord[]
-  recentReceipts: DashRecord[]
-  pendingUsersPreview: DashRecord[]
-  recentResellers: DashRecord[]
-  recentBroadcasts: DashRecord[]
-  onSelectTab: (tabKey: string) => void
-  onOpenUserDetail: (id: number) => void
-  onOpenResellerWorkspace?: (id: number) => void
-  onReceiptsFilterNavigate: (status?: string) => void
-}) {
-  const showUsers = allowTab("users")
-  const showReceipts = allowTab("receipts")
-  const showResellers =
-    !isReseller && allowTab("resellers") && typeof onOpenResellerWorkspace === "function"
-  const showBroadcast = allowTab("broadcast")
-
-  if (!showUsers && !showReceipts && !showResellers && !showBroadcast) return null
-
-  return (
     <section className="space-y-4">
       <div className="grid gap-4 lg:grid-cols-2">
-        {showUsers ? (
-          <OverviewRecentUsers
-            rows={recentUsers}
-        onViewAll={() => onSelectTab("users")}
-            onOpenUser={onOpenUserDetail}
-          />
-        ) : null}
-        {showReceipts ? (
-          <OverviewRecentReceipts
-            rows={recentReceipts}
-        onViewAll={() => onReceiptsFilterNavigate()}
-            onOpenReceipt={(row) => {
-              const st = String(row.status ?? "").toLowerCase()
-              onReceiptsFilterNavigate(st === "pending" || st === "processing" ? st : undefined)
-            }}
-          />
-        ) : null}
-        {showUsers ? (
-          <OverviewPendingUsers
-            rows={pendingUsersPreview}
-        onViewAll={() => onSelectTab("users")}
-            onOpenUser={onOpenUserDetail}
-          />
-        ) : null}
+        <OverviewSectionCard
+          title={t("recentUsers")}
+          viewAllHref={`${base}/users/`}
+          viewAllLabel={t("viewAll")}
+        >
+          {userRows.length === 0 ? (
+            <OverviewEmpty message={t("emptyPreview")} />
+          ) : (
+            <OverviewDataTable headers={[t("colUser"), t("colStatus"), t("colDate")]} rows={userRows} />
+          )}
+        </OverviewSectionCard>
+
+        <OverviewSectionCard
+          title={t("recentReceipts")}
+          viewAllHref={`${base}/payments/?payments_view=receipts`}
+          viewAllLabel={t("viewAll")}
+        >
+          {receiptRows.length === 0 ? (
+            <OverviewEmpty message={t("emptyPreview")} />
+          ) : (
+            <OverviewDataTable
+              headers={[t("colUser"), tReceipts("colSelectedService"), t("colAmount"), t("colStatus"), t("colDate")]}
+              rows={receiptRows}
+            />
+          )}
+        </OverviewSectionCard>
+
+        <OverviewSectionCard
+          title={t("pendingApprovals")}
+          description={t("pendingApprovalsHint")}
+          viewAllHref={`${base}/users/`}
+          viewAllLabel={t("viewAll")}
+        >
+          {pendingRows.length === 0 ? (
+            <OverviewEmpty message={t("emptyPreview")} />
+          ) : (
+            <OverviewDataTable headers={[t("colUser"), t("colDate")]} rows={pendingRows} />
+          )}
+        </OverviewSectionCard>
+
         {showResellers ? (
-          <OverviewRecentResellers
-            rows={recentResellers}
-        onViewAll={() => onSelectTab("resellers")}
-            onOpenReseller={(id) => onOpenResellerWorkspace?.(id)}
-          />
+          <OverviewSectionCard
+            title={t("recentResellers")}
+            viewAllHref={`${base}/resellers/`}
+            viewAllLabel={t("viewAll")}
+          >
+            {resellerRows.length === 0 ? (
+              <OverviewEmpty message={t("emptyPreview")} />
+            ) : (
+              <OverviewDataTable
+                headers={[t("colUser"), t("colStatus"), t("colServices")]}
+                rows={resellerRows}
+              />
+            )}
+          </OverviewSectionCard>
         ) : null}
       </div>
-      {showBroadcast && recentBroadcasts.length > 0 ? (
-        <OverviewRecentBroadcasts
-          rows={recentBroadcasts}
-        onViewAll={() => onSelectTab("broadcast")}
-          onOpenBroadcast={() => onSelectTab("broadcast")}
-        />
+
+      {showBroadcast && broadcastRows.length > 0 ? (
+        <OverviewSectionCard
+          title={t("recentBroadcasts")}
+          viewAllHref={`${base}/broadcast/`}
+          viewAllLabel={t("viewAll")}
+        >
+          <OverviewDataTable headers={[t("colTitle"), t("colStatus"), t("colDate")]} rows={broadcastRows} />
+        </OverviewSectionCard>
       ) : null}
     </section>
   )

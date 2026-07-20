@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useTranslation } from "react-i18next"
+import { useTranslations } from "next-intl"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -43,9 +43,9 @@ export function SiteSettingsServiceNamingTab({
   panels: PanelRow[]
   onMutateSuccess?: () => void
 }) {
-  const { t } = useTranslation()
+  const t = useTranslations("siteSettings.serviceNaming")
   const { ltrCell } = useDashLocale()
-  const tp = (k: string) => t(`siteSettings.serviceNaming.${k}`)
+  const tp = t
   const s = settings ?? {}
 
   const initial = useMemo(

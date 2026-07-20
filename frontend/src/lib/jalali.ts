@@ -6,9 +6,9 @@ export function gregorianToJalali(gy: number, gm: number, gd: number): [number, 
   const gDaysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
   const jDaysInMonth = [31, 31, 31, 31, 31, 31, 30, 30, 30, 30, 30, 29]
 
-  let gY = gy - 1600
-  let gM = gm - 1
-  let gD = gd - 1
+  const gY = gy - 1600
+  const gM = gm - 1
+  const gD = gd - 1
 
   let gDayNo =
     365 * gY +
@@ -75,6 +75,20 @@ export function jalaliToGregorian(jy: number, jm: number, jd: number): [number, 
 }
 
 /** Format API date `YYYY-MM-DD` as Jalali `YYYY/MM/DD` for display hints. */
+const FA_DIGITS = "۰۱۲۳۴۵۶۷۸۹"
+
+/** Convert ASCII digits to Persian digits (fa locale). */
+export function toPersianDigits(input: string | number): string {
+  return String(input).replace(/\d/g, (d) => FA_DIGITS[Number(d)] ?? d)
+}
+
+/** Convert Persian/Arabic digits to ASCII. */
+export function toAsciiDigits(input: string): string {
+  return String(input)
+    .replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)))
+    .replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
+}
+
 export function formatJalaliDateFromIso(iso: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso.trim())
   if (!m) return ""

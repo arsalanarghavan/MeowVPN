@@ -20,6 +20,9 @@ class SettingsTabService
         'cards',
         'force_join',
         'receipts',
+        'landing',
+        'subscription_portal',
+        'cron',
     ];
     /** @var list<string> */
     protected const ALLOWED_TABS = [
@@ -40,6 +43,9 @@ class SettingsTabService
         'cards',
         'force_join',
         'receipts',
+        'landing',
+        'subscription_portal',
+        'cron',
     ];
 
     /** Keys also stored flat (WP parity) when saved from a tab. */
@@ -68,6 +74,30 @@ class SettingsTabService
             'purge_expired_grace_days',
             'purge_expired_warn_days',
             'purge_expired_notify_user',
+        ],
+        'landing' => [
+            'landing_enabled',
+            'landing_hero_title',
+            'landing_hero_subtitle',
+            'landing_promo_title',
+            'landing_promo_code',
+        ],
+        'subscription_portal' => [
+            'portal_subscription_template',
+            'portal_theme_brand_name',
+            'portal_theme_brand_tagline',
+            'portal_modern_brand_name',
+            'portal_modern_brand_tagline',
+            'portal_datepicker',
+            'portal_theme_primary_light',
+            'portal_theme_primary_dark',
+            'portal_theme_radius',
+        ],
+        'cron' => [
+            'internal_cron_secret',
+            'internal_cron_allowed_ips',
+            'live_metrics_poll_seconds',
+            'live_sse_push_seconds',
         ],
     ];
 

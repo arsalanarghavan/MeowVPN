@@ -4,6 +4,7 @@ namespace App\Modules\Core\Http;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Reseller\Services\ResellerBotProfileService;
+use App\Modules\Telegram\Services\TelegramMirrorBotService;
 use App\Services\Bot\InboundQueueService;
 use App\Services\SettingsStore;
 use App\Support\Metrics\SvpMetrics;
@@ -19,6 +20,7 @@ class WebhookController extends Controller
         protected SettingsStore $settings,
         protected InboundQueueService $queue,
         protected ResellerBotProfileService $resellerProfiles,
+        protected TelegramMirrorBotService $mirrorBots,
     ) {}
 
     public function platform(Request $request, string $platform, string $secret): JsonResponse
@@ -53,7 +55,7 @@ class WebhookController extends Controller
             return response()->json(['ok' => false, 'message' => 'forbidden'], 403);
         }
 
-        return $this->acceptUpdate($request, $platform, 0);
+        return $this->acceptUpdate($request, $platform, 0, 0);
     }
 
     public function reseller(Request $request, string $platform, int $resellerId, string $secret): JsonResponse
@@ -103,7 +105,55 @@ class WebhookController extends Controller
             return response()->json(['ok' => false], 403);
         }
 
-        return $this->acceptUpdate($request, $platform, $resellerId);
+        return $this->acceptUpdate($request, $platform, $resellerId, 0);
+    }
+
+    public function mirror(Request $request, int $mirrorId, string $secret): JsonResponse
+    {
+        if (in_array(strtoupper($request->method()), ['GET', 'HEAD'], true)) {
+            return response()->json([
+                'ok' => true,
+                'alive' => true,
+                'scope' => 'mirror',
+                'note' => 'POST JSON updates only',
+            ]);
+        }
+
+        if (! config('svp.legacy_webhook_on_backend', true)) {
+            return response()->json(['ok' => false, 'message' => 'webhook_moved_to_bot_worker'], 410);
+        }
+
+        if ($mirrorId < 1 || ! svp_modules()->isEnabled('telegram')) {
+            return response()->json(['ok' => false, 'message' => 'forbidden'], 403);
+        }
+
+        if (! $this->settings->get('bot_enabled', true)) {
+            return response()->json(['ok' => true, 'disabled' => true]);
+        }
+
+        if (! $this->platformEnabled('telegram')) {
+            return response()->json(['ok' => true, 'disabled' => true]);
+        }
+
+        $profile = $this->mirrorBots->find($mirrorId);
+        $expectedSecret = $this->mirrorBots->webhookSecretPlaintext($profile);
+        if (! $profile || $expectedSecret === '') {
+            return response()->json(['ok' => false, 'message' => 'forbidden'], 403);
+        }
+
+        if (! $profile->enabled) {
+            return response()->json(['ok' => true, 'disabled' => true]);
+        }
+
+        if (! hash_equals($expectedSecret, $secret)) {
+            return response()->json(['ok' => false, 'message' => 'forbidden'], 403);
+        }
+
+        if (! $this->validateTelegramHeader($request, $profile)) {
+            return response()->json(['ok' => false, 'message' => 'forbidden'], 403);
+        }
+
+        return $this->acceptUpdate($request, 'telegram', 0, $mirrorId);
     }
 
     public function drain(Request $request): JsonResponse
@@ -119,7 +169,7 @@ class WebhookController extends Controller
         return response()->json(['ok' => true, 'processed' => $processed]);
     }
 
-    protected function acceptUpdate(Request $request, string $platform, int $resellerId): JsonResponse
+    protected function acceptUpdate(Request $request, string $platform, int $resellerId, int $mirrorBotId = 0): JsonResponse
     {
         $json = $request->json()->all();
         if ($json === []) {
@@ -134,9 +184,10 @@ class WebhookController extends Controller
             'platform' => $platform,
             'update_id' => $updateId,
             'reseller_id' => $resellerId,
+            'mirror_bot_id' => $mirrorBotId,
         ]);
 
-        $this->queue->enqueue($platform, $json, $resellerId);
+        $this->queue->enqueue($platform, $json, $resellerId, $mirrorBotId);
         $this->queue->kickAsyncDrain();
         SvpMetrics::inc('webhook_received_total');
 
@@ -155,7 +206,7 @@ class WebhookController extends Controller
 
     protected function validateTelegramHeader(Request $request, ?object $profile = null): bool
     {
-        $exp = (string) ($profile->telegram_secret_token ?? $profile->telegram_secret_header ?? $this->settings->get('telegram_secret_header', ''));
+        $exp = (string) ($profile?->telegram_secret_token ?? $profile?->telegram_secret_header ?? $this->settings->get('telegram_secret_header', ''));
         if ($exp === '') {
             return true;
         }

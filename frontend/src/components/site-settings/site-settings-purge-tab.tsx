@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useTranslation } from "react-i18next"
+import { useTranslations } from "next-intl"
 
 import {
   AlertDialog,
@@ -70,10 +70,9 @@ export function SiteSettingsPurgeTab({
   panels: PanelRow[]
   onMutateSuccess?: () => void
 }) {
-  const { t } = useTranslation()
+  const t = useTranslations("siteSettings.purge")
   const { isFa, iconGapClass, ltrCell } = useDashLocale()
-  const tp = (k: string, opts?: Record<string, string | number>) =>
-    t(`siteSettings.purge.${k}`, opts)
+  const tp = t
   const s = settings ?? {}
 
   const initial = useMemo(

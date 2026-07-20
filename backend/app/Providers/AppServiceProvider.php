@@ -11,6 +11,9 @@ use App\Services\MutationRegistry;
 use App\Services\NavTabsBuilder;
 use App\Services\SettingsStore;
 use App\Modules\Reseller\Services\ResellerScopeService;
+use Dedoc\Scramble\Scramble;
+use Dedoc\Scramble\Support\Generator\OpenApi;
+use Dedoc\Scramble\Support\Generator\SecurityScheme;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -37,6 +40,17 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->hydrateBotTokensFromEnv();
+
+        if ($this->app->runningUnitTests()) {
+            return;
+        }
+
+        Scramble::configure()
+            ->withDocumentTransformers(function (OpenApi $openApi) {
+                $openApi->secure(
+                    SecurityScheme::http('bearer')
+                );
+            });
     }
 
     /** Seed empty DB settings from SVP_*_BOT_TOKEN env on boot (spec §9). */

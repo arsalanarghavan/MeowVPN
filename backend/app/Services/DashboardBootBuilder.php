@@ -95,6 +95,7 @@ class DashboardBootBuilder
             'features' => $this->features(),
             'branding' => $this->brandingPayload(),
             'navTabs' => $this->navTabsForUser($user),
+            'resellerAllowedTabs' => $isReseller ? $this->resellerAllowedTabsMap($user) : null,
         ];
 
         return $this->impersonation->applyToBoot($this->applyBranding($boot), $user, $request);
@@ -145,6 +146,8 @@ class DashboardBootBuilder
             'telegram' => $modules->isEnabled('telegram'),
             'bale' => $modules->isEnabled('bale'),
             'xui_panel' => $modules->isEnabled('xui_panel'),
+            'xray_core' => $modules->isEnabled('xray_core'),
+            'tunnel' => $modules->isEnabled('tunnel'),
             'relay' => $modules->isEnabled('relay'),
             'crypto' => $modules->isEnabled('crypto'),
             'l2tp' => $modules->isEnabled('l2tp'),
@@ -259,6 +262,7 @@ class DashboardBootBuilder
             'plan_cats' => ! empty($perms['plans.manage']),
             'cards' => ! empty($perms['plans.manage']),
             'receipts' => ! empty($perms['receipts.review']),
+            'payments' => ! empty($perms['receipts.review']),
             'broadcast' => ! empty($perms['broadcast.send']),
             'monitoring' => ! empty($perms['services.manage']),
             'reseller_bots' => ! empty($perms['services.manage']),

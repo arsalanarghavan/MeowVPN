@@ -5,7 +5,7 @@ namespace App\Modules\Core\Services;
 use App\Models\SvpUser;
 use App\Modules\L2tp\Services\L2tpProvisionerService;
 use App\Modules\XuiPanel\Services\PurgeExpiredService;
-use App\Services\NotifySettings;
+use App\Services\NotificationDedupService;
 use App\Services\ServiceAlertsHelper;
 use App\Services\SettingsStore;
 use Illuminate\Support\Facades\Cache;
@@ -24,6 +24,7 @@ class ExpiryNotificationService
         protected L2tpProvisionerService $l2tp,
         protected ServiceAlertsHelper $alerts,
         protected PurgeExpiredService $purge,
+        protected NotificationDedupService $dedup,
     ) {}
 
     public function run(): void
@@ -263,12 +264,6 @@ class ExpiryNotificationService
 
     protected function claimBucket(string $key): bool
     {
-        $cacheKey = 'svp_expiry_bucket:'.md5($key);
-        if (Cache::has($cacheKey)) {
-            return false;
-        }
-        Cache::put($cacheKey, 1, now()->addDays(2));
-
-        return true;
+        return $this->dedup->claim('expiry', $key, 90);
     }
 }

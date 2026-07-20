@@ -4,6 +4,7 @@ namespace App\Modules\Telegram;
 
 use App\Modules\AbstractModuleServiceProvider;
 use App\Modules\Telegram\Mutations\BotMutations;
+use App\Modules\Telegram\Mutations\TelegramMirrorMutations;
 
 class TelegramServiceProvider extends AbstractModuleServiceProvider
 {
@@ -14,7 +15,10 @@ class TelegramServiceProvider extends AbstractModuleServiceProvider
 
     public function mutationHandlers(): array
     {
-        return app(BotMutations::class)->handlersForPlatform('telegram');
+        return array_merge(
+            app(BotMutations::class)->handlersForPlatform('telegram'),
+            app(TelegramMirrorMutations::class)->handlers(),
+        );
     }
 
     protected function bootEnabled(): void

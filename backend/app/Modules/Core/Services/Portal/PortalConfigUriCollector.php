@@ -3,13 +3,22 @@
 namespace App\Modules\Core\Services\Portal;
 
 use App\Models\SvpUser;
-use App\Modules\XuiPanel\Services\PanelAdminService;
+use App\Services\Reseller\ResellerBrandingService;
+use App\Modules\XrayCore\Services\SubscriptionUriBuilder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class PortalConfigUriCollector
 {
-    public function __construct(protected PanelAdminService $panels) {}
+    public function __construct(
+        protected PanelAdminService $panels,
+        protected ResellerBrandingService $branding,
+        protected ?SubscriptionUriBuilder $nativeUris = null,
+    ) {
+        if ($this->nativeUris === null && class_exists(SubscriptionUriBuilder::class)) {
+            $this->nativeUris = app(SubscriptionUriBuilder::class);
+        }
+    }
 
     /**
      * @return array{uris: array<int, string>, userinfo?: string}
@@ -45,6 +54,8 @@ class PortalConfigUriCollector
         if ($uris === []) {
             return ['uris' => []];
         }
+        $remark = (string) ($svc->remark ?: $svc->email ?: '');
+        $uris = $this->branding->rewriteSubscriptionUrisForUser($uris, (int) $user->id, $remark, $svc);
 
         return [
             'uris' => $uris,
@@ -95,6 +106,13 @@ class PortalConfigUriCollector
     /** @return array<int, string> */
     protected function urisFromServiceRow(object $svc): array
     {
+        if ((string) ($svc->panel_driver ?? '') === 'native' && $this->nativeUris !== null) {
+            $native = $this->nativeUris->buildForService($svc);
+            if ($native !== []) {
+                return $native;
+            }
+        }
+
         $uris = [];
         $payload = $this->panels->portalPayload(
             (int) $svc->id,

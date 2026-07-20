@@ -44,6 +44,7 @@ return new class extends Migration
             'svp_referral_events', 'svp_user_activity', 'svp_service_ip_log', 'svp_panel_inbound_clients',
             'svp_panel_inbound_api', 'svp_reseller_panel_prices', 'svp_reseller_parent_panel_floors',
             'svp_reseller_bot_profiles', 'svp_reseller_inbound_display_names', 'svp_reseller_closure',
+            'svp_telegram_mirror_bots',
             'svp_audit_log', 'svp_unit_economics_config', 'svp_unit_economics_servers', 'svp_panel_economics_lines',
             'svp_reseller_wholesale_lines', 'svp_reseller_wholesale_tiers', 'svp_reseller_wholesale_line_assignments',
             'svp_reseller_wholesale_accruals',

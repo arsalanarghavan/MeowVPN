@@ -44,11 +44,15 @@ class ListPagination
             'pendingUsers' => ['default' => 30, 'max' => 200, 'paginationKey' => 'pendingUsers'],
             'resellers' => ['default' => 30, 'max' => 200, 'paginationKey' => 'resellers'],
             'receipts' => ['default' => 40, 'max' => 200, 'paginationKey' => 'receipts'],
+            'payments' => ['default' => 40, 'max' => 200, 'paginationKey' => 'payments'],
+            'transactions' => ['default' => 40, 'max' => 200, 'paginationKey' => 'transactions'],
+            'orders' => ['default' => 40, 'max' => 200, 'paginationKey' => 'orders'],
             'broadcasts' => ['default' => 20, 'max' => 100, 'paginationKey' => 'broadcasts'],
             'referralEvents' => ['default' => 20, 'max' => 100, 'paginationKey' => 'referralEvents'],
             'resellerReports' => ['default' => 25, 'max' => 100, 'paginationKey' => 'resellerReports'],
             'marketingOffers' => ['default' => 25, 'max' => 100, 'paginationKey' => 'marketingOffers'],
             'bots' => ['default' => 25, 'max' => 200, 'paginationKey' => 'botsList'],
+            'mirrors' => ['default' => 25, 'max' => 200, 'paginationKey' => 'telegramMirrorsList'],
             'texts' => ['default' => 50, 'max' => 500, 'paginationKey' => 'texts'],
         ];
     }

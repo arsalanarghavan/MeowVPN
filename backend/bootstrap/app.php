@@ -13,10 +13,12 @@ return Application::configure(basePath: dirname(__DIR__))
         apiPrefix: 'api',
         then: function () {
             require __DIR__.'/../routes/internal-bot.php';
+            require __DIR__.'/../routes/internal.php';
         },
     )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->statefulApi();
+        $middleware->redirectGuestsTo(fn () => '/fa/login');
         $middleware->alias([
             'dashboard.enabled' => \App\Http\Middleware\EnsureDashboardEnabled::class,
             'reseller.scope' => \App\Http\Middleware\ResellerScopeMiddleware::class,
@@ -30,6 +32,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin.state.module' => \App\Http\Middleware\EnsureAdminStateModule::class,
             'health.metrics.auth' => \App\Http\Middleware\HealthMetricsAuth::class,
             'bot.service.auth' => \App\Http\Middleware\BotServiceAuth::class,
+            'internal.cron.secret' => \App\Http\Middleware\EnsureInternalCronSecret::class,
             'install.wizard.open' => \App\Http\Middleware\EnsureInstallWizardOpen::class,
             'install.wizard.complete' => \App\Http\Middleware\EnsureInstallWizardComplete::class,
         ]);

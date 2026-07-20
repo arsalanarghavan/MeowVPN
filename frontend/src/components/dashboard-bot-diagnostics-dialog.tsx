@@ -1,22 +1,16 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { useTranslation } from "react-i18next"
+import { useLocale, useTranslations } from "next-intl"
 import { Link2, RefreshCw, Send, Stethoscope } from "lucide-react"
-
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { DashDialogContent, DashDialogFooter, DashDialogHeader } from "@/components/dash-dialog-content"
 import { Dialog, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { postAdminMutate } from "@/lib/dash-admin-mutate"
 import { formatNumber } from "@/lib/format-locale"
 import { cn } from "@/lib/utils"
-import { useDashLocale } from "@/lib/dash-locale-context"
 
 type DiagIssue = {
   code?: string
@@ -131,16 +125,19 @@ export function DashboardBotDiagnosticsDialog({
   open,
   platform,
   resellerId = 0,
+  mirrorId = 0,
   onClose,
 }: {
   open: boolean
   platform: "telegram" | "bale"
   resellerId?: number
+  mirrorId?: number
   onClose: () => void
 }) {
-  const { t } = useTranslation()
-  const { isFa } = useDashLocale()
-  const td = (k: string) => t(`botsAdmin.diagnostics.${k}`)
+  const t = useTranslations("botsAdmin")
+  const td = useTranslations("botsAdmin.diagnostics")
+  const locale = useLocale()
+  const isFa = locale === "fa"
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -164,11 +161,13 @@ export function DashboardBotDiagnosticsDialog({
 
       try {
         const payload: Record<string, unknown> = { platform }
-        if (resellerId > 0) payload.reseller_svp_user_id = resellerId
+        if (mirrorId > 0) payload.mirror_id = mirrorId
+        else if (resellerId > 0) payload.reseller_svp_user_id = resellerId
         if (revealToken) payload.reveal_token = true
         if (sendOutboundPing) payload.send_outbound_ping = true
 
-        const res = await postAdminMutate("bot_diagnostics", payload)
+        const op = mirrorId > 0 ? "telegram_mirror_diagnostics" : "bot_diagnostics"
+        const res = await postAdminMutate(op, payload)
         if (gen !== requestGenRef.current) return
 
         if (!res.ok) {
@@ -176,7 +175,7 @@ export function DashboardBotDiagnosticsDialog({
           if (msg === "rate_limited") {
             setError(td("rateLimited"))
           } else {
-            setError(res.message || t("botsAdmin.diagnostics.loadError"))
+            setError(res.message || td("loadError"))
           }
           if (!sendOutboundPing) setData(null)
           return
@@ -194,7 +193,7 @@ export function DashboardBotDiagnosticsDialog({
         }
       }
     },
-    [platform, resellerId, t]
+    [platform, resellerId, mirrorId, td]
   )
 
   useEffect(() => {
@@ -209,7 +208,7 @@ export function DashboardBotDiagnosticsDialog({
       return
     }
     void fetchDiagnostics()
-  }, [open, platform, resellerId, fetchDiagnostics])
+  }, [open, platform, resellerId, mirrorId, fetchDiagnostics])
 
   const onRevealToken = () => {
     if (!window.confirm(td("revealConfirm"))) return
@@ -225,9 +224,12 @@ export function DashboardBotDiagnosticsDialog({
     setWebhookResetting(true)
     setWebhookResetMsg(null)
     try {
-      const op = resellerId > 0 ? "reseller_bot_webhook_set" : "bot_set_webhook"
+      const op =
+        mirrorId > 0 ? "telegram_mirror_set_webhook" : resellerId > 0 ? "reseller_bot_webhook_set" : "bot_set_webhook"
       const payload: Record<string, unknown> = { platform }
-      if (resellerId > 0) {
+      if (mirrorId > 0) {
+        payload.mirror_id = mirrorId
+      } else if (resellerId > 0) {
         payload.reseller_svp_user_id = resellerId
       } else {
         payload.bot_id = 0
@@ -253,7 +255,7 @@ export function DashboardBotDiagnosticsDialog({
     Boolean(data?.last_error_message && /504|Gateway Time-out|Gateway Timeout/i.test(String(data.last_error_message)))
   const issues = Array.isArray(data?.issues) ? data!.issues! : []
 
-  const platformLabel = platform === "telegram" ? t("botsAdmin.platformTelegram") : t("botsAdmin.platformBale")
+  const platformLabel = platform === "telegram" ? t("platformTelegram") : t("platformBale")
 
   const outboundTestLabel = (() => {
     const ot = data?.outbound_test
@@ -271,8 +273,8 @@ export function DashboardBotDiagnosticsDialog({
         <DashDialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Stethoscope className="size-4" />
-            {td("title")} — {platformLabel}
-            {resellerId > 0 ? ` #${resellerId}` : ""}
+            {td("title")} —             {platformLabel}
+            {mirrorId > 0 ? ` ${t("diagnostics.mirrorScope")} #${mirrorId}` : resellerId > 0 ? ` #${resellerId}` : ""}
           </DialogTitle>
           <DialogDescription>{td("subtitle")}</DialogDescription>
         </DashDialogHeader>
@@ -280,7 +282,10 @@ export function DashboardBotDiagnosticsDialog({
         {loading ? (
           <p className="text-sm text-muted-foreground">{td("loading")}</p>
         ) : error ? (
-          <div role="alert" className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <div
+            role="alert"
+            className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
             {error}
           </div>
         ) : data ? (
@@ -296,11 +301,7 @@ export function DashboardBotDiagnosticsDialog({
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <Row
-                label={td("tokenMasked")}
-                value={tokenFull ?? String(data.token_masked ?? "")}
-                mono
-              />
+              <Row label={td("tokenMasked")} value={tokenFull ?? String(data.token_masked ?? "")} mono />
               {data.get_me ? (
                 <>
                   <Row label={td("botId")} value={String(data.get_me.id ?? "—")} mono />
@@ -337,9 +338,7 @@ export function DashboardBotDiagnosticsDialog({
                   <Link2 className={cn("size-3.5", webhookResetting && "animate-pulse")} />
                   {td("reregisterWebhook")}
                 </Button>
-                {webhookResetMsg ? (
-                  <span className="text-xs text-muted-foreground">{webhookResetMsg}</span>
-                ) : null}
+                {webhookResetMsg ? <span className="text-xs text-muted-foreground">{webhookResetMsg}</span> : null}
               </div>
             ) : null}
 
@@ -372,10 +371,7 @@ export function DashboardBotDiagnosticsDialog({
                 label={td("broadcastQueuePending")}
                 value={formatNumber(Number(data.broadcast_queue_pending ?? 0), isFa)}
               />
-              <Row
-                label={td("localInboundQueue")}
-                value={formatNumber(localInboundPending, isFa)}
-              />
+              <Row label={td("localInboundQueue")} value={formatNumber(localInboundPending, isFa)} />
               <Row label={td("outboundTest")} value={outboundTestLabel} />
             </div>
             <p className="text-xs text-muted-foreground">{td("outboundNote")}</p>
@@ -401,7 +397,7 @@ export function DashboardBotDiagnosticsDialog({
 
         <DashDialogFooter className={cn("gap-2")}>
           <Button type="button" variant="outline" onClick={onClose}>
-            {t("botsAdmin.adminIdCancel")}
+            {t("adminIdCancel")}
           </Button>
           <Button type="button" variant="outline" disabled={loading} onClick={onSendTest}>
             <Send className={cn("size-3.5")} />

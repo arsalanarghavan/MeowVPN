@@ -14,6 +14,12 @@ class DeferredConfigDeliveryJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    /**
+     * Delivers deferred bot config / subscription messages for Telegram and Bale.
+     * Platform is taken from the cache payload set by BotConfigDeliveryService::enqueue
+     * (payload['platform'] = telegram|bale). Bale subscription delivery retries use this
+     * same job + DeferredConfigDeliveryCronJob — no separate Bale-only queue is required.
+     */
     public function __construct(
         public int $userId,
         public int $serviceId,

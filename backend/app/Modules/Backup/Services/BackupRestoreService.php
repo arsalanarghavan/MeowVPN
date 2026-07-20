@@ -8,65 +8,9 @@ use ZipArchive;
 
 class BackupRestoreService
 {
-    /** @var array<int, string> */
-    protected const IMPORT_ORDER = [
-        'svp_texts',
-        'svp_panels',
-        'svp_plan_categories',
-        'svp_plans',
-        'svp_l2tp_servers',
-        'svp_monitor_hosts',
-        'svp_panel_inbound_api',
-        'svp_panel_inbound_clients',
-        'svp_panel_online_daily',
-        'svp_users',
-        'svp_cards',
-        'svp_discount_codes',
-        'svp_services',
-        'svp_transactions',
-        'svp_receipts',
-        'svp_pending_approvals',
-        'svp_sync_codes',
-        'svp_broadcasts',
-        'svp_broadcast_queue',
-        'svp_referral_events',
-        'svp_user_activity',
-        'svp_reseller_panel_prices',
-        'svp_reseller_wholesale_lines',
-        'svp_reseller_wholesale_tiers',
-        'svp_reseller_wholesale_line_assignments',
-        'svp_reseller_wholesale_accruals',
-        'svp_reseller_parent_panel_floors',
-        'svp_reseller_bot_profiles',
-        'svp_reseller_closure',
-        'svp_marketing_rules',
-        'svp_marketing_offers',
-        'svp_discount_redemptions',
-        'svp_service_ip_log',
-        'svp_users_bulk_jobs',
-        'svp_users_bulk_job_items',
-        'svp_audit_log',
-        'svp_logs',
-        'svp_service_transfer_codes',
-    ];
-
-    /** @var array<int, string> */
-    protected const USER_FK_COLUMNS = [
-        'user_id',
-        'owner_svp_user_id',
-        'inviter_svp_user_id',
-        'resulting_svp_user_id',
-        'reseller_svp_user_id',
-        'parent_svp_user_id',
-        'child_svp_user_id',
-        'subject_svp_user_id',
-        'actor_svp_user_id',
-        'svp_user_id',
-        'created_by_svp_user_id',
-        'restricted_svp_user_id',
-        'signup_reseller_svp_id',
-        'owner_id',
-    ];
+    public function __construct(
+        protected BackupMergeRestore $mergeRestore,
+    ) {}
 
     /** @return array{ok:bool, message?:string, data?:array<string, mixed>} */
     public function restoreFromZip(string $path, bool $restorePanelDb = false): array
@@ -80,18 +24,30 @@ class BackupRestoreService
             return ['ok' => false, 'message' => 'باز کردن یا خواندن زیپ ناموفق بود.'];
         }
 
-        $stats = $this->restoreMerge($parsed['tables']);
+        $stats = $this->mergeRestore->restoreMerge($parsed['tables']);
         foreach ($parsed['parse_errors'] as $error) {
             $stats['errors'][] = $error;
         }
         if ($restorePanelDb) {
-            $stats['panel_db_note'] = 'panel_db_restore_not_supported';
+            $panelRestore = $this->restorePanelDatabasesFromZip($path, $parsed['manifest'] ?? []);
+            $stats['panel_db_restored'] = $panelRestore['restored'] ?? 0;
+            $stats['panel_db_errors'] = $panelRestore['errors'] ?? [];
+            $stats['panel_db_skipped'] = $panelRestore['skipped'] ?? [];
+            if (($panelRestore['restored'] ?? 0) < 1 && ($panelRestore['errors'] ?? []) !== []) {
+                $stats['panel_db_note'] = 'panel_db_partial_or_failed';
+            } elseif (($panelRestore['restored'] ?? 0) > 0) {
+                $stats['panel_db_note'] = 'panel_db_restored';
+            } elseif (($panelRestore['skipped'] ?? []) !== []) {
+                $stats['panel_db_note'] = 'panel_db_skipped_only';
+            } else {
+                $stats['panel_db_note'] = 'panel_db_not_in_zip';
+            }
         }
 
         return [
             'ok' => true,
             'message' => $restorePanelDb
-                ? 'بازگردانی انجام شد (ادغامی؛ DB پنل در فاز فعلی پشتیبانی نمی‌شود).'
+                ? 'بازگردانی انجام شد (ادغامی؛ DB پنل XUI در صورت وجود در زیپ وارد می‌شود).'
                 : 'بازگردانی ادغامی انجام شد. دادهٔ قبلی حفظ شد.',
             'data' => $stats,
         ];
@@ -103,49 +59,24 @@ class BackupRestoreService
      */
     public function restoreMerge(array $dumpByTable): array
     {
-        return DB::transaction(function () use ($dumpByTable) {
-            $stats = [
-                'users_matched' => 0,
-                'users_inserted' => 0,
-                'users_skipped' => 0,
-                'rows_inserted' => [],
-                'rows_skipped' => [],
-                'errors' => [],
-            ];
-
-            $idMaps = [];
-            $usersTable = 'svp_users';
-            $userRows = $dumpByTable[$usersTable] ?? [];
-            unset($dumpByTable[$usersTable]);
-
-            $userMap = $this->importUsers($userRows, $stats);
-            $idMaps[$usersTable] = $userMap;
-
-            foreach ($this->orderedTables(array_keys($dumpByTable)) as $table) {
-                if ($table === $usersTable || empty($dumpByTable[$table])) {
-                    continue;
-                }
-                if (! Schema::hasTable($table)) {
-                    continue;
-                }
-                $map = $this->importGenericTable($table, $dumpByTable[$table], $idMaps, $stats);
-                if ($map !== []) {
-                    $idMaps[$table] = $map;
-                }
-            }
-
-            $this->patchUserSelfFks($userRows, $userMap, $stats);
-
-            return $stats;
-        });
+        return $this->mergeRestore->restoreMerge($dumpByTable);
     }
 
-    /** @return array{tables: array<string, array<int, array<string, mixed>>>, parse_errors: array<int, array<string, mixed>>}|null */
+    /** @return array{tables: array<string, array<int, array<string, mixed>>>, parse_errors: array<int, array<string, mixed>>, manifest: array<string, mixed>}|null */
     protected function parseZip(string $path): ?array
     {
         $zip = new ZipArchive;
         if ($zip->open($path) !== true) {
             return null;
+        }
+
+        $manifest = [];
+        $manifestRaw = $zip->getFromName('laravel/manifest.json');
+        if (is_string($manifestRaw) && $manifestRaw !== '') {
+            $decoded = json_decode($manifestRaw, true);
+            if (is_array($decoded)) {
+                $manifest = $decoded;
+            }
         }
 
         $json = $zip->getFromName('laravel/data.json');
@@ -156,6 +87,7 @@ class BackupRestoreService
                 return [
                     'tables' => $this->normalizeDumpKeys($data),
                     'parse_errors' => [],
+                    'manifest' => $manifest,
                 ];
             }
         }
@@ -169,6 +101,7 @@ class BackupRestoreService
                 return [
                     'tables' => $parsed['tables'],
                     'parse_errors' => $parsed['errors'],
+                    'manifest' => $manifest,
                 ];
             }
         }
@@ -196,9 +129,9 @@ class BackupRestoreService
         return $out;
     }
 
-  /**
-   * @return array{tables: array<string, array<int, array<string, mixed>>>, errors: array<int, array<string, mixed>>}
-   */
+    /**
+     * @return array{tables: array<string, array<int, array<string, mixed>>>, errors: array<int, array<string, mixed>>}
+     */
     protected function parseSqlDump(string $sql): array
     {
         $out = [];
@@ -307,291 +240,135 @@ class BackupRestoreService
     }
 
     /**
-     * @param  array<int, array<string, mixed>>  $userRows
-     * @param  array<string, mixed>  $stats
-     * @return array<int, int>
+     * @param  array<string, mixed>  $manifest
+     * @return array{restored:int, errors:array<int,array<string,mixed>>, skipped:array<int,array<string,mixed>>}
      */
-    protected function importUsers(array $userRows, array &$stats): array
+    protected function restorePanelDatabasesFromZip(string $zipPath, array $manifest = []): array
     {
-        $map = [];
-        $deferred = [];
-
-        foreach ($userRows as $row) {
-            $backupId = (int) ($row['id'] ?? 0);
-            if ($backupId < 1) {
-                $stats['errors'][] = ['table' => 'svp_users', 'reason' => 'missing_backup_user_id'];
-                $stats['users_skipped']++;
-
-                continue;
-            }
-
-            $resolve = $this->resolveLiveUser($row);
-            if ($resolve['status'] === 'ambiguous') {
-                $stats['errors'][] = ['table' => 'svp_users', 'reason' => 'ambiguous_identity', 'id' => $backupId];
-                $stats['users_skipped']++;
-
-                continue;
-            }
-
-            if ($resolve['status'] === 'matched' && $resolve['live_id'] > 0) {
-                $map[$backupId] = $resolve['live_id'];
-                $stats['users_matched']++;
-                $deferred[$backupId] = [
-                    'invited_by' => (int) ($row['invited_by'] ?? 0),
-                    'signup_reseller_svp_id' => (int) ($row['signup_reseller_svp_id'] ?? 0),
-                ];
-                $this->maybeFillEmptyUserFields($resolve['live_id'], $row);
-
-                continue;
-            }
-
-            $insert = $row;
-            unset($insert['id'], $insert['invited_by'], $insert['signup_reseller_svp_id']);
-            $insert = $this->filterRowToColumns($insert, 'svp_users');
-            $newId = (int) DB::table('svp_users')->insertGetId($insert);
-            $map[$backupId] = $newId;
-            $stats['users_inserted']++;
-            $deferred[$backupId] = [
-                'invited_by' => (int) ($row['invited_by'] ?? 0),
-                'signup_reseller_svp_id' => (int) ($row['signup_reseller_svp_id'] ?? 0),
-            ];
+        if (! svp_modules()->isEnabled('xui_panel') || ! class_exists(\App\Modules\PasarGuard\Services\PanelClientFactory::class)) {
+            return ['restored' => 0, 'errors' => [['step' => 'module_disabled']], 'skipped' => []];
+        }
+        $zip = new ZipArchive;
+        if ($zip->open($zipPath) !== true) {
+            return ['restored' => 0, 'errors' => [['step' => 'zip_open_failed']], 'skipped' => []];
         }
 
-        $stats['_deferred_user_self_fk'] = $deferred;
-
-        return $map;
-    }
-
-    /**
-     * @param  array<string, mixed>  $row
-     * @return array{status:string, live_id:int}
-     */
-    protected function resolveLiveUser(array $row): array
-    {
-        $tg = (int) ($row['tg_user_id'] ?? 0);
-        $bl = (int) ($row['bale_user_id'] ?? 0);
-        if ($tg < 1 && $bl < 1) {
-            return ['status' => 'new', 'live_id' => 0];
-        }
-
-        $hits = [];
-        if ($tg > 0) {
-            $id = DB::table('svp_users')->where('tg_user_id', $tg)->value('id');
-            if ($id) {
-                $hits[(int) $id] = true;
-            }
-        }
-        if ($bl > 0) {
-            $id = DB::table('svp_users')->where('bale_user_id', $bl)->value('id');
-            if ($id) {
-                $hits[(int) $id] = true;
-            }
-        }
-
-        if (count($hits) > 1) {
-            return ['status' => 'ambiguous', 'live_id' => 0];
-        }
-        if (count($hits) === 1) {
-            return ['status' => 'matched', 'live_id' => (int) array_key_first($hits)];
-        }
-
-        return ['status' => 'new', 'live_id' => 0];
-    }
-
-    /** @param  array<string, mixed>  $backupRow */
-    protected function maybeFillEmptyUserFields(int $liveId, array $backupRow): void
-    {
-        $patch = [];
-        $live = DB::table('svp_users')->where('id', $liveId)->first();
-        if (! $live) {
-            return;
-        }
-        foreach (['tg_user_id', 'bale_user_id'] as $col) {
-            $liveVal = (int) ($live->{$col} ?? 0);
-            $bakVal = (int) ($backupRow[$col] ?? 0);
-            if ($liveVal < 1 && $bakVal > 0) {
-                $patch[$col] = $bakVal;
-            }
-        }
-        if ($patch !== []) {
-            DB::table('svp_users')->where('id', $liveId)->update($patch);
-        }
-    }
-
-    /**
-     * @param  array<int, array<string, mixed>>  $rows
-     * @param  array<string, array<int, int>>  $idMaps
-     * @param  array<string, mixed>  $stats
-     * @return array<int, int>
-     */
-    protected function importGenericTable(string $table, array $rows, array &$idMaps, array &$stats): array
-    {
-        $map = [];
-        $cols = Schema::getColumnListing($table);
-        $hasId = in_array('id', $cols, true);
-
-        foreach ($rows as $row) {
-            $backupPk = $hasId ? (int) ($row['id'] ?? 0) : 0;
-            if ($hasId && $backupPk > 0 && DB::table($table)->where('id', $backupPk)->exists()) {
-                $map[$backupPk] = $backupPk;
-                $this->bumpStat($stats, 'rows_skipped', $table);
-
-                continue;
-            }
-
-            $prepared = $this->remapForeignKeys($table, $row, $idMaps, $stats);
-            if ($prepared === null) {
-                $this->bumpStat($stats, 'rows_skipped', $table);
-
-                continue;
-            }
-
-            $insert = $prepared;
-            if ($hasId) {
-                unset($insert['id']);
-            }
-            $insert = $this->filterRowToColumns($insert, $table);
-            $newPk = (int) DB::table($table)->insertGetId($insert);
-            if ($backupPk > 0 && $newPk > 0) {
-                $map[$backupPk] = $newPk;
-            }
-            $this->bumpStat($stats, 'rows_inserted', $table);
-        }
-
-        return $map;
-    }
-
-    /**
-     * @param  array<string, mixed>  $row
-     * @param  array<string, array<int, int>>  $idMaps
-     * @param  array<string, mixed>  $stats
-     * @return array<string, mixed>|null
-     */
-    protected function remapForeignKeys(string $table, array $row, array $idMaps, array &$stats): ?array
-    {
-        $out = $row;
-        $usersTable = 'svp_users';
-
-        foreach (self::USER_FK_COLUMNS as $col) {
-            if (! array_key_exists($col, $out)) {
-                continue;
-            }
-            $raw = (int) $out[$col];
-            if ($raw < 1) {
-                continue;
-            }
-            if (! isset($idMaps[$usersTable][$raw])) {
-                $stats['errors'][] = [
-                    'table' => $table,
-                    'reason' => 'missing_user_map',
-                    'column' => $col,
-                    'value' => $raw,
-                ];
-
-                return null;
-            }
-            $out[$col] = $idMaps[$usersTable][$raw];
-        }
-
-        if (isset($out['service_id'])) {
-            $sid = (int) $out['service_id'];
-            if ($sid > 0) {
-                $svcTable = 'svp_services';
-                if (! isset($idMaps[$svcTable][$sid])) {
-                    $stats['errors'][] = ['table' => $table, 'reason' => 'missing_service_map', 'value' => $sid];
-
-                    return null;
+        $names = [];
+        if (! empty($manifest['panel_db_files']) && is_array($manifest['panel_db_files'])) {
+            foreach ($manifest['panel_db_files'] as $n) {
+                $n = (string) $n;
+                if ($n !== '') {
+                    $names[] = $n;
                 }
-                $out['service_id'] = $idMaps[$svcTable][$sid];
             }
         }
-
-        if (isset($out['panel_id'])) {
-            $pid = (int) $out['panel_id'];
-            if ($pid > 0 && isset($idMaps['svp_panels'][$pid])) {
-                $out['panel_id'] = $idMaps['svp_panels'][$pid];
+        if ($names === []) {
+            for ($i = 0; $i < $zip->numFiles; $i++) {
+                $name = (string) $zip->getNameIndex($i);
+                if (preg_match('#^panel-db/panel-(\d+)\.(db|json)$#', $name)) {
+                    $names[] = $name;
+                }
             }
         }
+        $names = array_values(array_unique($names));
 
-        if (isset($out['plan_id'])) {
-            $plid = (int) $out['plan_id'];
-            if ($plid > 0 && isset($idMaps['svp_plans'][$plid])) {
-                $out['plan_id'] = $idMaps['svp_plans'][$plid];
-            }
+        $restored = 0;
+        $errors = [];
+        $skipped = [];
+        $factory = app(\App\Modules\PasarGuard\Services\PanelClientFactory::class);
+        $tmpdir = rtrim(sys_get_temp_dir(), '/').'/svp-restore-panel-'.bin2hex(random_bytes(4)).'/';
+        if (! is_dir($tmpdir)) {
+            mkdir($tmpdir, 0755, true);
         }
 
-        return $out;
-    }
-
-    /**
-     * @param  array<int, array<string, mixed>>  $userRows
-     * @param  array<int, int>  $userMap
-     * @param  array<string, mixed>  $stats
-     */
-    protected function patchUserSelfFks(array $userRows, array $userMap, array &$stats): void
-    {
-        $deferred = is_array($stats['_deferred_user_self_fk'] ?? null) ? $stats['_deferred_user_self_fk'] : [];
-        unset($stats['_deferred_user_self_fk']);
-
-        foreach ($deferred as $backupId => $fks) {
-            if (! isset($userMap[$backupId])) {
+        foreach ($names as $zipName) {
+            if (! preg_match('#^panel-db/panel-(\d+)\.(db|json)$#', $zipName, $m)) {
                 continue;
             }
-            $liveId = $userMap[$backupId];
-            $patch = [];
-            $inv = (int) ($fks['invited_by'] ?? 0);
-            if ($inv > 0 && isset($userMap[$inv])) {
-                $patch['invited_by'] = $userMap[$inv];
+            $panelId = (int) $m[1];
+            $ext = (string) $m[2];
+            $raw = (string) $zip->getFromName($zipName);
+            if ($raw === '') {
+                $errors[] = ['zip_name' => $zipName, 'panel_id' => $panelId, 'step' => 'extract'];
+
+                continue;
             }
-            $signup = (int) ($fks['signup_reseller_svp_id'] ?? 0);
-            if ($signup > 0 && isset($userMap[$signup])) {
-                $patch['signup_reseller_svp_id'] = $userMap[$signup];
+
+            $isPgSnapshot = $ext === 'json';
+            if (! $isPgSnapshot) {
+                $trim = ltrim($raw);
+                if ($trim !== '' && ($trim[0] === '{' || $trim[0] === '[')) {
+                    $probe = json_decode($trim, true);
+                    $isPgSnapshot = is_array($probe) && ($probe['provider'] ?? '') === 'pasarguard';
+                }
             }
-            if ($patch !== []) {
-                DB::table('svp_users')->where('id', $liveId)->update($patch);
+            if ($isPgSnapshot) {
+                $skipped[] = [
+                    'zip_name' => $zipName,
+                    'panel_id' => $panelId,
+                    'step' => 'pg_restore_not_supported',
+                    'message' => 'pasarguard_snapshot',
+                ];
+
+                continue;
+            }
+
+            if ($panelId >= 1 && Schema::hasTable('svp_panels')) {
+                $panelRow = DB::table('svp_panels')->where('id', $panelId)->first();
+                if ($panelRow && (string) ($panelRow->panel_provider ?? '') === 'pasarguard') {
+                    $skipped[] = [
+                        'zip_name' => $zipName,
+                        'panel_id' => $panelId,
+                        'step' => 'pg_restore_not_supported',
+                        'message' => 'pasarguard_panel',
+                    ];
+
+                    continue;
+                }
+            }
+
+            $local = $tmpdir.basename($zipName);
+            if (file_put_contents($local, $raw) === false) {
+                $errors[] = ['zip_name' => $zipName, 'panel_id' => $panelId, 'step' => 'write'];
+
+                continue;
+            }
+
+            $res = $factory->runWithPanel($panelId, function ($client) use ($local) {
+                if (! method_exists($client, 'importDbFromPath')) {
+                    return ['ok' => false, 'message' => 'unsupported', 'step' => 'unsupported'];
+                }
+                if (! $client->loginWithRetries(6, 300000)) {
+                    return ['ok' => false, 'message' => 'login_fail', 'step' => 'login'];
+                }
+
+                return array_merge(
+                    ['step' => 'import'],
+                    $client->importDbFromPath($local)
+                );
+            });
+
+            @unlink($local);
+            if (! empty($res['ok'])) {
+                $restored++;
+            } else {
+                $errors[] = [
+                    'zip_name' => $zipName,
+                    'panel_id' => $panelId,
+                    'step' => (string) ($res['step'] ?? 'import'),
+                    'message' => (string) ($res['message'] ?? 'import_failed'),
+                ];
             }
         }
-    }
 
-    /** @param  array<int, string>  $tables */
-    /** @return array<int, string> */
-    protected function orderedTables(array $tables): array
-    {
-        $order = array_flip(self::IMPORT_ORDER);
-        usort($tables, function ($a, $b) use ($order) {
-            $oa = $order[$a] ?? 9999;
-            $ob = $order[$b] ?? 9999;
-            if ($oa === $ob) {
-                return strcmp($a, $b);
-            }
-
-            return $oa <=> $ob;
-        });
-
-        return $tables;
-    }
-
-    /** @param  array<string, mixed>  $row */
-    /** @return array<string, mixed> */
-    protected function filterRowToColumns(array $row, string $table): array
-    {
-        $cols = Schema::getColumnListing($table);
-        $out = [];
-        foreach ($row as $k => $v) {
-            if (in_array($k, $cols, true)) {
-                $out[$k] = $v;
+        $zip->close();
+        foreach (glob($tmpdir.'*') ?: [] as $f) {
+            if (is_file($f)) {
+                @unlink($f);
             }
         }
+        @rmdir($tmpdir);
 
-        return $out;
-    }
-
-    /** @param  array<string, mixed>  $stats */
-    protected function bumpStat(array &$stats, string $bucket, string $table): void
-    {
-        if (! isset($stats[$bucket][$table])) {
-            $stats[$bucket][$table] = 0;
-        }
-        $stats[$bucket][$table]++;
+        return ['restored' => $restored, 'errors' => $errors, 'skipped' => $skipped];
     }
 }

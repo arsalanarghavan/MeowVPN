@@ -11,6 +11,7 @@ use App\Modules\Core\Bot\Handlers\Admin\AdminEconomicsHandler;
 use App\Modules\Core\Bot\Handlers\Admin\AdminFinanceHandler;
 use App\Modules\Core\Bot\Handlers\Admin\AdminInboundHandler;
 use App\Modules\Core\Bot\Handlers\Admin\AdminMarketingHandler;
+use App\Modules\Core\Bot\Handlers\Admin\AdminPlanInboundsHandler;
 use App\Modules\Core\Bot\Handlers\Admin\AdminRelayHandler;
 use App\Modules\Core\Bot\Handlers\Admin\AdminSettingsHandler;
 use App\Modules\Core\Bot\Handlers\Admin\AdminTextsHandler;
@@ -37,6 +38,7 @@ class AdminStateRouter
         protected AdminInboundHandler $inbound,
         protected AdminResellersHandler $resellers,
         protected AdminLogsHandler $logs,
+        protected AdminPlanInboundsHandler $planInbounds,
         protected TextService $texts,
         protected BotRuntime $runtime,
     ) {}
@@ -73,7 +75,18 @@ class AdminStateRouter
         }
 
         if (str_starts_with($state, 'admin_catalog_')) {
+            if (in_array($state, [AdminPlanInboundsHandler::STATE_CREATE, AdminPlanInboundsHandler::STATE_EDIT], true)) {
+                $this->planInbounds->routeText($ctx, $user, $chatId, $trimmed);
+
+                return true;
+            }
             $this->catalog->routeState($ctx, $user, $chatId, $trimmed);
+
+            return true;
+        }
+
+        if ($state === AdminPlanInboundsHandler::STATE_CREATE) {
+            $this->planInbounds->routeText($ctx, $user, $chatId, $trimmed);
 
             return true;
         }

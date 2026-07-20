@@ -77,6 +77,8 @@ class MutatePolicyService
         'marketing_rule_delete',
         'marketing_send_manual',
         'marketing_run_rule_now',
+        'marketing_lifecycle_confirm_defaults',
+        'marketing_preview_message',
     ];
 
     public function requiredResellerPermission(string $op): ?string

@@ -32,6 +32,7 @@ class SvpUser extends Model
         'bot_locale',
         'invited_by',
         'signup_reseller_svp_id',
+        'last_tg_mirror_bot_id',
         'created_at',
     ];
 

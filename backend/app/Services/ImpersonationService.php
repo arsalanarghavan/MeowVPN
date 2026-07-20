@@ -117,6 +117,10 @@ class ImpersonationService
         $boot['isAdmin'] = false;
         $boot['activePersona'] = 'reseller';
         $boot['svpUserId'] = $tid;
+        $target = DashboardUser::query()->where('svp_user_id', $tid)->where('role', 'reseller')->first();
+        if ($target) {
+            $boot['resellerAllowedTabs'] = app(DashboardBootBuilder::class)->resellerAllowedTabsMap($target);
+        }
 
         return $boot;
     }

@@ -25,7 +25,7 @@ class CryptoSettingsModuleGateTest extends TestCase
         $this->actingAsAdmin()->postJson('/api/v1/admin/mutate', [
             'op' => 'crypto_settings',
             'crypto_enabled' => true,
-        ])->assertOk()
+        ])->assertForbidden()
             ->assertJsonPath('ok', false)
             ->assertJsonPath('message', 'module_disabled');
     }

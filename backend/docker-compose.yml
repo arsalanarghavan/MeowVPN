@@ -20,11 +20,16 @@ services:
       SESSION_DRIVER: redis
       SVP_BOT_SERVICE_SECRET: ${SVP_BOT_SERVICE_SECRET:-change-me-bot-service-secret}
       SVP_LEGACY_WEBHOOK_ON_BACKEND: ${SVP_LEGACY_WEBHOOK_ON_BACKEND:-false}
+      SVP_XRAY_AGENT_URL: ${SVP_XRAY_AGENT_URL:-http://xray-agent:8444}
+      SVP_XRAY_PUBLIC_IP: ${SVP_XRAY_PUBLIC_IP:-}
     depends_on:
       mysql:
         condition: service_healthy
       redis:
         condition: service_started
+      xray-agent:
+        condition: service_started
+        required: false
     networks:
       - svp
 
@@ -83,6 +88,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-secret}
       REDIS_HOST: redis
       QUEUE_CONNECTION: redis
+      SVP_XRAY_AGENT_URL: ${SVP_XRAY_AGENT_URL:-http://xray-agent:8444}
     depends_on:
       - app
       - redis
@@ -106,10 +112,24 @@ services:
       DB_USERNAME: ${DB_USERNAME:-svp}
       DB_PASSWORD: ${DB_PASSWORD:-secret}
       REDIS_HOST: redis
+      SVP_XRAY_AGENT_URL: ${SVP_XRAY_AGENT_URL:-http://xray-agent:8444}
     depends_on:
       - app
     networks:
       - svp
+
+  xray-agent:
+    build:
+      context: ../node-agent
+      dockerfile: Dockerfile
+    profiles:
+      - xray
+      - full
+    volumes:
+      - xray_config:/etc/xray
+    networks:
+      - svp
+    restart: unless-stopped
 
   relay:
     build:
@@ -213,6 +233,7 @@ volumes:
   svp_storage:
   svp_backups:
   svp_relay:
+  xray_config:
 
 networks:
   svp:

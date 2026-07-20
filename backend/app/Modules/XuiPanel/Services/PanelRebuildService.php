@@ -99,12 +99,12 @@ class PanelRebuildService
         }
 
         if ($this->panelClientExists($panelId, $iid, $email)) {
-            $res = $this->xui->runWithPanel($panelId, function () use ($svcArr) {
-                if (! $this->xui->loginWithRetries()) {
+            $res = $this->runOnPanel($panelId, function ($client) use ($svcArr) {
+                if (! $client->loginWithRetries()) {
                     return ['ok' => false, 'message' => 'login_fail'];
                 }
 
-                return $this->xui->syncServiceRowToPanel($svcArr);
+                return $client->syncServiceRowToPanel($svcArr);
             });
             if (! empty($res['ok'])) {
                 return ['action' => 'patched'];
@@ -116,12 +116,12 @@ class PanelRebuildService
         $add = $this->provisioner->addClientFromServiceRow($svcArr);
         if (! empty($add['ok'])) {
             if (($add['action'] ?? '') === 'already_on_panel') {
-                $res = $this->xui->runWithPanel($panelId, function () use ($svcArr) {
-                    if (! $this->xui->loginWithRetries()) {
+                $res = $this->runOnPanel($panelId, function ($client) use ($svcArr) {
+                    if (! $client->loginWithRetries()) {
                         return ['ok' => false, 'message' => 'login_fail'];
                     }
 
-                    return $this->xui->syncServiceRowToPanel($svcArr);
+                    return $client->syncServiceRowToPanel($svcArr);
                 });
                 if (! empty($res['ok'])) {
                     return ['action' => 'patched'];
@@ -139,17 +139,28 @@ class PanelRebuildService
     protected function panelClientExists(int $panelId, int $inboundId, string $email): bool
     {
         $found = false;
-        $this->xui->runWithPanel($panelId, function () use ($inboundId, $email, &$found) {
-            if (! $this->xui->loginWithRetries(4, 280000)) {
+        $this->runOnPanel($panelId, function ($client) use ($inboundId, $email, &$found) {
+            if (! $client->loginWithRetries(4, 280000)) {
                 return null;
             }
-            $inbound = $this->xui->inboundGet($inboundId);
-            $found = is_array($this->xui->inboundClientByEmail($inbound, $email));
+            $inbound = $client->inboundGet($inboundId);
+            $found = is_array($client->inboundClientByEmail($inbound, $email));
 
             return null;
         });
 
         return $found;
+    }
+
+    protected function runOnPanel(int $panelId, callable $fn): mixed
+    {
+        if (function_exists('svp_modules') && svp_modules()->isEnabled('pasarguard') && class_exists(\App\Modules\PasarGuard\Services\PanelClientFactory::class)) {
+            return app(\App\Modules\PasarGuard\Services\PanelClientFactory::class)->runWithPanel($panelId, $fn);
+        }
+
+        return $this->xui->runWithPanel($panelId, function () use ($fn) {
+            return $fn($this->xui);
+        });
     }
 
     /** @param  array<string, mixed>  $opts */
