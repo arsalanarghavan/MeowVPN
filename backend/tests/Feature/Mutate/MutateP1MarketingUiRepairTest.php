@@ -42,6 +42,48 @@ class MutateP1MarketingUiRepairTest extends TestCase
         $this->assertTrue((bool) app(SettingsStore::class)->get('marketing_lifecycle_confirmed', false));
     }
 
+    public function test_marketing_rule_save_and_delete_accept_rule_id(): void
+    {
+        if (! Schema::hasTable('svp_marketing_rules')) {
+            $this->markTestSkipped('svp_marketing_rules unavailable');
+        }
+
+        $ruleId = (int) DB::table('svp_marketing_rules')->insertGetId([
+            'owner_svp_user_id' => 0,
+            'segment_key' => 'never_purchased',
+            'enabled' => true,
+            'priority' => 10,
+            'message_body' => 'before {name}',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $this->assertGreaterThan(0, $ruleId);
+
+        $this->actingAsAdmin();
+        $save = $this->postJson('/api/v1/admin/mutate', [
+            'op' => 'marketing_rule_save',
+            'rule_id' => $ruleId,
+            'segment_key' => 'never_purchased',
+            'enabled' => true,
+            'message_body' => 'after {name} {code}',
+        ])->assertOk()->json();
+
+        $this->assertTrue((bool) ($save['ok'] ?? false));
+        $this->assertSame($ruleId, (int) ($save['id'] ?? $save['data']['id'] ?? 0));
+        $this->assertSame(
+            'after {name} {code}',
+            (string) DB::table('svp_marketing_rules')->where('id', $ruleId)->value('message_body')
+        );
+
+        $del = $this->postJson('/api/v1/admin/mutate', [
+            'op' => 'marketing_rule_delete',
+            'rule_id' => $ruleId,
+        ])->assertOk()->json();
+
+        $this->assertTrue((bool) ($del['ok'] ?? false));
+        $this->assertNull(DB::table('svp_marketing_rules')->where('id', $ruleId)->first());
+    }
+
     public function test_marketing_preview_message(): void
     {
         $ruleId = 0;

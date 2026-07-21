@@ -72,11 +72,14 @@ class ResellerScopeService
 
         $out = [];
         if (Schema::hasTable('svp_reseller_panel_prices')) {
-            $rows = DB::table('svp_reseller_panel_prices')
-                ->where('reseller_svp_user_id', $resellerSvpUserId)
-                ->where('active', 1)
-                ->get(['panel_id']);
-            foreach ($rows as $row) {
+            $q = DB::table('svp_reseller_panel_prices')
+                ->where('reseller_svp_user_id', $resellerSvpUserId);
+            if (Schema::hasColumn('svp_reseller_panel_prices', 'panel_access')) {
+                $q->where('panel_access', 1);
+            } elseif (Schema::hasColumn('svp_reseller_panel_prices', 'active')) {
+                $q->where('active', 1);
+            }
+            foreach ($q->get(['panel_id']) as $row) {
                 $pid = (int) $row->panel_id;
                 if ($pid > 0) {
                     $out[] = $pid;

@@ -41,3 +41,13 @@ export function normalizeAccent(accent?: string | null): AccentPreset {
   }
   return "default"
 }
+
+/** CSS vars overridden by accent presets; skip whitelabel branding when accent is active. */
+export const ACCENT_BRANDING_VAR_KEYS = new Set([
+  "--primary",
+  "--primary-foreground",
+  "--ring",
+  "--sidebar-primary",
+  "--sidebar-primary-foreground",
+  "--sidebar-ring",
+])

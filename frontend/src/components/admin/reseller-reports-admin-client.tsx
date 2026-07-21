@@ -1,6 +1,6 @@
 "use client"
 
-import { useTranslations } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import { useAdminTabState } from "@/hooks/use-admin-tab-state"
 import { useDashboardShellOptional } from "@/components/dashboard-shell-provider"
 
@@ -501,18 +501,25 @@ export function ResellerReportsAdminClient() {
     useAdminTabState("reseller_reports", { reseller_reports_window_days: "30" })
   const t = useTranslations("resellerReportsAdmin")
   const shell = useDashboardShellOptional()
+  const locale = useLocale()
   if (loading) return <p className="text-sm text-muted-foreground">{t("loading")}</p>
   if (error) return <p className="text-sm text-destructive">{t("loadError")}</p>
   return (
     <ResellerReportsAdminView
       stats={(data.resellerReportsStats as import("@/components/admin/reseller-reports-admin-client").ResellerReportsStats | null) ?? null}
-      rows={Array.isArray(data.resellerReports) ? data.resellerReports as import("@/components/admin/reseller-reports-admin-client").ResellerReportRow[] : []}
+      rows={
+        Array.isArray(data.resellerReports)
+          ? (data.resellerReports as import("@/components/admin/reseller-reports-admin-client").ResellerReportRow[])
+          : Array.isArray(data.resellerReportsRows)
+            ? (data.resellerReportsRows as import("@/components/admin/reseller-reports-admin-client").ResellerReportRow[])
+            : []
+      }
       daily={Array.isArray(data.resellerReportsDaily) ? data.resellerReportsDaily as import("@/components/admin/reseller-reports-admin-client").ResellerReportDaily[] : []}
       pagination={pickPagination("resellerReports")}
-      dashboardBaseUrl=""
+      dashboardBaseUrl={`/${locale}/dashboard`}
       searchQuery={listQuery.reseller_reports_q ?? ""}
       windowDays={Number(listQuery.reseller_reports_window_days ?? 30)}
-      sortKey={listQuery.reseller_reports_sort ?? "revenue_desc"}
+      sortKey={listQuery.reseller_reports_sort ?? "sales"}
       onSearchChange={(q) => patchQuery({ reseller_reports_q: q })}
       onWindowDaysChange={(n) => patchQuery({ reseller_reports_window_days: String(n) })}
       onSortChange={(k) => patchQuery({ reseller_reports_sort: k })}

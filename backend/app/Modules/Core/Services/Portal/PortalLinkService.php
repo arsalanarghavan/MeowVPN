@@ -4,19 +4,21 @@ namespace App\Modules\Core\Services\Portal;
 
 use App\Models\SvpUser;
 use App\Modules\Core\Bot\Services\AdminGuard;
+use App\Modules\Reseller\Services\ResellerPermissionGateService;
 use App\Services\SettingsStore;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 
 class PortalLinkService
 {
-    public const CUSTOMER_TTL = 604800;
+    public const CUSTOMER_TTL = 31536000;
 
-    public const ADMIN_TTL = 3600;
+    public const ADMIN_TTL = 86400;
 
     public function __construct(
         protected SettingsStore $settings,
         protected AdminGuard $adminGuard,
+        protected ResellerPermissionGateService $permissionGate,
     ) {}
 
     public function portalKey(): string
@@ -81,6 +83,9 @@ class PortalLinkService
             return true;
         }
         if ((int) ($user->bale_user_id ?? 0) > 0 && $this->adminGuard->isPlatformAdmin('bale', (int) $user->bale_user_id)) {
+            return true;
+        }
+        if ($this->permissionGate->permissionActorId($user) > 0) {
             return true;
         }
 
@@ -162,10 +167,11 @@ class PortalLinkService
     /** @return array{ok:bool, user_id?:int, service_id?:int} */
     public function resolveFromRequest(\Illuminate\Http\Request $request): array
     {
-        $userId = (int) $request->query('svp_u', 0);
-        $exp = (int) $request->query('svp_e', 0);
-        $sig = (string) $request->query('svp_s', '');
-        $serviceId = (int) $request->query('service_id', 0);
+        $params = $this->signedParamsFromRequest($request);
+        $userId = $params['user_id'];
+        $exp = $params['exp'];
+        $sig = $params['sig'];
+        $serviceId = $params['service_id'];
         if ($userId < 1 || $exp < 1 || $sig === '') {
             return ['ok' => false];
         }
@@ -179,5 +185,28 @@ class PortalLinkService
         }
 
         return ['ok' => false];
+    }
+
+    /**
+     * Accept docs-facing `uid`/`exp`/`sig` and legacy `svp_u`/`svp_e`/`svp_s`.
+     *
+     * @return array{user_id:int, exp:int, sig:string, service_id:int}
+     */
+    public function signedParamsFromRequest(\Illuminate\Http\Request $request): array
+    {
+        $userId = (int) $request->query('svp_u', $request->query('uid', 0));
+        $exp = (int) $request->query('svp_e', $request->query('exp', 0));
+        $sig = (string) $request->query('svp_s', $request->query('sig', ''));
+        $serviceId = (int) $request->query(
+            'svp_sid',
+            $request->query('service_id', $request->query('sid', 0))
+        );
+
+        return [
+            'user_id' => $userId,
+            'exp' => $exp,
+            'sig' => $sig,
+            'service_id' => $serviceId,
+        ];
     }
 }

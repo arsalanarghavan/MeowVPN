@@ -5,7 +5,9 @@ import { useLocale, useTranslations } from "next-intl"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { DataPagination } from "@/components/data-pagination"
 import { getAdminState } from "@/lib/dash-admin-mutate"
+import { parsePaginationMeta, type PaginationMeta } from "@/lib/dash-pagination"
 import { formatNumber } from "@/lib/format-locale"
 
 type DashRecord = Record<string, unknown>
@@ -22,6 +24,14 @@ function panelAllowed(row: Record<string, unknown> | undefined): boolean {
   return acc || (Number.isFinite(price) && price > 0)
 }
 
+function pickPanelsPagination(data: DashRecord): PaginationMeta | null {
+  const raw = data.pagination
+  if (raw && typeof raw === "object") {
+    return parsePaginationMeta((raw as DashRecord).panels)
+  }
+  return parsePaginationMeta(data.panelsPagination)
+}
+
 /** Read-only reseller panel access overview (legacy dashboard-reseller-panels-admin). */
 export function ResellerPanelsAdminClient() {
   const t = useTranslations("resellerPanelsAdmin")
@@ -31,6 +41,9 @@ export function ResellerPanelsAdminClient() {
   const [resellerPanelPricesMap, setResellerPanelPricesMap] = useState<
     Record<string, Array<Record<string, unknown>> | undefined>
   >({})
+  const [pagination, setPagination] = useState<PaginationMeta | null>(null)
+  const [page, setPage] = useState(1)
+  const [perPage, setPerPage] = useState(20)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -39,8 +52,8 @@ export function ResellerPanelsAdminClient() {
     setError(null)
     try {
       const data = await getAdminState("reseller_xui_panels", {
-        panels_page: 1,
-        panels_per_page: 100,
+        panels_page: page,
+        panels_per_page: perPage,
       })
       const rows = Array.isArray(data.panels)
         ? (data.panels as DashRecord[])
@@ -48,6 +61,7 @@ export function ResellerPanelsAdminClient() {
           ? (data.panelRows as DashRecord[])
           : []
       setPanels(rows)
+      setPagination(pickPanelsPagination(data))
       const map =
         data.resellerPanelPricesMap && typeof data.resellerPanelPricesMap === "object"
           ? (data.resellerPanelPricesMap as Record<string, Array<Record<string, unknown>> | undefined>)
@@ -58,7 +72,7 @@ export function ResellerPanelsAdminClient() {
     } finally {
       setLoading(false)
     }
-  }, [t])
+  }, [page, perPage, t])
 
   useEffect(() => {
     void load()
@@ -130,6 +144,14 @@ export function ResellerPanelsAdminClient() {
               )}
             </TableBody>
           </Table>
+          <DataPagination
+            meta={pagination}
+            onPageChange={setPage}
+            onPerPageChange={(n) => {
+              setPerPage(n)
+              setPage(1)
+            }}
+          />
         </CardContent>
       </Card>
       <p className="text-xs text-muted-foreground">{t("hint")}</p>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useTranslations } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   Ban,
@@ -33,9 +33,9 @@ import { DashPage } from "@/components/dash-page"
 import { DashboardPageHeader } from "@/components/dashboard-page-header"
 
 import {
-  DashboardReceiptsList,
-  type ReceiptsListFilters,
+  type PaymentsListFilters,
 } from "@/components/dashboard-receipts-list"
+import { DashboardPaymentsTabs } from "@/components/dashboard-payments-tabs"
 import { DataPagination } from "@/components/data-pagination"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -54,7 +54,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { adminMutateErrorText, postAdminMutate } from "@/lib/dash-admin-mutate"
+import { adminMutateErrorText, getAdminState, postAdminMutate } from "@/lib/dash-admin-mutate"
 import { buildDashboardTabUrl } from "@/lib/dash-tab"
 import { DashTableShell, DashTd, DashTh } from "@/components/dash-data-table"
 import { dashActionsClass } from "@/lib/dash-locale"
@@ -73,6 +73,7 @@ import { BOT_PLATFORMS } from "@/config/bot-platforms"
 import { useDashLocale } from "@/lib/dash-locale-context"
 import { DashDialogContent, DashDialogFooter, DashDialogHeader } from "@/components/dash-dialog-content"
 import { Dialog, DialogDescription, DialogTitle } from "@/components/ui/dialog"
+import type { PaymentsView } from "@/lib/payments-view-subtab"
 
 type DashRecord = Record<string, unknown>
 
@@ -283,9 +284,12 @@ export function UserDetailAdmin({
   canReviewReceipts?: boolean
 }) {
   const { isFa } = useDashLocale()
+  const locale = useLocale()
+  const dashboardBaseUrl = `/${locale}/dashboard`
 
   const t = useTranslations("userDetailAdmin")
   const tUsers = useTranslations("usersAdmin")
+  const tPay = useTranslations("paymentsAdmin")
   const tp = (k: string, opts?: Record<string, string | number>) => t(`${k}`, opts)
 
   const canManageUsers =
@@ -308,9 +312,32 @@ export function UserDetailAdmin({
   const [rcptPage, setRcptPage] = useState(1)
   const [rcptPerPage, setRcptPerPage] = useState(20)
   const [rcptMeta, setRcptMeta] = useState<PaginationMeta | null>(null)
-  const [rcptFilters, setRcptFilters] = useState<ReceiptsListFilters>({
+  const [rcptFilters, setRcptFilters] = useState<PaymentsListFilters>({
     q: "",
     status: "all",
+    type: "",
+    method: "",
+    sort: "created_desc",
+    dateFrom: "",
+    dateTo: "",
+    amountMin: "",
+    amountMax: "",
+  })
+  const [paymentsView, setPaymentsView] = useState<PaymentsView>("receipts")
+  const [userPayments, setUserPayments] = useState<DashRecord[]>([])
+  const [userOrders, setUserOrders] = useState<DashRecord[]>([])
+  const [txPage, setTxPage] = useState(1)
+  const [txPerPage, setTxPerPage] = useState(20)
+  const [txMeta, setTxMeta] = useState<PaginationMeta | null>(null)
+  const [ordersPage, setOrdersPage] = useState(1)
+  const [ordersPerPage, setOrdersPerPage] = useState(20)
+  const [ordersMeta, setOrdersMeta] = useState<PaginationMeta | null>(null)
+  const [paymentsLoading, setPaymentsLoading] = useState(false)
+  const [txFilters, setTxFilters] = useState<PaymentsListFilters>({
+    q: "",
+    status: "all",
+    type: "",
+    method: "",
     sort: "created_desc",
     dateFrom: "",
     dateTo: "",
@@ -370,6 +397,8 @@ export function UserDetailAdmin({
       if (rcptFilters.dateTo.trim()) sp.set("receipts_date_to", rcptFilters.dateTo.trim())
       if (rcptFilters.amountMin.trim()) sp.set("receipts_amount_min", rcptFilters.amountMin.trim())
       if (rcptFilters.amountMax.trim()) sp.set("receipts_amount_max", rcptFilters.amountMax.trim())
+      if (rcptFilters.type.trim()) sp.set("receipts_type", rcptFilters.type.trim())
+      if (rcptFilters.method.trim()) sp.set("receipts_method", rcptFilters.method.trim())
       sp.set("lang", isFa ? "fa" : "en")
       const r = await fetch(
         `${restBase}${normalizeAdminApiPath(`/dashboard/admin/user/${userId}`)}?${sp.toString()}`,
@@ -418,10 +447,55 @@ export function UserDetailAdmin({
     void load()
   }, [restBase, userId, actPage, rcptPage, rcptPerPage, rcptFilters, load])
 
-  const onRcptFiltersChange = useCallback((patch: Partial<ReceiptsListFilters>) => {
-    setRcptFilters((f: ReceiptsListFilters) => ({ ...f, ...patch }))
+  const onRcptFiltersChange = useCallback((patch: Partial<PaymentsListFilters>) => {
+    setRcptFilters((f: PaymentsListFilters) => ({ ...f, ...patch }))
     setRcptPage(1)
   }, [])
+
+  const onTxFiltersChange = useCallback((patch: Partial<PaymentsListFilters>) => {
+    setTxFilters((f) => ({ ...f, ...patch }))
+    setTxPage(1)
+    setOrdersPage(1)
+  }, [])
+
+  const loadUserPayments = useCallback(async () => {
+    if (userId < 1 || paymentsView === "receipts") return
+    setPaymentsLoading(true)
+    try {
+      const query: Record<string, string | number> = {
+        payments_view: paymentsView,
+        payments_q: String(userId),
+      }
+      if (paymentsView === "transactions") {
+        query.transactions_page = txPage
+        query.transactions_per_page = txPerPage
+      } else {
+        query.orders_page = ordersPage
+        query.orders_per_page = ordersPerPage
+      }
+      const data = await getAdminState("payments", query)
+      if (paymentsView === "transactions") {
+        setUserPayments(Array.isArray(data.payments) ? (data.payments as DashRecord[]) : [])
+        const pag = data.pagination as DashRecord | undefined
+        setTxMeta(
+          parsePaginationMeta(pag?.transactions ?? pag?.payments ?? data.paymentsPagination)
+        )
+      } else {
+        setUserOrders(Array.isArray(data.orders) ? (data.orders as DashRecord[]) : [])
+        const pag = data.pagination as DashRecord | undefined
+        setOrdersMeta(parsePaginationMeta(pag?.orders ?? data.ordersPagination))
+      }
+    } catch {
+      if (paymentsView === "transactions") setUserPayments([])
+      else setUserOrders([])
+    } finally {
+      setPaymentsLoading(false)
+    }
+  }, [ordersPage, ordersPerPage, paymentsView, txPage, txPerPage, userId])
+
+  useEffect(() => {
+    void loadUserPayments()
+  }, [loadUserPayments])
 
   const onReceiptMutateSuccess = useCallback(async () => {
     await load()
@@ -1324,7 +1398,7 @@ export function UserDetailAdmin({
                 size="sm"
                 variant="outline"
                 render={
-                  <a href={buildDashboardTabUrl("", "marketing_lifecycle")} />
+                  <a href={buildDashboardTabUrl(dashboardBaseUrl, "marketing_lifecycle")} />
                 }
               >
                 {t("marketingOpenLifecycle")}
@@ -1463,26 +1537,47 @@ export function UserDetailAdmin({
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">{t("receiptsTitle")}</CardTitle>
+            <CardTitle className="text-base">{t("paymentsTitle")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <DashboardReceiptsList
-              variant="userEmbed"
+            <DashboardPaymentsTabs
+              paymentsView={paymentsView}
+              onPaymentsViewChange={setPaymentsView}
               receipts={receipts}
               receiptAggregates={receiptAggregates}
+              payments={userPayments}
+              paymentAggregates={null}
+              orders={userOrders}
+              orderAggregates={null}
               settings={settings}
-              pagination={rcptMeta}
+              receiptsPagination={rcptMeta}
+              paymentsPagination={txMeta}
+              ordersPagination={ordersMeta}
               isReseller={isReseller}
               canReviewReceipts={canReviewReceipts}
-              listFilters={rcptFilters}
-              onListFiltersChange={onRcptFiltersChange}
+              listFilters={paymentsView === "receipts" ? rcptFilters : txFilters}
+              onListFiltersChange={paymentsView === "receipts" ? onRcptFiltersChange : onTxFiltersChange}
+              dashboardBaseUrl={dashboardBaseUrl}
               onMutateSuccess={() => void onReceiptMutateSuccess()}
-              onPageChange={setRcptPage}
-              onPerPageChange={(n: number) => {
-                setRcptPerPage(n)
-                setRcptPage(1)
+              onPageChange={(v, p) => {
+                if (v === "receipts") setRcptPage(p)
+                else if (v === "transactions") setTxPage(p)
+                else setOrdersPage(p)
               }}
-              embedEmptyHint={t("receiptsEmpty")}
+              onPerPageChange={(v, n) => {
+                if (v === "receipts") {
+                  setRcptPerPage(n)
+                  setRcptPage(1)
+                } else if (v === "transactions") {
+                  setTxPerPage(n)
+                  setTxPage(1)
+                } else {
+                  setOrdersPerPage(n)
+                  setOrdersPage(1)
+                }
+              }}
+              variant="userEmbed"
+              embedEmptyHint={paymentsLoading ? tPay("empty") : t("paymentsEmpty")}
             />
           </CardContent>
         </Card>

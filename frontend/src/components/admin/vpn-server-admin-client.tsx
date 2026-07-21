@@ -1,7 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useTranslations } from "next-intl"
+import { useRouter } from "next/navigation"
+import { useLocale, useTranslations } from "next-intl"
 import { getAdminState, postAdminMutate } from "@/lib/dash-admin-mutate"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -65,9 +66,12 @@ const emptyInboundForm = () => ({
 export function VpnServerAdminClient({
   defaultTab,
 }: {
-  defaultTab?: "overview" | "inbounds" | "hosts" | "tunnels"
+  defaultTab?: "overview" | "inbounds" | "hosts" | "tunnels" | "clients"
 } = {}) {
   const t = useTranslations("vpnServerAdmin")
+  const tSidebar = useTranslations("sidebar")
+  const locale = useLocale()
+  const router = useRouter()
   const tCommon = useTranslations("backupAdmin")
   const [data, setData] = useState<DashRecord>({})
   const [overview, setOverview] = useState<DashRecord | null>(null)
@@ -263,12 +267,34 @@ export function VpnServerAdminClient({
   const clientCount = num(overview?.client_count)
 
   const resolvedDefaultTab = useMemo(() => {
-    const fallback = xrayCoreEnabled ? "overview" : "tunnels"
+    const fallback = xrayCoreEnabled ? "overview" : tunnelEnabled ? "tunnels" : "clients"
     if (!defaultTab) return fallback
+    if (defaultTab === "clients") return "clients"
     if (defaultTab === "tunnels" && !tunnelEnabled) return fallback
-    if (defaultTab !== "tunnels" && !xrayCoreEnabled) return tunnelEnabled ? "tunnels" : fallback
+    if (defaultTab !== "tunnels" && !xrayCoreEnabled) return tunnelEnabled ? "tunnels" : "clients"
     return defaultTab
   }, [defaultTab, xrayCoreEnabled, tunnelEnabled])
+
+  const [hubTab, setHubTab] = useState(resolvedDefaultTab)
+  useEffect(() => {
+    setHubTab(resolvedDefaultTab)
+  }, [resolvedDefaultTab])
+
+  const syncHubTabUrl = useCallback(
+    (tab: string) => {
+      setHubTab(tab as typeof resolvedDefaultTab)
+      const map: Record<string, string> = {
+        overview: "xray_core",
+        inbounds: "xray_inbounds",
+        hosts: "xray_hosts",
+        tunnels: "tunnel_nodes",
+        clients: "vpn_server",
+      }
+      const slug = map[tab] ?? "vpn_server"
+      router.replace(`/${locale}/dashboard/${slug}`)
+    },
+    [locale, router]
+  )
 
   return (
     <div className="space-y-6">
@@ -285,12 +311,13 @@ export function VpnServerAdminClient({
       {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
       {loading ? <p className="text-sm text-muted-foreground">{t("loading")}</p> : null}
 
-      <Tabs defaultValue={resolvedDefaultTab} key={resolvedDefaultTab}>
+      <Tabs value={hubTab} onValueChange={syncHubTabUrl} key={resolvedDefaultTab}>
         <TabsList variant="line" className="h-auto flex-wrap">
           {xrayCoreEnabled ? <TabsTrigger value="overview">{t("tabOverview")}</TabsTrigger> : null}
           {xrayCoreEnabled ? <TabsTrigger value="inbounds">{t("tabInbounds")}</TabsTrigger> : null}
           {xrayCoreEnabled ? <TabsTrigger value="hosts">{t("tabHosts")}</TabsTrigger> : null}
           {tunnelEnabled ? <TabsTrigger value="tunnels">{t("tabTunnels")}</TabsTrigger> : null}
+          <TabsTrigger value="clients">{t("tabClients")}</TabsTrigger>
         </TabsList>
 
         {xrayCoreEnabled ? (
@@ -601,6 +628,25 @@ export function VpnServerAdminClient({
             </div>
           </TabsContent>
         ) : null}
+
+        <TabsContent value="clients" className="mt-4 space-y-4" data-testid="vpn-server-clients-tab">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">{t("tabClients")}</CardTitle>
+              <CardDescription>{t("clientsHint")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => router.push(`/${locale}/dashboard/configs`)}
+              >
+                {tSidebar("items.configs")}
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
 
       <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>

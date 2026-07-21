@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useTranslation } from "react-i18next"
+import { useTranslations } from "next-intl"
 import { Command as CommandPrimitive } from "cmdk"
 import { SearchIcon } from "lucide-react"
 
@@ -46,9 +46,9 @@ function CommandDialog({
   /** Persian / RTL: align palette content and items to the right. */
   rtl?: boolean
 }) {
-  const { t } = useTranslation()
-  const resolvedTitle = title ?? t("a11y.commandPaletteTitle")
-  const resolvedDescription = description ?? t("a11y.commandPaletteDescription")
+  const t = useTranslations("a11y")
+  const resolvedTitle = title ?? t("commandPaletteTitle")
+  const resolvedDescription = description ?? t("commandPaletteDescription")
   return (
     <Dialog {...props}>
       <DialogHeader className="sr-only">
@@ -69,7 +69,7 @@ function CommandDialog({
           dir={rtl ? "rtl" : undefined}
           className="**:data-[slot=command-input-wrapper]:h-12 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]]:px-2 [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5"
         >
-          {children}
+          {children as React.ReactNode}
         </Command>
       </DialogContent>
     </Dialog>

@@ -56,6 +56,7 @@ export async function fetchSetupStatus(): Promise<SetupStatus> {
 
 export async function fetchSetupDomains(): Promise<{
   ok?: boolean
+  code?: string
   urls?: Record<string, string>
   probes?: DomainProbe[]
   snapshot?: Record<string, string>

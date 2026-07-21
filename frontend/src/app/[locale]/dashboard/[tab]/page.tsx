@@ -1,5 +1,7 @@
 import { setRequestLocale } from "next-intl/server"
 import { getTranslations } from "next-intl/server"
+import { redirect } from "next/navigation"
+import { SafeResellerTabGuard } from "@/components/safe-reseller-tab-guard"
 import { AuditAdminClient } from "@/components/admin/audit-admin-client"
 import { BackupAdminClient } from "@/components/admin/backup-admin-client"
 import { BotsAdminClient } from "@/components/admin/bots-admin-client"
@@ -30,6 +32,8 @@ import { UnitEconomicsAdminClient } from "@/components/admin/unit-economics-admi
 import { UsersAdminClient } from "@/components/admin/users-admin-client"
 import { UsersBulkAdminClient } from "@/components/admin/users-bulk-admin-client"
 import { VpnServerAdminClient } from "@/components/admin/vpn-server-admin-client"
+import { resolveLegacySiteTab } from "@/lib/site-settings-subtab"
+import { resolveLegacyPlansTab } from "@/lib/plans-subview"
 
 function vpnServerDefaultTab(tab: string): "overview" | "inbounds" | "hosts" | "tunnels" | undefined {
   switch (tab) {
@@ -54,87 +58,101 @@ export default async function DashboardTabPage({
   const { locale, tab } = await Promise.resolve(params)
   setRequestLocale(locale)
 
-  switch (tab) {
+  const legSite = resolveLegacySiteTab(tab)
+  if (legSite.subtab) {
+    redirect(`/${locale}/dashboard/site_settings?site_subtab=${encodeURIComponent(legSite.subtab)}`)
+  }
+  const legPlans = resolveLegacyPlansTab(legSite.tab)
+  if (legPlans.view) {
+    redirect(`/${locale}/dashboard/plans?plans_view=${encodeURIComponent(legPlans.view)}`)
+  }
+  const resolvedTab = legPlans.tab
+
+  const wrap = (node: React.ReactNode) => (
+    <SafeResellerTabGuard tab={resolvedTab}>{node}</SafeResellerTabGuard>
+  )
+
+  switch (resolvedTab) {
     case "dashboard":
-      return <OverviewAdminClient />
+      return wrap(<OverviewAdminClient />)
     case "monitoring":
-      return <MonitoringAdminClient />
+      return wrap(<MonitoringAdminClient />)
     case "users":
-      return <UsersAdminClient />
+      return wrap(<UsersAdminClient />)
     case "users_bulk":
-      return <UsersBulkAdminClient />
+      return wrap(<UsersBulkAdminClient />)
     case "broadcast":
-      return <BroadcastAdminClient />
+      return wrap(<BroadcastAdminClient />)
     case "resellers":
-      return <ResellersAdminClient />
+      return wrap(<ResellersAdminClient />)
     case "reseller_reports":
-      return <ResellerReportsAdminClient />
+      return wrap(<ResellerReportsAdminClient />)
     case "reseller_bots":
-      return <ResellerBotsAdminClient />
+      return wrap(<ResellerBotsAdminClient />)
     case "reseller_charge":
-      return <ResellerChargeAdminClient />
+      return wrap(<ResellerChargeAdminClient />)
     case "reseller_settings":
-      return <ResellerSettingsAdminClient />
+      return wrap(<ResellerSettingsAdminClient />)
     case "referral":
-      return <ReferralAdminClient />
+      return wrap(<ReferralAdminClient />)
     case "referral_reports":
-      return <ReferralAdminClient reports />
+      return wrap(<ReferralAdminClient reports />)
     case "marketing_lifecycle":
-      return <MarketingLifecycleAdminClient />
+      return wrap(<MarketingLifecycleAdminClient />)
     case "discounts":
-      return <DiscountsAdminClient />
+      return wrap(<DiscountsAdminClient />)
     case "plans":
-      return <PlansAdminClient />
+      return wrap(<PlansAdminClient />)
     case "plan_cats":
-      return <PlanCatsAdminClient />
+      return wrap(<PlanCatsAdminClient />)
     case "unit_economics":
-      return <UnitEconomicsAdminClient />
+      return wrap(<UnitEconomicsAdminClient />)
     case "panel_financial_reports":
-      return <PanelFinancialReportsClient />
+      return wrap(<PanelFinancialReportsClient />)
     case "cards":
-      return <CardsAdminClient />
+      return wrap(<CardsAdminClient />)
     case "payments":
     case "receipts":
-      return <PaymentsAdminClient />
+      return wrap(<PaymentsAdminClient />)
     case "bots":
-      return <BotsAdminClient />
+      return wrap(<BotsAdminClient />)
     case "texts":
-      return <TextsAdminClient />
+      return wrap(<TextsAdminClient />)
     case "bot_ui":
-      return <BotUiAdminClient />
+      return wrap(<BotUiAdminClient />)
     case "xui_panels":
-      return <PanelsAdminClient />
+      return wrap(<PanelsAdminClient />)
     case "reseller_xui_panels":
-      return <ResellerPanelsAdminClient />
+      return wrap(<ResellerPanelsAdminClient />)
     case "vpn_server":
     case "xray_core":
     case "xray_inbounds":
     case "xray_hosts":
     case "tunnel_nodes":
-      return <VpnServerAdminClient defaultTab={vpnServerDefaultTab(tab)} />
+      return wrap(<VpnServerAdminClient defaultTab={vpnServerDefaultTab(tab)} />)
     case "configs":
-      return <ConfigsAdminClient />
+      return wrap(<ConfigsAdminClient />)
     case "l2tp_servers":
-      return <L2tpServersAdminClient />
+      return wrap(<L2tpServersAdminClient />)
     case "backup":
-      return <BackupAdminClient />
+      return wrap(<BackupAdminClient />)
     case "audit":
-      return <AuditAdminClient />
+      return wrap(<AuditAdminClient />)
     case "site_settings":
-      return <SiteSettingsAdminClient />
+      return wrap(<SiteSettingsAdminClient />)
     default:
       break
   }
 
   const t = await getTranslations("sidebar.tabs")
-  let title = tab
+  let title = resolvedTab
   try {
-    title = t(tab)
+    title = t(resolvedTab)
   } catch {
-    title = tab
+    title = resolvedTab
   }
 
-  return (
+  return wrap(
     <div className="rounded-xl border bg-card p-6 shadow-sm">
       <h1 className="text-xl font-semibold">{title}</h1>
     </div>

@@ -2,7 +2,13 @@
 
 namespace App\Modules\Marketing\Services;
 
+use App\Models\SvpService;
 use App\Models\SvpUser;
+use App\Modules\Core\Bot\BotContext;
+use App\Modules\Core\Bot\Services\BotCheckoutUiService;
+use App\Modules\Core\Bot\Services\BotServiceCheckoutService;
+use App\Modules\Core\Bot\Services\BotStateService;
+use App\Modules\Core\Bot\Services\TextService;
 use App\Modules\Core\Services\UserBotNotifyService;
 use App\Services\Marketing\MarketingGuardService;
 use App\Services\SettingsStore;
@@ -17,6 +23,7 @@ class MarketingAutomationService
         protected UserBotNotifyService $notify,
         protected SettingsStore $settings,
         protected MarketingGuardService $guard,
+        protected TextService $texts,
     ) {}
 
     /** @return array{processed:int, sent:int} */
@@ -226,7 +233,12 @@ class MarketingAutomationService
         $channel = $this->channelForRule($rule);
         $owner = (int) ($rule->owner_svp_user_id ?? 0);
 
-        $this->notify->sendToUser($user, $text, $channel, $owner);
+        $extra = [];
+        $kb = $this->offerCtaReplyMarkup($user, $offerId, $rule, $this->marketingContextForUser($userId, $rule));
+        if ($kb !== null) {
+            $extra['reply_markup'] = $kb;
+        }
+        $this->notify->sendToUser($user, $text, $channel, $owner, $extra);
 
         DB::table('svp_marketing_offers')->where('id', $offerId)->update([
             'status' => 'sent',
@@ -356,5 +368,303 @@ class MarketingAutomationService
             'message' => $text,
             'code' => 'PREVIEW-CODE',
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $ctx
+     * @return array{inline_keyboard: list<list<array<string, string>>>}|null
+     */
+    protected function offerCtaReplyMarkup(SvpUser $user, int $offerId, object $rule, array $ctx = []): ?array
+    {
+        if ($offerId < 1) {
+            return null;
+        }
+        $cta = $this->resolveOfferCta($rule, $user, $ctx);
+        $buttonKey = (string) ($cta['button_key'] ?? 'btn.marketing.use_offer');
+
+        return [
+            'inline_keyboard' => [[
+                [
+                    'text' => $this->texts->getForUser($buttonKey, $user, 'Use offer'),
+                    'callback_data' => 'mkt_offer_cta:'.$offerId,
+                ],
+            ]],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $ctx
+     * @return array{action: string, button_key: string, plan_id: int, service_id: int}
+     */
+    public function resolveOfferCta(object $rule, ?SvpUser $user = null, array $ctx = []): array
+    {
+        $seg = preg_replace('/[^a-z0-9_]/', '', strtolower((string) ($rule->segment_key ?? ''))) ?: '';
+        $serviceId = max(0, (int) ($ctx['active_service_id'] ?? 0));
+        $planId = max(0, (int) ($ctx['suggested_plan_id'] ?? 0));
+        $out = [
+            'action' => 'smart_checkout',
+            'button_key' => 'btn.marketing.use_offer',
+            'plan_id' => 0,
+            'service_id' => $serviceId,
+        ];
+        switch ($seg) {
+            case 'abandoned_checkout':
+            case 'stale_buy_funnel':
+                $out['button_key'] = 'btn.marketing.complete_purchase';
+                break;
+            case 'churned':
+            case 'never_purchased':
+                $out['action'] = 'start_buy';
+                $out['button_key'] = 'btn.marketing.start_purchase';
+                break;
+            case 'upgrade_candidate':
+                $out['action'] = 'start_buy';
+                $out['button_key'] = 'btn.marketing.buy_suggested_plan';
+                $out['plan_id'] = $planId;
+                break;
+            case 'expiring_renew':
+                $out['action'] = 'renew_same';
+                $out['button_key'] = 'btn.marketing.renew_with_code';
+                break;
+            case 'volume_boost':
+                $out['action'] = 'add_volume';
+                $out['button_key'] = 'btn.marketing.add_volume';
+                break;
+        }
+
+        return $out;
+    }
+
+    /** @return array{active_service_id: int, suggested_plan_id: int} */
+    protected function marketingContextForUser(int $userId, object $rule): array
+    {
+        $activeServiceId = 0;
+        if ($userId > 0) {
+            $activeServiceId = (int) (SvpService::query()
+                ->where('user_id', $userId)
+                ->whereNull('deleted_at')
+                ->where('status', 'active')
+                ->orderByDesc('id')
+                ->value('id') ?? 0);
+        }
+
+        return [
+            'active_service_id' => $activeServiceId,
+            'suggested_plan_id' => max(0, (int) ($rule->suggested_plan_id ?? 0)),
+        ];
+    }
+
+    /**
+     * Handle mkt_offer_cta: / mkt_offer_apply: (WP Marketing_Automation::handle_callback_cta).
+     *
+     * @param  array{platform: string, chat_id: int, user: SvpUser}  $ctx
+     */
+    public function handleCallbackCta(array $ctx, int $offerId): void
+    {
+        $user = $ctx['user'] ?? null;
+        $chatId = (int) ($ctx['chat_id'] ?? 0);
+        $platform = (string) ($ctx['platform'] ?? 'telegram');
+        if (! $user instanceof SvpUser || $offerId < 1 || $chatId < 1) {
+            return;
+        }
+
+        $offer = DB::table('svp_marketing_offers')->where('id', $offerId)->first();
+        if (! $offer || (int) ($offer->svp_user_id ?? 0) !== (int) $user->id) {
+            app(\App\Modules\Core\Bot\Services\BotRuntime::class)->sendMessage(
+                new \App\Modules\Core\Bot\BotContext($platform),
+                $chatId,
+                'Offer not found'
+            );
+
+            return;
+        }
+        $codeRow = DB::table('svp_discount_codes')->where('id', (int) ($offer->discount_code_id ?? 0))->first();
+        $rule = (int) ($offer->rule_id ?? 0) > 0
+            ? DB::table('svp_marketing_rules')->where('id', (int) $offer->rule_id)->first()
+            : null;
+        if (! $rule) {
+            $rule = (object) ['id' => 0, 'segment_key' => 'never_purchased', 'message_body' => ''];
+        }
+        $mctx = $this->marketingContextForUser((int) $user->id, $rule);
+        $cta = $this->resolveOfferCta($rule, $user, $mctx);
+        $action = (string) ($cta['action'] ?? 'smart_checkout');
+        $botCtx = new BotContext($platform);
+        $runtime = app(\App\Modules\Core\Bot\Services\BotRuntime::class);
+        $buy = app(\App\Modules\Core\Bot\Handlers\BuyHandler::class);
+        $state = app(BotStateService::class);
+        $checkout = app(\App\Modules\Core\Bot\Services\BotCommerceCheckoutService::class);
+        $serviceCheckout = app(BotServiceCheckoutService::class);
+        $checkoutUi = app(BotCheckoutUiService::class);
+
+        $applyPending = function () use ($user, $codeRow, $offer, $checkout, $buy, $botCtx, $chatId, $runtime): bool {
+            if (! $codeRow) {
+                return false;
+            }
+            $tx = DB::table('svp_transactions')
+                ->where('user_id', $user->id)
+                ->where('status', 'pending')
+                ->where('type', 'purchase')
+                ->orderByDesc('id')
+                ->first();
+            if (! $tx) {
+                return false;
+            }
+            $res = $checkout->applyDiscountCode((int) $tx->id, (string) $codeRow->code, (int) $user->id);
+            if (empty($res['ok'])) {
+                $runtime->sendMessage($botCtx, $chatId, 'Could not apply offer code');
+
+                return false;
+            }
+            $meta = json_decode((string) ($tx->meta_json ?? '{}'), true);
+            $meta = is_array($meta) ? $meta : [];
+            $meta['marketing_offer_id'] = (int) $offer->id;
+            DB::table('svp_transactions')->where('id', (int) $tx->id)->update([
+                'meta_json' => json_encode($meta),
+            ]);
+            $runtime->sendMessage($botCtx, $chatId, 'Offer applied');
+            $buy->refreshCheckoutAfterDiscount($botCtx, $user, $chatId, (int) $tx->id);
+
+            return true;
+        };
+
+        $startBuy = function () use ($user, $codeRow, $offer, $cta, $state, $buy, $botCtx, $chatId): void {
+            $planId = max(0, (int) ($cta['plan_id'] ?? 0));
+            $state->set($user, 'marketing_offer_cta', [
+                'offer_id' => (int) $offer->id,
+                'code_id' => (int) ($codeRow->id ?? 0),
+                'plan_id' => $planId,
+            ]);
+            if ($planId > 0) {
+                $buy->handleCallback($botCtx, $user, [
+                    'parts' => ['buy', 'cf', (string) $planId],
+                    'chat_id' => $chatId,
+                ]);
+
+                return;
+            }
+            $buy->showBuyEntry($botCtx, $user, $chatId);
+        };
+
+        if ($action === 'smart_checkout') {
+            if ($applyPending()) {
+                return;
+            }
+            $startBuy();
+
+            return;
+        }
+        if ($action === 'apply_pending') {
+            if (! $applyPending()) {
+                $runtime->sendMessage($botCtx, $chatId, 'No pending purchase to apply offer');
+            }
+
+            return;
+        }
+        if ($action === 'start_buy') {
+            $startBuy();
+
+            return;
+        }
+        if ($action === 'renew_same') {
+            $this->renewWithOffer($botCtx, $user, $chatId, $offer, $codeRow, $cta, $runtime, $serviceCheckout, $checkout, $checkoutUi, $state, $startBuy);
+
+            return;
+        }
+        if ($action === 'add_volume') {
+            $this->addVolumeWithOffer($botCtx, $user, $chatId, $offer, $codeRow, $cta, $runtime, $state, $startBuy);
+
+            return;
+        }
+    }
+
+    /**
+     * @param  array{action: string, button_key: string, plan_id: int, service_id: int}  $cta
+     */
+    protected function renewWithOffer(
+        BotContext $botCtx,
+        SvpUser $user,
+        int $chatId,
+        object $offer,
+        ?object $codeRow,
+        array $cta,
+        \App\Modules\Core\Bot\Services\BotRuntime $runtime,
+        BotServiceCheckoutService $serviceCheckout,
+        \App\Modules\Core\Bot\Services\BotCommerceCheckoutService $checkout,
+        BotCheckoutUiService $checkoutUi,
+        BotStateService $state,
+        callable $startBuy,
+    ): void {
+        $svcId = max(0, (int) ($cta['service_id'] ?? 0));
+        $svc = $svcId > 0 ? SvpService::query()->find($svcId) : null;
+        if (! $svc || (int) $svc->user_id !== (int) $user->id) {
+            $runtime->sendMessage($botCtx, $chatId, $this->texts->getForUser('msg.marketing.no_active_service', $user, 'No active service'));
+            $startBuy();
+
+            return;
+        }
+        if ((string) ($svc->service_type ?? '') === 'l2tp') {
+            $runtime->sendMessage($botCtx, $chatId, $this->texts->getForUser('msg.svc.renew_xray_only', $user, 'Renew is Xray only'));
+
+            return;
+        }
+        $result = $serviceCheckout->beginRenew($user, $botCtx, (int) $svc->id);
+        if (! empty($result['free'])) {
+            $runtime->sendMessage($botCtx, $chatId, $this->texts->getForUser('msg.service.op_ok', $user, 'Done'));
+
+            return;
+        }
+        if (empty($result['ok']) || empty($result['transaction_id'])) {
+            $runtime->sendMessage($botCtx, $chatId, $this->texts->getForUser('msg.common.failed', $user, 'Failed'));
+
+            return;
+        }
+        $txId = (int) $result['transaction_id'];
+        if ($codeRow) {
+            $res = $checkout->applyDiscountCode($txId, (string) $codeRow->code, (int) $user->id);
+            if (! empty($res['ok'])) {
+                $meta = json_decode((string) (DB::table('svp_transactions')->where('id', $txId)->value('meta_json') ?? '{}'), true);
+                $meta = is_array($meta) ? $meta : [];
+                $meta['marketing_offer_id'] = (int) $offer->id;
+                DB::table('svp_transactions')->where('id', $txId)->update(['meta_json' => json_encode($meta)]);
+            }
+        }
+        $state->set($user, 'service_checkout', ['transaction_id' => $txId, 'service_id' => (int) $svc->id]);
+        $amount = $checkout->transactionAmount($txId);
+        $checkoutUi->sendCheckoutSummary($botCtx, $user, $chatId, 'Renew #'.(int) $svc->id, $amount, $txId, 'svc');
+    }
+
+    /**
+     * @param  array{action: string, button_key: string, plan_id: int, service_id: int}  $cta
+     */
+    protected function addVolumeWithOffer(
+        BotContext $botCtx,
+        SvpUser $user,
+        int $chatId,
+        object $offer,
+        ?object $codeRow,
+        array $cta,
+        \App\Modules\Core\Bot\Services\BotRuntime $runtime,
+        BotStateService $state,
+        callable $startBuy,
+    ): void {
+        $svcId = max(0, (int) ($cta['service_id'] ?? 0));
+        $svc = $svcId > 0 ? SvpService::query()->find($svcId) : null;
+        if (! $svc || (int) $svc->user_id !== (int) $user->id) {
+            $runtime->sendMessage($botCtx, $chatId, $this->texts->getForUser('msg.marketing.no_active_service', $user, 'No active service'));
+            $startBuy();
+
+            return;
+        }
+        if ((string) ($svc->service_type ?? '') === 'l2tp') {
+            $runtime->sendMessage($botCtx, $chatId, $this->texts->getForUser('msg.svc.volume_xray_only', $user, 'Volume add is Xray only'));
+
+            return;
+        }
+        $state->set($user, 'service_addvol', [
+            'service_id' => (int) $svc->id,
+            'marketing_offer_id' => (int) $offer->id,
+            'marketing_code_id' => (int) ($codeRow->id ?? 0),
+        ]);
+        $runtime->sendMessage($botCtx, $chatId, $this->texts->getForUser('msg.svc.prompt_add_volume_gb', $user, 'Send GB amount'));
     }
 }

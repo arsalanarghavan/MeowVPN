@@ -21,9 +21,10 @@ class PortalPageService
             return null;
         }
 
-        $userId = (int) $request->query('svp_u', 0);
-        $exp = (int) $request->query('svp_e', 0);
-        $sig = (string) $request->query('svp_s', '');
+        $params = $this->portal->signedParamsFromRequest($request);
+        $userId = $params['user_id'];
+        $exp = $params['exp'];
+        $sig = $params['sig'];
 
         $admin = $this->portal->verifyAdminSignature($userId, $exp, $sig);
         if (! $admin instanceof SvpUser) {

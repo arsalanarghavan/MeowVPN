@@ -3,10 +3,13 @@
 namespace App\Modules\Core\Bot;
 
 use App\Models\SvpUser;
+use App\Modules\Core\Bot\BotContext;
 use App\Modules\Core\Bot\Handlers\BuyHandler;
 use App\Modules\Core\Bot\Handlers\CallbackHandler;
 use App\Modules\Core\Bot\Handlers\StartHandler;
 use App\Modules\Core\Bot\Handlers\SyncHandler;
+use App\Modules\Core\Bot\Handlers\Admin\AdminUsersHandler;
+use App\Modules\Core\Bot\Services\AdminBotScopeService;
 use App\Modules\Core\Bot\Services\AdminGuard;
 use App\Modules\Core\Bot\Services\BotRuntime;
 use App\Modules\Core\Bot\Services\BotStateService;
@@ -31,6 +34,8 @@ class UpdateRouter
         protected CallbackHandler $callbackHandler,
         protected BuyHandler $buyHandler,
         protected SyncHandler $syncHandler,
+        protected AdminUsersHandler $adminUsers,
+        protected AdminBotScopeService $adminScope,
     ) {}
 
     /** @param  array<string, mixed>  $update */
@@ -39,6 +44,13 @@ class UpdateRouter
         if (! $this->settings->get('bot_enabled', true)) {
             return;
         }
+
+        $enabledKey = $ctx->platform === 'bale' ? 'bale_enabled' : 'telegram_enabled';
+        if (! (bool) $this->settings->get($enabledKey, true)) {
+            return;
+        }
+
+        $this->adminScope->bindContext($ctx);
 
         if ($ctx->platform === 'bale' && ! empty($update['pre_checkout_query'])) {
             $this->buyHandler->handleBalePreCheckout($ctx, $update['pre_checkout_query']);
@@ -64,6 +76,9 @@ class UpdateRouter
         }
 
         $user = $this->users->resolve($ctx, $from);
+        if ($user && ! $cb) {
+            $this->logInboundActivity($ctx, $update, $user, $fromId, $chatId, null, $text);
+        }
         $cmd = '';
         if ($text && preg_match('#^/([a-zA-Z0-9_]+)#u', $text, $m)) {
             $cmd = strtolower($m[1]);
@@ -160,9 +175,26 @@ class UpdateRouter
             return;
         }
 
-        $state = $this->state->get($user);
+        if ($user && (int) $user->admin_mode && $this->adminGuard->isPlatformAdmin($ctx->platform, $fromId)) {
+            $this->adminScope->setActingAdmin((int) $user->id);
+        }
 
         $message = is_array($update['message'] ?? null) ? $update['message'] : null;
+        $textTrim = trim((string) $text);
+
+        // WP: moderation reply buttons before admin_mode (one-tap from notify keyboards).
+        if ($textTrim !== '' && $this->adminGuard->isPlatformAdmin($ctx->platform, $fromId)) {
+            if ($this->adminUsers->routeModerationReplyShortcuts($ctx, $user, $chatId, $textTrim, $from)) {
+                return;
+            }
+        }
+
+        if ($textTrim !== '' && $user instanceof SvpUser) {
+            if ($this->state->interruptBlockingStateOnMainMenuText($ctx, $fromId, $user, $textTrim)) {
+                $user = $user->fresh() ?? $user;
+            }
+        }
+
         $userStateRouter = app(\App\Modules\Core\Bot\Services\UserStateRouter::class);
         if ($userStateRouter->route($ctx, $user, $chatId, $text, $message)) {
             return;
@@ -175,13 +207,55 @@ class UpdateRouter
             }
         }
 
-        if ($this->uiReply->routeMainMenuText($ctx, $user, $chatId, trim((string) $text))) {
+        if ($this->uiReply->routeMainMenuText($ctx, $user, $chatId, $textTrim)) {
             return;
         }
 
         if ((int) $user->admin_mode && $this->adminGuard->isPlatformAdmin($ctx->platform, $fromId)) {
-            $this->callbackHandler->handleAdminText($ctx, $user, $chatId, trim((string) $text), $from);
+            $this->callbackHandler->handleAdminText($ctx, $user, $chatId, $textTrim, $from);
+
+            return;
         }
+
+        if ($textTrim !== '') {
+            $this->runtime->sendMessage(
+                $ctx,
+                $chatId,
+                $this->texts->getForUser('msg.use_reply_buttons', $user, 'Please use the menu buttons.'),
+            );
+        }
+    }
+
+    /** @param  array<string, mixed>  $update */
+    protected function logInboundActivity(
+        BotContext $ctx,
+        array $update,
+        ?SvpUser $user,
+        int $fromId,
+        int $chatId,
+        ?array $cb,
+        ?string $text,
+    ): void {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('svp_logs')) {
+            return;
+        }
+
+        $payload = [
+            'platform' => $ctx->platform,
+            'from_id' => $fromId,
+            'chat_id' => $chatId,
+            'user_id' => $user ? (int) $user->id : 0,
+            'text' => $text,
+            'callback_data' => is_array($cb) ? (string) ($cb['data'] ?? '') : '',
+            'update_id' => $update['update_id'] ?? null,
+        ];
+
+        \Illuminate\Support\Facades\DB::table('svp_logs')->insert([
+            'level' => 'info',
+            'message' => 'bot_inbound',
+            'context_json' => json_encode($payload, JSON_UNESCAPED_UNICODE),
+            'created_at' => now(),
+        ]);
     }
 
     /**

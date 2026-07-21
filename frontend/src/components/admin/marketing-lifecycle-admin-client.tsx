@@ -1,6 +1,6 @@
 "use client"
 
-import { useTranslations } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import { useAdminTabState } from "@/hooks/use-admin-tab-state"
 import { useDashboardShellOptional } from "@/components/dashboard-shell-provider"
 
@@ -44,7 +44,7 @@ import { useChartPrimaryColor } from "@/lib/chart-accent"
 import { adminMutateErrorText, postAdminMutate } from "@/lib/dash-admin-mutate"
 import { useDashLocale } from "@/lib/dash-locale-context"
 import { dashIconGapClass, dashLtrCell } from "@/lib/dash-locale"
-import { formatChartDayLabel, formatNumber } from "@/lib/format-locale"
+import { formatChartDayLabel, formatDateTime, formatNumber } from "@/lib/format-locale"
 import type { PaginationMeta } from "@/lib/dash-pagination"
 import { cn } from "@/lib/utils"
 
@@ -52,6 +52,20 @@ export type MarketingLifecycleStats = {
   window_days?: number
   since?: string
   summary?: Record<string, unknown>
+  funnel?: MarketingFunnelDay[]
+  health?: {
+    last_run_at?: number
+    last_processed?: number
+    last_sent?: number
+    last_skipped?: number
+    next_scheduled_at?: number
+    cron_mode?: string
+    cron_block_reason?: string
+    lifecycle_confirmed?: boolean
+    active_rules_count?: number
+  }
+  segment_trend?: Array<{ date?: string; segment?: string; sent?: number; converted?: number }>
+  skip_breakdown?: Array<{ reason?: string; count?: number }>
 }
 
 export type MarketingRuleRow = {
@@ -106,12 +120,38 @@ export type MarketingRuleStatRow = {
   eligible_now?: number
 }
 
+export type MarketingLifecycleHealth = {
+  last_run_at?: number
+  last_processed?: number
+  last_sent?: number
+  last_skipped?: number
+  next_scheduled_at?: number
+  cron_mode?: string
+  cron_block_reason?: string
+  lifecycle_confirmed?: boolean
+  active_rules_count?: number
+}
+
+export type MarketingSkipBreakdownRow = {
+  reason?: string
+  count?: number
+}
+
+export type MarketingSegmentTrendRow = {
+  date?: string
+  segment?: string
+  sent?: number
+  converted?: number
+}
+
 const SEGMENTS = [
-  "churned",
-  "never_purchased",
   "abandoned_checkout",
   "stale_buy_funnel",
   "expiring_renew",
+  "volume_boost",
+  "upgrade_candidate",
+  "never_purchased",
+  "churned",
 ] as const
 
 const OFFER_STATUSES = ["", "issued", "sent", "converted", "expired", "skipped"] as const
@@ -119,6 +159,8 @@ const OFFER_STATUSES = ["", "issued", "sent", "converted", "expired", "skipped"]
 const RULES_TABLE_COLS = ["14%", "12%", "10%", "8%", "8%", "10%", "10%", "10%", "8%", "10%"]
 const STATS_TABLE_COLS = ["14%", "12%", "10%", "10%", "10%", "12%", "12%", "20%"]
 const OFFERS_TABLE_COLS = ["8%", "14%", "10%", "12%", "12%", "10%", "10%", "12%", "12%"]
+const HEALTH_TABLE_COLS = ["60%", "40%"]
+const TREND_TABLE_COLS = ["22%", "28%", "25%", "25%"]
 
 function num(v: unknown): number {
   const n = Number(v)
@@ -151,6 +193,8 @@ const SEGMENT_PRESETS: Record<string, Partial<MarketingRuleRow>> = {
   abandoned_checkout: { pending_hours: 24, cooldown_days: 14, discount_value: 10, code_valid_days: 3 },
   stale_buy_funnel: { funnel_idle_hours: 48, cooldown_days: 30, discount_value: 10, code_valid_days: 5 },
   expiring_renew: { expires_within_days: 7, cooldown_days: 30, discount_value: 15, code_valid_days: 10 },
+  volume_boost: { cooldown_days: 30, discount_value: 10, code_valid_days: 7, priority: 35 },
+  upgrade_candidate: { cooldown_days: 45, discount_value: 12, max_discount_toman: 80000, code_valid_days: 14, priority: 40 },
 }
 
 const emptyRule = (segment = "churned"): MarketingRuleRow => {
@@ -189,6 +233,9 @@ function ruleThresholdLabel(rule: MarketingRuleRow, tp: (k: string, o?: Record<s
   if (sk === "expiring_renew") {
     return tp("thresholdExpiresDays", { days: formatNumber(num(rule.expires_within_days), isFa) })
   }
+  if (sk === "upgrade_candidate" || sk === "volume_boost") {
+    return tp(`segment_${sk}`)
+  }
   return "—"
 }
 
@@ -205,6 +252,9 @@ export function MarketingLifecycleAdminView({
   rules,
   ruleStats,
   offers,
+  health,
+  skipBreakdown = [],
+  segmentTrend = [],
   pagination,
   dashboardBaseUrl,
   windowDays,
@@ -224,6 +274,9 @@ export function MarketingLifecycleAdminView({
   rules: MarketingRuleRow[]
   ruleStats: MarketingRuleStatRow[]
   offers: MarketingOfferRow[]
+  health?: MarketingLifecycleHealth | null
+  skipBreakdown?: MarketingSkipBreakdownRow[]
+  segmentTrend?: MarketingSegmentTrendRow[]
   pagination: PaginationMeta | null
   dashboardBaseUrl: string
   windowDays: number
@@ -258,7 +311,17 @@ export function MarketingLifecycleAdminView({
 
   const summary = (stats?.summary ?? {}) as Record<string, unknown>
   const segmentCounts = (summary.segment_counts ?? {}) as Record<string, number>
-  const lifecycleConfirmed = Boolean(summary.lifecycle_confirmed)
+  const lifecycleConfirmed =
+    Boolean(health?.lifecycle_confirmed) || Boolean(summary.lifecycle_confirmed)
+  const cronSettingsUrl = `${buildDashboardTabUrl(dashboardBaseUrl, "site_settings")}?site_subtab=cron`
+  const healthState: MarketingLifecycleHealth = {
+    ...(stats?.health ?? {}),
+    ...(health ?? {}),
+  }
+  const skipRows =
+    (skipBreakdown.length > 0 ? skipBreakdown : stats?.skip_breakdown ?? []) as MarketingSkipBreakdownRow[]
+  const trendRows =
+    (segmentTrend.length > 0 ? segmentTrend : stats?.segment_trend ?? []) as MarketingSegmentTrendRow[]
 
   const statsByRuleId = useMemo(() => {
     const m = new Map<number, MarketingRuleStatRow>()
@@ -278,6 +341,32 @@ export function MarketingLifecycleAdminView({
         first_paid: num(d.first_paid),
       })),
     [funnel, isFa]
+  )
+
+  function skipReasonLabel(reason: string, tpf: typeof tp): string {
+    const k = `skipReason_${reason}`
+    const tr = tpf(k)
+    return tr !== `marketingLifecycleAdmin.${k}` ? tr : reason || tpf("skipReason_unknown")
+  }
+
+  function formatTs(unix: number): string {
+    if (!unix) return tp("healthNever")
+    return formatDateTime(unix * 1000, isFa)
+  }
+
+  const cronModeLabel = (mode: string) => {
+    const k = `cronMode_${mode}`
+    const tr = tp(k)
+    return tr !== `marketingLifecycleAdmin.${k}` ? tr : mode
+  }
+
+  const skipChartData = useMemo(
+    () =>
+      skipRows.map((r) => ({
+        reason: skipReasonLabel(String(r.reason ?? ""), tp),
+        count: num(r.count),
+      })),
+    [skipRows, t, isFa]
   )
 
   async function runRule(ruleId: number) {
@@ -484,7 +573,126 @@ export function MarketingLifecycleAdminView({
         <StatCard label={t("kpiSent")} value={num(summary.sent_count ?? summary.offers_sent)} />
         <StatCard label={t("kpiConverted")} value={num(summary.converted_count ?? summary.offers_converted)} />
         <StatCard label={t("kpiAbandonedRecovery")} value={pctDisplay(summary.abandoned_recovery_rate, isFa)} />
+        <StatCard label={t("healthActiveRules")} value={num(healthState.active_rules_count)} />
       </div>
+
+      <div className="mb-6 grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
+            <div>
+              <CardTitle className="text-base">{t("healthTitle")}</CardTitle>
+              <CardDescription>{t("healthSubtitle")}</CardDescription>
+            </div>
+            {!isReseller ? (
+              <Button type="button" variant="outline" size="sm" asChild>
+                <a href={cronSettingsUrl}>{t("healthOpenCron")}</a>
+              </Button>
+            ) : null}
+          </CardHeader>
+          <CardContent className="grid gap-2 text-sm sm:grid-cols-2">
+            <div>
+              <p className="text-muted-foreground">{t("healthLastRun")}</p>
+              <p className="font-medium tabular-nums">{formatTs(num(healthState.last_run_at))}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">{t("healthNextRun")}</p>
+              <p className="font-medium tabular-nums">{formatTs(num(healthState.next_scheduled_at))}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">{t("healthCronMode")}</p>
+              <p className="font-medium">{cronModeLabel(String(healthState.cron_mode ?? ""))}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">{t("healthBlockReason")}</p>
+              <p className="font-medium">
+                {healthState.cron_block_reason
+                  ? skipReasonLabel(String(healthState.cron_block_reason), tp)
+                  : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">{t("healthProcessed")}</p>
+              <p className="font-medium tabular-nums">{formatNumber(num(healthState.last_processed), isFa)}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">{t("healthSent")}</p>
+              <p className="font-medium tabular-nums">{formatNumber(num(healthState.last_sent), isFa)}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">{t("healthSkipped")}</p>
+              <p className="font-medium tabular-nums">{formatNumber(num(healthState.last_skipped), isFa)}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">{t("healthActiveRules")}</p>
+              <p className="font-medium tabular-nums">{formatNumber(num(healthState.active_rules_count), isFa)}</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">{t("skipBreakdownTitle")}</CardTitle>
+            <CardDescription>{t("skipBreakdownSubtitle")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {skipChartData.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t("skipBreakdownEmpty")}</p>
+            ) : (
+              <DashTableShell minWidth="32rem" colWidths={HEALTH_TABLE_COLS}>
+                <thead>
+                  <tr>
+                    <DashTh>{t("offerSkipReason")}</DashTh>
+                    <DashTh>{t("skipBreakdownCount")}</DashTh>
+                  </tr>
+                </thead>
+                <tbody>
+                  {skipChartData.map((row) => (
+                    <tr key={row.reason}>
+                      <DashTd>{row.reason}</DashTd>
+                      <DashTd className="tabular-nums">{formatNumber(row.count, isFa)}</DashTd>
+                    </tr>
+                  ))}
+                </tbody>
+              </DashTableShell>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="text-base">{t("segmentTrendTitle")}</CardTitle>
+          <CardDescription>{t("segmentTrendSubtitle")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {trendRows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t("segmentTrendEmpty")}</p>
+          ) : (
+            <DashTableShell minWidth="40rem" colWidths={TREND_TABLE_COLS}>
+              <thead>
+                <tr>
+                  <DashTh>{t("colDate")}</DashTh>
+                  <DashTh>{t("colSegment")}</DashTh>
+                  <DashTh>{t("colSent")}</DashTh>
+                  <DashTh>{t("colConverted")}</DashTh>
+                </tr>
+              </thead>
+              <tbody>
+                {trendRows.slice(0, 40).map((row, i) => (
+                  <tr key={`${row.date}-${row.segment}-${i}`}>
+                    <DashTd className={dashLtrCell("text-xs")}>
+                      {formatChartDayLabel(String(row.date ?? ""), isFa)}
+                    </DashTd>
+                    <DashTd>{t(`segment_${String(row.segment ?? "")}`)}</DashTd>
+                    <DashTd className="tabular-nums">{formatNumber(num(row.sent), isFa)}</DashTd>
+                    <DashTd className="tabular-nums">{formatNumber(num(row.converted), isFa)}</DashTd>
+                  </tr>
+                ))}
+              </tbody>
+            </DashTableShell>
+          )}
+        </CardContent>
+      </Card>
 
       <Card className="mb-6">
         <CardHeader>
@@ -981,18 +1189,48 @@ export function MarketingLifecycleAdminClient() {
   const { data, loading, error, reload, setPage, setPer, pickPagination, rows, patchQuery, listQuery, isReseller } =
     useAdminTabState("marketing_lifecycle")
   const t = useTranslations("marketingLifecycleAdmin")
+  const locale = useLocale()
+  const dashboardBaseUrl = `/${locale}/dashboard`
   const shell = useDashboardShellOptional()
   if (loading) return <p className="text-sm text-muted-foreground">{t("loading")}</p>
   if (error) return <p className="text-sm text-destructive">{t("loadError")}</p>
+  const rawStats = (data.marketingLifecycleStats as MarketingLifecycleStats | null) ?? null
+  const funnelSrc =
+    (Array.isArray(data.marketingLifecycleFunnel) && data.marketingLifecycleFunnel) ||
+    (Array.isArray(data.marketingFunnel) && data.marketingFunnel) ||
+    (Array.isArray(rawStats?.funnel) ? rawStats?.funnel : []) ||
+    []
+  const skipFromData = Array.isArray(data.marketingSkipBreakdown) ? data.marketingSkipBreakdown : null
+  const trendFromData = Array.isArray(data.marketingSegmentTrend) ? data.marketingSegmentTrend : null
+  const stats: MarketingLifecycleStats | null = rawStats
+    ? {
+        ...rawStats,
+        skip_breakdown: Array.isArray(rawStats.skip_breakdown)
+          ? rawStats.skip_breakdown
+          : (skipFromData as MarketingLifecycleStats["skip_breakdown"]) ?? [],
+        segment_trend: Array.isArray(rawStats.segment_trend)
+          ? rawStats.segment_trend
+          : (trendFromData as MarketingLifecycleStats["segment_trend"]) ?? [],
+      }
+    : null
   return (
     <MarketingLifecycleAdminView
-      stats={(data.marketingLifecycleStats as import("@/components/admin/marketing-lifecycle-admin-client").MarketingLifecycleStats | null) ?? null}
-      funnel={Array.isArray(data.marketingFunnel) ? data.marketingFunnel as import("@/components/admin/marketing-lifecycle-admin-client").MarketingFunnelDay[] : []}
+      stats={stats}
+      funnel={funnelSrc as import("@/components/admin/marketing-lifecycle-admin-client").MarketingFunnelDay[]}
       rules={Array.isArray(data.marketingRules) ? data.marketingRules as import("@/components/admin/marketing-lifecycle-admin-client").MarketingRuleRow[] : []}
       ruleStats={Array.isArray(data.marketingRuleStats) ? data.marketingRuleStats as import("@/components/admin/marketing-lifecycle-admin-client").MarketingRuleStatRow[] : []}
       offers={rows(data.marketingOffers ?? data.marketingOffersList)}
+      health={(stats?.health as MarketingLifecycleHealth | undefined) ?? null}
+      skipBreakdown={
+        Array.isArray(stats?.skip_breakdown)
+          ? (stats.skip_breakdown as MarketingSkipBreakdownRow[])
+          : (skipFromData as MarketingSkipBreakdownRow[] | null) ?? []
+      }
+      segmentTrend={
+        Array.isArray(stats?.segment_trend) ? (stats.segment_trend as MarketingSegmentTrendRow[]) : []
+      }
       pagination={pickPagination("marketingOffers")}
-      dashboardBaseUrl=""
+      dashboardBaseUrl={dashboardBaseUrl}
       windowDays={Number(listQuery.marketing_window_days ?? data.marketingWindowDays ?? 30)}
       offerStatusFilter={listQuery.marketing_offer_status ?? ""}
       onWindowDaysChange={(n) => patchQuery({ marketing_window_days: String(n) })}

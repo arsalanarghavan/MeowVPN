@@ -431,8 +431,8 @@ class AdminCatalogHandler extends AbstractAdminHandler
         }
 
         return $this->mutate->applyForUser($user, 'plan_category', [
-            'id' => $id,
-            'active' => empty($row->active) ? 1 : 0,
+            'pc_action' => 'toggle',
+            'pc_id' => $id,
         ]);
     }
 
@@ -460,10 +460,8 @@ class AdminCatalogHandler extends AbstractAdminHandler
         }
 
         return $this->mutate->applyForUser($user, 'plan_category', [
-            'id' => $id,
-            'active' => 0,
-            'label' => (string) ($row->label ?? ''),
-            'slug' => (string) ($row->slug ?? ''),
+            'pc_action' => 'delete',
+            'pc_id' => $id,
         ]);
     }
 

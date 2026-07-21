@@ -7,6 +7,17 @@ use Illuminate\Support\Facades\DB;
 
 class MarketingSegmentService
 {
+    /** @var list<string> */
+    public const SEGMENT_KEYS = [
+        'churned',
+        'never_purchased',
+        'abandoned_checkout',
+        'stale_buy_funnel',
+        'expiring_renew',
+        'upgrade_candidate',
+        'volume_boost',
+    ];
+
     public function __construct(protected ResellerScopeService $scope) {}
 
     /** @param  object|array<string, mixed>  $rule
@@ -16,8 +27,7 @@ class MarketingSegmentService
     {
         $rule = (object) (is_array($rule) ? $rule : (array) $rule);
         $seg = (string) ($rule->segment_key ?? '');
-        $allowed = ['never_purchased', 'abandoned_checkout', 'expiring_renew', 'churned', 'stale_buy_funnel'];
-        if (! in_array($seg, $allowed, true)) {
+        if (! in_array($seg, self::SEGMENT_KEYS, true)) {
             return [];
         }
 
@@ -30,6 +40,7 @@ class MarketingSegmentService
             'abandoned_checkout' => $this->abandonedCheckoutIds($rule, $lim),
             'stale_buy_funnel' => $this->staleBuyFunnelIds($rule, $lim),
             'expiring_renew' => $this->expiringRenewIds($rule, $lim),
+            'upgrade_candidate', 'volume_boost' => $this->highUsageIds($seg, $lim),
             default => [],
         };
 
@@ -152,6 +163,34 @@ class MarketingSegmentService
             ->whereNotNull('s.expires_at')
             ->where('s.expires_at', '>', now())
             ->where('s.expires_at', '<=', $end)
+            ->distinct()
+            ->orderBy('u.id')
+            ->limit($lim)
+            ->pluck('u.id')
+            ->map(fn ($v) => (int) $v)
+            ->all();
+    }
+
+    /** @return array<int, int> */
+    protected function highUsageIds(string $seg, int $lim): array
+    {
+        $high = 75;
+        try {
+            $high = app(\App\Services\Marketing\MarketingGuardService::class)->usageHighPercent();
+        } catch (\Throwable) {
+            // keep default
+        }
+        $minPct = $seg === 'volume_boost' ? max(60, $high - 10) : $high;
+
+        return DB::table('svp_users as u')
+            ->join('svp_services as s', 's.user_id', '=', 'u.id')
+            ->where('u.status', 'approved')
+            ->whereNull('s.deleted_at')
+            ->where(function ($q) {
+                $q->whereNull('s.expires_at')->orWhere('s.expires_at', '>', now());
+            })
+            ->where('s.total_traffic', '>', 0)
+            ->whereRaw('(s.used_traffic * 100 / s.total_traffic) >= ?', [$minPct])
             ->distinct()
             ->orderBy('u.id')
             ->limit($lim)

@@ -108,9 +108,21 @@ abstract class AbstractPlatformClient
     }
 
     /** @param  array<string, mixed>  $params */
-    public function getChatMember(array $params): ?array
+    public function getChatMember(array $params, ?int $timeoutSec = null): ?array
     {
-        return $this->post('getChatMember', $params);
+        return $this->post('getChatMember', $params, $timeoutSec);
+    }
+
+    /** @param  array<string, mixed>  $params */
+    public function pinChatMessage(array $params): ?array
+    {
+        return $this->post('pinChatMessage', $params);
+    }
+
+    /** @param  array<string, mixed>  $params */
+    public function getUpdates(array $params = []): ?array
+    {
+        return $this->post('getUpdates', $params);
     }
 
     public function getMe(): ?array
@@ -119,14 +131,15 @@ abstract class AbstractPlatformClient
     }
 
     /** @param  array<string, mixed>  $params */
-    protected function post(string $method, array $params): ?array
+    protected function post(string $method, array $params, ?int $timeoutSec = null): ?array
     {
         if ($this->token === '') {
             return null;
         }
 
         try {
-            $pending = Http::timeout(30);
+            $timeout = $timeoutSec !== null ? max(1, min(60, $timeoutSec)) : 30;
+            $pending = Http::timeout($timeout);
             $proxy = trim((string) ($this->httpProxy ?? ''));
             if ($proxy !== '') {
                 $pending = $pending->withOptions(['proxy' => $proxy]);

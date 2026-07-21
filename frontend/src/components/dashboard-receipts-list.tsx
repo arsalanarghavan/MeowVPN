@@ -1,7 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useTranslations } from "next-intl"
+import Link from "next/link"
+import { useLocale, useTranslations } from "next-intl"
 
 import { DashboardDateTimePicker } from "@/components/dashboard-datetime-picker"
 import { Badge } from "@/components/ui/badge"
@@ -39,14 +40,62 @@ export type ReceiptAggregateRow = {
   sumAmount: number
 }
 
-export type ReceiptsListFilters = {
+export type PaymentsListFilters = {
   q: string
   status: string
+  type: string
+  method: string
   sort: string
   dateFrom: string
   dateTo: string
   amountMin: string
   amountMax: string
+}
+
+/** @deprecated Use PaymentsListFilters */
+export type ReceiptsListFilters = PaymentsListFilters
+
+export type PaymentsListMode = "receipts" | "transactions" | "orders"
+
+function paymentRowReceiptId(r: DashRecord, listMode: PaymentsListMode = "receipts"): number {
+  if (listMode === "receipts") {
+    const rid = num(r.receipt_id)
+    return rid > 0 ? rid : num(r.id)
+  }
+  return num(r.receipt_id)
+}
+
+function paymentRowTxId(r: DashRecord, listMode: PaymentsListMode = "transactions"): number {
+  if (listMode === "receipts") {
+    const txid = num(r.transaction_id)
+    return txid > 0 ? txid : num(r.id)
+  }
+  return num(r.id ?? r.transaction_id)
+}
+
+function rowStatus(r: DashRecord, listMode: PaymentsListMode): string {
+  if (listMode === "receipts") {
+    return String(r.status ?? r.receipt_status ?? "")
+  }
+  return String(r.transaction_status ?? r.status ?? "")
+}
+
+function rowAmount(r: DashRecord, listMode: PaymentsListMode): number {
+  if (listMode === "receipts") {
+    const amt = num(r.amount)
+    if (amt > 0) return amt
+    return num(r.transaction_amount)
+  }
+  return num(r.amount ?? r.transaction_amount ?? r.tx_amount)
+}
+
+function paymentTypeLabel(type: string, tp: (k: string) => string): string {
+  const t = String(type ?? "").trim()
+  if (t === "purchase") return tp("typePurchase")
+  if (t === "topup") return tp("typeTopup")
+  if (t === "renew") return tp("typeRenew")
+  if (t === "volume") return tp("typeVolume")
+  return t || "—"
 }
 
 function num(v: unknown): number {
@@ -71,7 +120,7 @@ function parseAggregates(raw: unknown): ReceiptAggregateRow[] {
 
 function receiptStatusVariant(st: string): "default" | "secondary" | "destructive" | "outline" {
   if (st === "approved") return "default"
-  if (st === "rejected") return "destructive"
+  if (st === "rejected" || st === "cancelled") return "destructive"
   return "secondary"
 }
 
@@ -80,7 +129,17 @@ function receiptStatusLabel(st: string, tp: (k: string) => string): string {
   if (st === "processing") return tp("statusProcessing")
   if (st === "approved") return tp("statusApproved")
   if (st === "rejected") return tp("statusRejected")
+  if (st === "cancelled") return tp("statusCancelled")
   return st || "—"
+}
+
+function paymentMethodLabel(key: string, tCards: (k: string) => string, tp: (k: string) => string): string {
+  const k = String(key ?? "").trim()
+  if (!k || k === "unknown") return tp("methodUnknown")
+  const cardsKey = `paymentMethod_${k}`
+  const translated = tCards(cardsKey)
+  if (translated !== cardsKey) return translated
+  return k
 }
 
 function formatReceiptAmount(amount: number, isFa: boolean, tp: (k: string) => string): string {
@@ -169,6 +228,7 @@ export function DashboardReceiptsList({
   settings,
   pagination,
   variant = "page",
+  listMode = "receipts",
   isReseller = false,
   canReviewReceipts = true,
   listFilters,
@@ -185,10 +245,11 @@ export function DashboardReceiptsList({
   settings?: DashRecord
   pagination: PaginationMeta | null
   variant?: "page" | "userEmbed"
+  listMode?: PaymentsListMode
   isReseller?: boolean
   canReviewReceipts?: boolean
-  listFilters: ReceiptsListFilters
-  onListFiltersChange: (patch: Partial<ReceiptsListFilters>) => void
+  listFilters: PaymentsListFilters
+  onListFiltersChange: (patch: Partial<PaymentsListFilters>) => void
   dashboardBaseUrl?: string
   onMutateSuccess?: () => void
   onPageChange: (page: number) => void
@@ -196,15 +257,30 @@ export function DashboardReceiptsList({
   embedTitle?: string
   embedEmptyHint?: string
 }) {
+  const locale = useLocale()
   const { isFa } = useDashLocale()
   const tReceipts = useTranslations("receiptsAdmin")
+  const tPayments = useTranslations("paymentsAdmin")
+  const tCards = useTranslations("cardsAdmin")
   const tFinance = useTranslations("resellerFinance")
   const tp = (k: string, opts?: Record<string, string | number>) => tReceipts(k, opts)
+  const tPay = (k: string, opts?: Record<string, string | number>) => tPayments(k, opts)
   const tw = (k: string, opts?: Record<string, string | number>) => tFinance(k, opts)
 
   const hideUserColumns = variant === "userEmbed"
   const compactTableOnly = variant === "userEmbed"
-  const showFullReviewUi = canReviewReceipts
+  const showFullReviewUi = canReviewReceipts && listMode === "receipts"
+  const showReceiptImage = listMode === "receipts"
+  const showReviewActions = listMode === "receipts" && canReviewReceipts
+  const isPaymentMode = listMode !== "receipts"
+
+  const emptyHint =
+    embedEmptyHint ??
+    (listMode === "receipts"
+      ? tp("emptyList")
+      : listMode === "transactions"
+        ? tPay("emptyListTransactions")
+        : tPay("emptyListOrders"))
 
   const aggregates = useMemo(() => parseAggregates(receiptAggregates), [receiptAggregates])
 
@@ -245,7 +321,7 @@ export function DashboardReceiptsList({
   const [previewReceipt, setPreviewReceipt] = useState<DashRecord | null>(null)
 
   const rejectReasons = useMemo(() => parseRejectReasons(settings), [settings])
-  const settingsUrl = `${dashboardBaseUrl.replace(/\/?$/, "")}/site_settings/#whitelabel`
+  const settingsUrl = `${dashboardBaseUrl.replace(/\/?$/, "")}/site_settings?site_subtab=whitelabel#whitelabel-support`
 
   useEffect(() => {
     setSearchDraft(listFilters.q)
@@ -331,7 +407,26 @@ export function DashboardReceiptsList({
     setRejectTarget(null)
   }
 
-  const listBody = showFullReviewUi ? (
+  const statusFilterOptions =
+    listMode === "transactions"
+      ? [
+          { value: "all", label: tPay("filterAll") },
+          { value: "approved", label: tPay("statusApproved") },
+          { value: "rejected", label: tPay("statusRejected") },
+          { value: "cancelled", label: tPay("statusCancelled") },
+        ]
+      : listMode === "orders"
+        ? []
+        : [
+            { value: "all", label: tp("filterAll") },
+            { value: "pending", label: tp("statusPending") },
+            { value: "processing", label: tp("statusProcessing") },
+            { value: "approved", label: tp("statusApproved") },
+            { value: "rejected", label: tp("statusRejected") },
+            { value: "cancelled", label: tp("statusCancelled") },
+          ]
+
+  const listBody = showFullReviewUi || isPaymentMode ? (
     <>
       {!compactTableOnly ? (
         <>
@@ -374,7 +469,7 @@ export function DashboardReceiptsList({
         </Card>
       </div>
 
-      {rejectReasons.length === 0 && !isReseller && variant === "page" ? (
+      {rejectReasons.length === 0 && !isReseller && variant === "page" && listMode === "receipts" ? (
         <p className="text-xs text-muted-foreground">
           {tp("settingsRejectHint")}{" "}
           {settingsUrl ? (
@@ -397,20 +492,54 @@ export function DashboardReceiptsList({
         </div>
         <div className="flex flex-wrap items-end gap-3">
           <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">{tp("filterStatus")}</Label>
+            <Label className="text-xs text-muted-foreground">{tp("filterType")}</Label>
             <DashSelect
               triggerClassName="w-auto min-w-[10rem]"
-              value={listFilters.status}
-              onValueChange={(v) => onListFiltersChange({ status: v })}
+              value={listFilters.type || "all"}
+              onValueChange={(v) => onListFiltersChange({ type: v === "all" ? "" : v })}
               options={[
-                { value: "all", label: tp("filterAll") },
-                { value: "pending", label: tp("statusPending") },
-                { value: "processing", label: tp("statusProcessing") },
-                { value: "approved", label: tp("statusApproved") },
-                { value: "rejected", label: tp("statusRejected") },
+                { value: "all", label: tp("filterAllTypes") },
+                { value: "purchase", label: tp("typePurchase") },
+                { value: "topup", label: tp("typeTopup") },
+                { value: "renew", label: tp("typeRenew") },
+                { value: "volume", label: tp("typeVolume") },
               ]}
             />
           </div>
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">{tp("filterMethod")}</Label>
+            <DashSelect
+              triggerClassName="w-auto min-w-[10rem]"
+              value={listFilters.method || "all"}
+              onValueChange={(v) => onListFiltersChange({ method: v === "all" ? "" : v })}
+              options={[
+                { value: "all", label: tp("filterAllMethods") },
+                { value: "c2c", label: paymentMethodLabel("c2c", tCards, tp) },
+                { value: "site_wallet", label: paymentMethodLabel("site_wallet", tCards, tp) },
+                { value: "bale_wallet", label: paymentMethodLabel("bale_wallet", tCards, tp) },
+                { value: "crypto", label: paymentMethodLabel("crypto", tCards, tp) },
+                { value: "crypto_auto", label: paymentMethodLabel("crypto_auto", tCards, tp) },
+                { value: "crypto_tetra", label: paymentMethodLabel("crypto_tetra", tCards, tp) },
+                { value: "rial_zarinpal", label: paymentMethodLabel("rial_zarinpal", tCards, tp) },
+                { value: "rial_aqayepardakht", label: paymentMethodLabel("rial_aqayepardakht", tCards, tp) },
+                { value: "rial_zibal", label: paymentMethodLabel("rial_zibal", tCards, tp) },
+                { value: "wallet_topup", label: paymentMethodLabel("wallet_topup", tCards, tp) },
+                { value: "admin", label: paymentMethodLabel("admin", tCards, tp) },
+                { value: "free", label: paymentMethodLabel("free", tCards, tp) },
+              ]}
+            />
+          </div>
+          {statusFilterOptions.length > 0 ? (
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">{tp("filterStatus")}</Label>
+              <DashSelect
+                triggerClassName="w-auto min-w-[10rem]"
+                value={listFilters.status}
+                onValueChange={(v) => onListFiltersChange({ status: v })}
+                options={statusFilterOptions}
+              />
+            </div>
+          ) : null}
           <div className="space-y-2">
             <Label className="text-xs text-muted-foreground">{tp("sortLabel")}</Label>
             <DashSelect
@@ -472,123 +601,203 @@ export function DashboardReceiptsList({
       ) : null}
 
       {receipts.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{embedEmptyHint ?? tp("emptyList")}</p>
+        <p className="text-sm text-muted-foreground">{emptyHint}</p>
       ) : (
         <Card>
           <CardContent className="overflow-x-auto p-0">
-            <table className={cn("w-full text-sm", hideUserColumns ? "min-w-[760px]" : "min-w-[1040px]")}>
+            <table
+              className={cn(
+                "w-full text-sm",
+                isPaymentMode
+                  ? hideUserColumns
+                    ? "min-w-[640px]"
+                    : "min-w-[920px]"
+                  : hideUserColumns
+                    ? "min-w-[760px]"
+                    : "min-w-[1040px]"
+              )}
+            >
               <thead>
                 <tr className="border-b bg-muted/40 text-muted-foreground">
-                  <th className="px-3 py-2 text-start">{tp("colReceipt")}</th>
+                  <th className="px-3 py-2 text-start">
+                    {isPaymentMode ? tPay("colTracking") : tp("colReceipt")}
+                  </th>
                   {!hideUserColumns ? (
                     <>
                       <th className="px-3 py-2 text-start">{tp("colUserName")}</th>
                       <th className="px-3 py-2 text-start">{tp("colUserId")}</th>
                     </>
                   ) : null}
+                  {isPaymentMode ? (
+                    <>
+                      <th className="px-3 py-2 text-start">{tPay("colService")}</th>
+                      <th className="px-3 py-2 text-start">{tPay("colPanel")}</th>
+                      <th className="px-3 py-2 text-start">{tPay("colProduct")}</th>
+                    </>
+                  ) : (
+                    <th className="px-3 py-2 text-start">{tp("colSelectedService")}</th>
+                  )}
                   <th className="px-3 py-2 text-start">{tp("colAmount")}</th>
-                  <th className="px-3 py-2 text-start">{tp("colSelectedService")}</th>
+                  {isPaymentMode ? <th className="px-3 py-2 text-start">{tPay("colMethod")}</th> : null}
                   <th className="px-3 py-2 text-start">{tp("colCreated")}</th>
                   <th className="px-3 py-2 text-start">{tp("colStatus")}</th>
-                  <th className="px-3 py-2 text-start">{tp("colActions")}</th>
+                  {showReviewActions ? <th className="px-3 py-2 text-start">{tp("colActions")}</th> : null}
                 </tr>
               </thead>
               <tbody>
                 {receipts.map((r) => {
-                  const id = num(r.id)
-                  const st = String(r.status ?? "")
-                  const imageUrl = String(r.imageUrl ?? "").trim()
+                  const txId = paymentRowTxId(r, listMode)
+                  const receiptId = paymentRowReceiptId(r, listMode)
+                  const st = rowStatus(r, listMode)
+                  const imageUrl = showReceiptImage ? String(r.imageUrl ?? "").trim() : ""
                   const isApproved = st === "approved"
+                  const methodKey = String(r.payment_method_key ?? r.payment_method ?? "unknown")
+                  const uid = num(r.user_id)
+                  const serviceLabel = String(r.service_label ?? r.selected_service ?? receiptSelectedService(r))
+                  const panelLabel = String(r.panel_label ?? "")
+                  const productLabel = String(r.plan_label ?? r.product_summary ?? "")
+                  const rowKey = `${listMode}-${txId || receiptId}`
                   return (
-                    <tr key={id} className="border-b border-border/70 align-top">
+                    <tr key={rowKey} className="border-b border-border/70 align-top">
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-2">
-                          {imageUrl ? (
-                            <button
-                              type="button"
-                              className="h-14 w-14 shrink-0 overflow-hidden rounded-md border border-border bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                              title={tp("clickToEnlarge")}
-                              onClick={() => setPreviewReceipt(r)}
-                            >
-                              <img
-                                src={imageUrl}
-                                alt={`${tp("receiptImage")} #${formatNumber(id, isFa)}`}
-                                className="h-full w-full cursor-pointer object-cover"
-                                loading="lazy"
-                              />
-                            </button>
-                          ) : (
-                            <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md border border-dashed border-border bg-muted/20 px-1 text-center text-[10px] leading-tight text-muted-foreground">
-                              {tp("noImage")}
-                            </span>
-                          )}
-                          <span className="font-mono text-sm">#{formatNumber(id, isFa)}</span>
+                          {showReceiptImage ? (
+                            imageUrl ? (
+                              <button
+                                type="button"
+                                className="h-14 w-14 shrink-0 overflow-hidden rounded-md border border-border bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                title={tp("clickToEnlarge")}
+                                onClick={() => setPreviewReceipt(r)}
+                              >
+                                <img
+                                  src={imageUrl}
+                                  alt={`${tp("receiptImage")} #${formatNumber(receiptId || txId, isFa)}`}
+                                  className="h-full w-full cursor-pointer object-cover"
+                                  loading="lazy"
+                                />
+                              </button>
+                            ) : (
+                              <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md border border-dashed border-border bg-muted/20 px-1 text-center text-[10px] leading-tight text-muted-foreground">
+                                {tp("noImage")}
+                              </span>
+                            )
+                          ) : null}
+                          <div className="min-w-0">
+                            <div className="font-mono text-sm tabular-nums" dir="ltr">
+                              #{formatNumber(txId, isFa)}
+                            </div>
+                            {listMode === "receipts" && receiptId > 0 && receiptId !== txId ? (
+                              <div className="text-[10px] text-muted-foreground">
+                                {tPay("receiptShort")} #{formatNumber(receiptId, isFa)}
+                              </div>
+                            ) : null}
+                            {listMode === "orders" && receiptId > 0 ? (
+                              <div className="text-[10px] text-muted-foreground">
+                                {tPay("receiptShort")} #{formatNumber(receiptId, isFa)}
+                              </div>
+                            ) : null}
+                          </div>
                         </div>
                       </td>
                       {!hideUserColumns ? (
                         <>
                           <td className="px-3 py-2">
-                            <div className="font-medium">{receiptUserLabel(r)}</div>
+                            {uid > 0 ? (
+                              <Link
+                                href={`/${locale}/dashboard/users/u/${uid}`}
+                                className="font-medium text-primary underline-offset-2 hover:underline"
+                              >
+                                {receiptUserLabel(r)}
+                              </Link>
+                            ) : (
+                              <div className="font-medium">{receiptUserLabel(r)}</div>
+                            )}
                             {String(r.username ?? "").trim() ? (
                               <div className="text-xs text-muted-foreground">
                                 @{String(r.username).replace(/^@/, "")}
                               </div>
                             ) : null}
                           </td>
-                          <td className="px-3 py-2 tabular-nums">#{formatNumber(num(r.user_id), isFa)}</td>
+                          <td className="px-3 py-2 tabular-nums">#{formatNumber(uid, isFa)}</td>
                         </>
                       ) : null}
+                      {isPaymentMode ? (
+                        <>
+                          <td className="px-3 py-2">{serviceLabel || "—"}</td>
+                          <td className="px-3 py-2">{panelLabel || "—"}</td>
+                          <td className="px-3 py-2">{productLabel || "—"}</td>
+                        </>
+                      ) : (
+                        <td className="px-3 py-2">{receiptSelectedService(r)}</td>
+                      )}
                       <td className="px-3 py-2">
                         <div className="font-medium tabular-nums">
-                          {formatReceiptAmount(num(r.amount), isFa, tp)}
+                          {formatReceiptAmount(rowAmount(r, listMode), isFa, tp)}
                         </div>
-                        {num(r.transaction_amount) !== num(r.amount) ? (
+                        {isPaymentMode ? (
+                          <div className="text-xs text-muted-foreground">
+                            {paymentTypeLabel(String(r.transaction_type ?? r.type ?? ""), tPay)}
+                          </div>
+                        ) : num(r.transaction_amount) !== num(r.amount) ? (
                           <div className="text-xs text-muted-foreground">
                             {tp("txAmount")}: {formatReceiptAmount(num(r.transaction_amount), isFa, tp)}
                           </div>
                         ) : null}
                       </td>
-                      <td className="px-3 py-2">{receiptSelectedService(r)}</td>
+                      {isPaymentMode ? (
+                        <td className="px-3 py-2">
+                          <Badge variant="outline" className="text-[10px] font-normal">
+                            {paymentMethodLabel(methodKey, tCards, tPay)}
+                          </Badge>
+                        </td>
+                      ) : null}
                       <td className="px-3 py-2">
                         {formatDateTime(
-                          (r.created_at_ts as number | undefined) ?? (r.created_at as string | undefined),
+                          (r.created_at_ts as number | undefined) ??
+                            (r.created_at as string | number | undefined),
                           isFa
                         )}
                       </td>
                       <td className="px-3 py-2">
-                        <Badge variant={receiptStatusVariant(st)}>{receiptStatusLabel(st, tp)}</Badge>
-                        <DashSelect
-                          size="sm"
-                          triggerClassName="mt-2 min-w-28"
-                          value={st === "processing" ? "pending" : st}
-                          disabled={busyId === id}
-                          onValueChange={(next) => {
-                            if (next === "rejected") openRejectDialog(r)
-                            else void updateReceipt(id, { status: next })
-                          }}
-                          options={[
-                            { value: "pending", label: tp("statusPending") },
-                            ...(st === "processing"
-                              ? [{ value: "processing", label: tp("statusProcessing") }]
-                              : []),
-                            { value: "approved", label: tp("statusApproved") },
-                            { value: "rejected", label: tp("statusRejected") },
-                          ]}
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            type="button"
+                        <Badge variant={receiptStatusVariant(st)}>
+                          {receiptStatusLabel(st, isPaymentMode ? tPay : tp)}
+                        </Badge>
+                        {showReviewActions ? (
+                          <DashSelect
                             size="sm"
-                            variant="outline"
-                            disabled={busyId === id}
-                            onClick={() => openAmountDialog(r)}
-                          >
-                            {isApproved ? tp("editAmountApproved") : tp("editAmount")}
-                          </Button>
-                        </div>
+                            triggerClassName="mt-2 min-w-28"
+                            value={st === "processing" ? "pending" : st}
+                            disabled={busyId === receiptId}
+                            onValueChange={(next) => {
+                              if (next === "rejected") openRejectDialog(r)
+                              else void updateReceipt(receiptId, { status: next })
+                            }}
+                            options={[
+                              { value: "pending", label: tp("statusPending") },
+                              ...(st === "processing"
+                                ? [{ value: "processing", label: tp("statusProcessing") }]
+                                : []),
+                              { value: "approved", label: tp("statusApproved") },
+                              { value: "rejected", label: tp("statusRejected") },
+                            ]}
+                          />
+                        ) : null}
                       </td>
+                      {showReviewActions ? (
+                        <td className="px-3 py-2">
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={busyId === receiptId}
+                              onClick={() => openAmountDialog(r)}
+                            >
+                              {isApproved ? tp("editAmountApproved") : tp("editAmount")}
+                            </Button>
+                          </div>
+                        </td>
+                      ) : null}
                     </tr>
                   )
                 })}

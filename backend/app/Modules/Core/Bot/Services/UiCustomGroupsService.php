@@ -507,6 +507,28 @@ class UiCustomGroupsService
         return app(self::class)->getAll();
     }
 
+    /** @return list<string> */
+    public static function groupParentSurfaces(string $section): array
+    {
+        $section = strtolower(trim($section));
+        $out = [];
+        foreach (array_keys(UiActionRegistryService::default_surface_rows()) as $surfaceId) {
+            $svc = app(self::class);
+            if ($svc->isCustomSurface($surfaceId)) {
+                continue;
+            }
+            if ($svc->surfaceSection($surfaceId) !== $section) {
+                continue;
+            }
+            if (! $svc->surfaceSupportsGroups($surfaceId)) {
+                continue;
+            }
+            $out[] = $surfaceId;
+        }
+
+        return $out;
+    }
+
     /**
      * @param  array<string, mixed>  $group
      * @return array<int, array<int, string>>

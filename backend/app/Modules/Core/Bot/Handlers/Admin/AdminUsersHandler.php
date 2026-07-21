@@ -151,8 +151,14 @@ class AdminUsersHandler extends AbstractAdminHandler
 
                 return;
             }
+            if ($sub === 'ar') {
+                $this->send($ctx, $chatId, $this->texts->getForUser('msg.admin.prompt_renew_mode', $admin, 'Choose payment mode:'), [
+                    'reply_markup' => $this->keyboards->adminServicePaymentModeKeyboard('renew', $sid),
+                ]);
+
+                return;
+            }
             $state = match ($sub) {
-                'ar' => 'admin_users_service_renew',
                 'av' => 'admin_users_service_add_volume',
                 'rv' => 'admin_users_service_reduce_volume',
                 'ad' => 'admin_users_service_add_days',
@@ -163,13 +169,37 @@ class AdminUsersHandler extends AbstractAdminHandler
                 return;
             }
             $prompt = match ($sub) {
-                'ar' => $this->texts->getForUser('msg.admin.prompt_renew_mode', $admin, 'Send mode: free or paid'),
                 'av', 'rv' => $this->texts->getForUser('msg.admin.prompt_volume_gb', $admin, 'Send GB amount'),
                 'ad', 'sd' => $this->texts->getForUser('msg.admin.prompt_days', $admin, 'Send days'),
                 default => '',
             };
-            $this->state->set($admin, $state, ['service_id' => $sid, 'step' => $sub === 'ar' ? 'mode' : 'value']);
+            $this->state->set($admin, $state, ['service_id' => $sid, 'step' => 'value']);
             $this->send($ctx, $chatId, $prompt);
+
+            return;
+        }
+        if ($sub === 'rr' && isset($parts[2])) {
+            $uid = (int) $parts[2];
+            if (! $this->scope->mayModerateUser($admin, $uid)) {
+                $this->send($ctx, $chatId, $this->texts->getForUser('msg.admin.denied_permission', $admin));
+
+                return;
+            }
+            $result = $this->mutate->applyForUser($admin, 'membership', [
+                'user_id' => $uid,
+                'svp_user_membership_action' => 'reopen',
+            ]);
+            $ok = is_array($result) && ! empty($result['ok']);
+            $this->send($ctx, $chatId, $ok
+                ? $this->texts->format($this->texts->getForUser('msg.admin.user_requeued', $admin, '✅ User #{id} requeued.'), ['id' => $uid])
+                : $this->texts->format($this->texts->getForUser('msg.admin.requeue_failed', $admin, 'Requeue failed: {reason}'), [
+                    'reason' => (string) ($result['message'] ?? $result['reason'] ?? '—'),
+                ]));
+
+            return;
+        }
+        if (in_array($sub, ['nsx', 'nsm', 'nrr', 'nva', 'nus'], true)) {
+            $this->handlePaymentModeCallback($ctx, $admin, $chatId, $parts);
 
             return;
         }
@@ -470,12 +500,12 @@ class AdminUsersHandler extends AbstractAdminHandler
         }
 
         if ($state === 'admin_users_service_slots' && is_numeric($trimmed)) {
-            $result = $this->mutate->applyForUser($user, 'user_service_add_slots', [
-                'service_id' => (int) ($data['service_id'] ?? 0),
-                'slots' => (int) $trimmed,
-            ]);
+            $sid = (int) ($data['service_id'] ?? 0);
+            $slots = max(1, (int) $trimmed);
             $this->state->clear($user);
-            $this->send($ctx, $chatId, $this->mutate->resultMessage($user, is_array($result) ? $result : ['ok' => false]));
+            $this->send($ctx, $chatId, $this->texts->getForUser('msg.admin.prompt_slots_mode', $user, 'Choose payment mode:'), [
+                'reply_markup' => $this->keyboards->adminServicePaymentModeKeyboard('slots', $sid, $slots),
+            ]);
 
             return;
         }
@@ -570,9 +600,15 @@ class AdminUsersHandler extends AbstractAdminHandler
             $sid = (int) ($data['service_id'] ?? 0);
             $step = (string) ($data['step'] ?? '');
             if ($state === 'admin_users_service_renew' && $step === 'mode' && $trimmed !== '') {
+                $mode = $this->paymentModeFromLetter($trimmed) ?: strtolower($trimmed);
+                if (! in_array($mode, ['wallet', 'free', 'invoice'], true)) {
+                    $this->send($ctx, $chatId, $this->texts->getForUser('msg.admin.method_invalid', $user, 'Invalid method'));
+
+                    return;
+                }
                 $result = $this->mutate->applyForUser($user, 'user_renew_service', [
                     'service_id' => $sid,
-                    'mode' => $trimmed,
+                    'mode' => $mode,
                 ]);
                 $this->state->clear($user);
                 $this->send($ctx, $chatId, $this->mutate->resultMessage($user, is_array($result) ? $result : ['ok' => false]));
@@ -583,8 +619,15 @@ class AdminUsersHandler extends AbstractAdminHandler
                 return;
             }
             $val = (int) str_replace(',', '.', $trimmed);
+            if ($state === 'admin_users_service_add_volume') {
+                $this->state->clear($user);
+                $this->send($ctx, $chatId, $this->texts->getForUser('msg.admin.prompt_volume_mode', $user, 'Choose payment mode:'), [
+                    'reply_markup' => $this->keyboards->adminServicePaymentModeKeyboard('vol', $sid, $val),
+                ]);
+
+                return;
+            }
             $op = match ($state) {
-                    'admin_users_service_add_volume' => 'user_add_volume',
                     'admin_users_service_reduce_volume' => 'user_reduce_volume',
                     'admin_users_service_add_days' => 'user_add_days',
                     'admin_users_service_reduce_days' => 'user_reduce_days',
@@ -595,7 +638,7 @@ class AdminUsersHandler extends AbstractAdminHandler
             }
             $params = ['service_id' => $sid];
             if (str_contains($op, 'volume')) {
-                $params[str_contains($op, 'reduce') ? 'reduce_gb' : 'extra_gb'] = $val;
+                $params['reduce_gb'] = $val;
             } else {
                 $params['days'] = $val;
             }
@@ -838,6 +881,10 @@ class AdminUsersHandler extends AbstractAdminHandler
         $this->scope->setActingAdmin((int) $admin->id);
         $trimmed = trim($text);
 
+        if ($this->routeModerationReplyShortcuts($ctx, $admin, $chatId, $trimmed, $from)) {
+            return true;
+        }
+
         if ($this->routeText($ctx, $admin, $chatId, $trimmed)) {
             return true;
         }
@@ -915,6 +962,148 @@ class AdminUsersHandler extends AbstractAdminHandler
         return false;
     }
 
+    /**
+     * WP route_moderation_reply_text — approve/reject signup & receipt from reply keyboard
+     * even when admin_mode is off (one-tap from notify messages).
+     *
+     * @param  array<string, mixed>  $from
+     */
+    public function routeModerationReplyShortcuts(BotContext $ctx, SvpUser $admin, int $chatId, string $text, array $from): bool
+    {
+        $fromId = (int) ($from['id'] ?? 0);
+        if ($fromId < 1 || ! $this->adminGuard->isPlatformAdmin($ctx->platform, $fromId)) {
+            return false;
+        }
+
+        $tn = $this->normalizeDigits($text);
+        $label = (string) ($from['username'] ?? $from['first_name'] ?? 'admin');
+
+        $uid = $this->matchIdButton($tn, $admin, 'btn.admin.reg_approve', '✅ ثبت‌نام #{id}');
+        if ($uid === null && preg_match('/^✅\s*ثبت‌نام\s*#(\d+)$/u', $tn, $m)) {
+            $uid = (int) $m[1];
+        }
+        if ($uid !== null && $uid > 0) {
+            if (! $this->permissions->mayCallOp($admin, 'user_approve') && ! $this->permissions->mayCallOp($admin, 'membership')) {
+                $this->send($ctx, $chatId, $this->texts->getForUser('msg.admin.denied_permission', $admin));
+
+                return true;
+            }
+            if (! $this->scope->mayModerateUser($admin, $uid)) {
+                $this->send($ctx, $chatId, $this->texts->getForUser('msg.admin.user_not_found', $admin, 'User not found'));
+
+                return true;
+            }
+            $result = $this->mutate->applyForUser($admin, 'user_status', [
+                'user_id' => $uid,
+                'status' => 'approved',
+            ]);
+            $this->send($ctx, $chatId, ! empty($result['ok'])
+                ? $this->texts->getForUser('msg.admin.signup_processed', $admin, 'Signup processed')
+                : $this->mutate->resultMessage($admin, is_array($result) ? $result : ['ok' => false]));
+
+            return true;
+        }
+
+        $uid = $this->matchIdButton($tn, $admin, 'btn.admin.reg_reject', '❌ رد ثبت‌نام #{id}');
+        if ($uid === null && preg_match('/^❌\s*رد ثبت‌نام\s*#(\d+)$/u', $tn, $m)) {
+            $uid = (int) $m[1];
+        }
+        if ($uid !== null && $uid > 0) {
+            if (! $this->scope->mayModerateUser($admin, $uid)) {
+                $this->send($ctx, $chatId, $this->texts->getForUser('msg.admin.user_not_found', $admin, 'User not found'));
+
+                return true;
+            }
+            $result = $this->mutate->applyForUser($admin, 'user_status', [
+                'user_id' => $uid,
+                'status' => 'rejected',
+            ]);
+            $this->send($ctx, $chatId, ! empty($result['ok'])
+                ? $this->texts->getForUser('msg.admin.signup_rejected_recorded', $admin, 'Signup rejected')
+                : $this->mutate->resultMessage($admin, is_array($result) ? $result : ['ok' => false]));
+
+            return true;
+        }
+
+        $rid = $this->matchIdButton($tn, $admin, 'btn.admin.receipt_approve', '✅ رسید {id}');
+        if ($rid === null && preg_match('/^✅\s*رسید\s*(\d+)$/u', $tn, $m)) {
+            $rid = (int) $m[1];
+        }
+        if ($rid !== null && $rid > 0) {
+            if (! $this->permissions->mayCallOp($admin, 'receipt_review')) {
+                $this->send($ctx, $chatId, $this->texts->getForUser('msg.admin.denied_permission', $admin));
+
+                return true;
+            }
+            $rec = DB::table('svp_receipts')->where('id', $rid)->first();
+            if (! $rec || ! $this->scope->mayModerateUser($admin, (int) ($rec->user_id ?? 0))) {
+                $this->send($ctx, $chatId, $this->texts->getForUser('msg.admin.user_not_found', $admin, 'User not found'));
+
+                return true;
+            }
+            $this->send($ctx, $chatId, $this->texts->getForUser('msg.admin.processing', $admin, '⏳ Processing…'));
+            $result = $this->mutate->applyForUser($admin, 'receipt_action', [
+                'receipt_id' => $rid,
+                'action' => 'approve',
+                'admin_label' => $label,
+            ]);
+            $this->send($ctx, $chatId, $this->mutate->resultMessage($admin, is_array($result) ? $result : ['ok' => false]));
+
+            return true;
+        }
+
+        $rid = $this->matchIdButton($tn, $admin, 'btn.admin.receipt_reject', '❌ رد رسید {id}');
+        if ($rid === null && preg_match('/^❌\s*رد رسید\s*(\d+)$/u', $tn, $m)) {
+            $rid = (int) $m[1];
+        }
+        if ($rid !== null && $rid > 0) {
+            if (! $this->permissions->mayCallOp($admin, 'receipt_review')) {
+                $this->send($ctx, $chatId, $this->texts->getForUser('msg.admin.denied_permission', $admin));
+
+                return true;
+            }
+            $rec = DB::table('svp_receipts')->where('id', $rid)->first();
+            if (! $rec || ! $this->scope->mayModerateUser($admin, (int) ($rec->user_id ?? 0))) {
+                $this->send($ctx, $chatId, $this->texts->getForUser('msg.admin.user_not_found', $admin, 'User not found'));
+
+                return true;
+            }
+            $this->send($ctx, $chatId, $this->texts->getForUser('msg.admin.pick_reject_reason', $admin, 'Pick reject reason'), [
+                'reply_markup' => $this->keyboards->inlineReceiptRejectReasons($rid),
+            ]);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    protected function normalizeDigits(string $text): string
+    {
+        $fa = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+        $ar = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+        $en = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+        $t = str_replace($fa, $en, $text);
+        $t = str_replace($ar, $en, $t);
+
+        return trim($t);
+    }
+
+    /** @return int|null */
+    protected function matchIdButton(string $text, SvpUser $admin, string $tplKey, string $fallbackTpl)
+    {
+        $raw = $this->texts->getForUser($tplKey, $admin, $fallbackTpl);
+        $pattern = preg_replace('/\{id\}/', '(\\d+)', preg_quote($raw, '/'));
+        if (! is_string($pattern) || $pattern === '') {
+            return null;
+        }
+        if (preg_match('/^'.$pattern.'$/u', $text, $m)) {
+            return (int) ($m[1] ?? 0);
+        }
+
+        return null;
+    }
+
     public function routeCreateServiceText(BotContext $ctx, SvpUser $admin, int $chatId, string $text): bool
     {
         $data = $this->state->data($admin);
@@ -926,12 +1115,45 @@ class AdminUsersHandler extends AbstractAdminHandler
             return true;
         }
         if ($step === 'plan' && is_numeric($text)) {
-            $this->state->set($admin, 'admin_users_create_service', [
-                'target_uid' => $uid,
-                'step' => 'panel',
-                'plan_id' => (int) $text,
+            $planId = (int) $text;
+            $plan = \App\Models\SvpPlan::query()->find($planId);
+            if (! $plan || ! $plan->active) {
+                $this->send($ctx, $chatId, $this->texts->getForUser('msg.admin.plan_unavailable', $admin, 'Plan unavailable'));
+
+                return true;
+            }
+            if (app(\App\Modules\Core\Bot\Services\BotPlanPricingService::class)->planNeedsTrafficPrompt($plan)) {
+                $this->state->set($admin, 'admin_users_create_service', [
+                    'target_uid' => $uid,
+                    'step' => 'volume',
+                    'plan_id' => $planId,
+                ]);
+                $min = max(1, (int) ($plan->traffic_gb_min ?? 1));
+                $max = max($min, (int) ($plan->traffic_gb_max ?? $min));
+                $this->send($ctx, $chatId, $this->texts->format(
+                    $this->texts->getForUser('msg.admin.prompt_create_service_volume', $admin, 'Send GB ({min}-{max})'),
+                    ['min' => $min, 'max' => $max]
+                ));
+
+                return true;
+            }
+            $this->state->clear($admin);
+            $this->send($ctx, $chatId, $this->texts->format(
+                $this->texts->getForUser('msg.admin.prompt_create_service_mode', $admin, 'Create service for #{id} — choose mode:'),
+                ['id' => $uid]
+            ), [
+                'reply_markup' => $this->keyboards->adminCreateServiceModeKeyboard($uid, $planId, null),
             ]);
-            $this->send($ctx, $chatId, $this->texts->getForUser('msg.admin.prompt_create_service_panel', $admin, 'Send panel_id'));
+
+            return true;
+        }
+        if ($step === 'volume' && is_numeric($text)) {
+            $planId = (int) ($data['plan_id'] ?? 0);
+            $gb = max(1, (int) $text);
+            $this->state->clear($admin);
+            $this->send($ctx, $chatId, $this->texts->getForUser('msg.admin.prompt_create_service_mode', $admin, 'Choose payment mode:'), [
+                'reply_markup' => $this->keyboards->adminCreateServiceModeKeyboard($uid, $planId, $gb),
+            ]);
 
             return true;
         }
@@ -948,6 +1170,115 @@ class AdminUsersHandler extends AbstractAdminHandler
         }
 
         return false;
+    }
+
+    /**
+     * pnl:nsx / nsm / nrr / nva / nus payment-mode execute (WP Handler_Admin_Pnl).
+     *
+     * @param  array<int, string>  $parts
+     */
+    protected function handlePaymentModeCallback(BotContext $ctx, SvpUser $admin, int $chatId, array $parts): void
+    {
+        $sub = (string) ($parts[1] ?? '');
+        if ($sub === 'nsx' && isset($parts[2], $parts[3], $parts[4])) {
+            $uid = (int) $parts[2];
+            $planId = (int) $parts[3];
+            $mode = $this->paymentModeFromLetter((string) $parts[4]);
+            if ($mode === '' || ! $this->scope->mayModerateUser($admin, $uid)) {
+                $this->send($ctx, $chatId, $this->texts->getForUser('msg.admin.method_invalid', $admin, 'Invalid method'));
+
+                return;
+            }
+            $result = $this->mutate->applyForUser($admin, 'user_create_service', [
+                'user_id' => $uid,
+                'plan_id' => $planId,
+                'mode' => $mode,
+            ]);
+            $this->send($ctx, $chatId, $this->mutate->resultMessage($admin, is_array($result) ? $result : ['ok' => false]));
+
+            return;
+        }
+        if ($sub === 'nsm' && isset($parts[2], $parts[3], $parts[4], $parts[5])) {
+            $uid = (int) $parts[2];
+            $planId = (int) $parts[3];
+            $gb = (int) $parts[4];
+            $mode = $this->paymentModeFromLetter((string) $parts[5]);
+            if ($mode === '' || ! $this->scope->mayModerateUser($admin, $uid)) {
+                $this->send($ctx, $chatId, $this->texts->getForUser('msg.admin.method_invalid', $admin, 'Invalid method'));
+
+                return;
+            }
+            $result = $this->mutate->applyForUser($admin, 'user_create_service', [
+                'user_id' => $uid,
+                'plan_id' => $planId,
+                'volume_gb' => $gb,
+                'mode' => $mode,
+            ]);
+            $this->send($ctx, $chatId, $this->mutate->resultMessage($admin, is_array($result) ? $result : ['ok' => false]));
+
+            return;
+        }
+        if ($sub === 'nrr' && isset($parts[2], $parts[3])) {
+            $sid = (int) $parts[2];
+            $mode = $this->paymentModeFromLetter((string) $parts[3]);
+            if ($mode === '' || ! $this->mayAccessService($admin, $sid)) {
+                $this->send($ctx, $chatId, $this->texts->getForUser('msg.admin.method_invalid', $admin, 'Invalid method'));
+
+                return;
+            }
+            $result = $this->mutate->applyForUser($admin, 'user_renew_service', [
+                'service_id' => $sid,
+                'mode' => $mode,
+            ]);
+            $this->send($ctx, $chatId, $this->mutate->resultMessage($admin, is_array($result) ? $result : ['ok' => false]));
+
+            return;
+        }
+        if ($sub === 'nva' && isset($parts[2], $parts[3], $parts[4])) {
+            $sid = (int) $parts[2];
+            $gb = (int) $parts[3];
+            $mode = $this->paymentModeFromLetter((string) $parts[4]);
+            if ($mode === '' || ! $this->mayAccessService($admin, $sid)) {
+                $this->send($ctx, $chatId, $this->texts->getForUser('msg.admin.method_invalid', $admin, 'Invalid method'));
+
+                return;
+            }
+            $result = $this->mutate->applyForUser($admin, 'user_add_volume', [
+                'service_id' => $sid,
+                'extra_gb' => $gb,
+                'mode' => $mode,
+            ]);
+            $this->send($ctx, $chatId, $this->mutate->resultMessage($admin, is_array($result) ? $result : ['ok' => false]));
+
+            return;
+        }
+        if ($sub === 'nus' && isset($parts[2], $parts[3], $parts[4])) {
+            $sid = (int) $parts[2];
+            $slots = (int) $parts[3];
+            $mode = $this->paymentModeFromLetter((string) $parts[4]);
+            if ($mode === '' || ! $this->mayAccessService($admin, $sid)) {
+                $this->send($ctx, $chatId, $this->texts->getForUser('msg.admin.method_invalid', $admin, 'Invalid method'));
+
+                return;
+            }
+            $result = $this->mutate->applyForUser($admin, 'user_service_add_slots', [
+                'service_id' => $sid,
+                'slots' => $slots,
+                'mode' => $mode,
+            ]);
+            $this->send($ctx, $chatId, $this->mutate->resultMessage($admin, is_array($result) ? $result : ['ok' => false]));
+        }
+    }
+
+    protected function paymentModeFromLetter(string $letter): string
+    {
+        return match (strtolower(trim($letter))) {
+            'w' => 'wallet',
+            'f' => 'free',
+            'i' => 'invoice',
+            'wallet', 'free', 'invoice' => strtolower(trim($letter)),
+            default => '',
+        };
     }
 
     public function handleUserAction(BotContext $ctx, SvpUser $admin, int $chatId, string $action, int $uid): void

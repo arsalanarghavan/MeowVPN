@@ -4,6 +4,7 @@ namespace App\Modules\Core\Bot\Services;
 
 use App\Models\DashboardUser;
 use App\Models\SvpUser;
+use App\Modules\Core\Bot\BotContext;
 use App\Services\DashboardBootBuilder;
 use App\Services\Mutations\MutatePolicyService;
 
@@ -66,6 +67,20 @@ class AdminPermissionService
     public function permissionActorId(SvpUser $user): int
     {
         return $user->role === 'reseller' ? (int) $user->id : 0;
+    }
+
+    public function blocksGlobalSettingsForResellerBot(BotContext $ctx): bool
+    {
+        return $ctx->isResellerBot();
+    }
+
+    public function mayAccessGlobalSettings(BotContext $ctx, SvpUser $user): bool
+    {
+        if ($this->blocksGlobalSettingsForResellerBot($ctx)) {
+            return false;
+        }
+
+        return $this->permissionActorId($user) < 1;
     }
 
     public function hasPermission(SvpUser $user, string $perm): bool

@@ -59,9 +59,11 @@ type BackupRunData = {
   panel_db_critical_msg?: string
   panel_db_failures?: Array<{ panel_id?: number; label?: string; step?: string; getdb_url?: string }>
   sent?: number
+  failed?: number
   stored_on_site?: boolean
   storage_fallback?: boolean
   delivery?: Record<string, DeliveryBucket>
+  diagnostics?: BackupDiagnostics
 }
 
 type LastBackupRun = {
@@ -76,6 +78,12 @@ type LastBackupRun = {
 type PanelOption = {
   id: number
   label: string
+}
+
+type BackupScopePanel = {
+  id: number
+  label: string
+  enabled: boolean
 }
 
 type DbInboundRow = {
@@ -120,6 +128,7 @@ const SKIPPED_REASON_KEYS: Record<string, string> = {
   enabled: "skippedReasonEnabled",
   zip: "skippedReasonZip",
   max_size: "skippedReasonMaxSize",
+  backup_scope_empty: "skippedReasonScopeEmpty",
 }
 
 function sleepMs(ms: number): Promise<void> {
@@ -289,19 +298,162 @@ async function pollManualBackupUntilDone(
   return { ok: false, status: "error", message: tp("backupPollTimeout") }
 }
 
-function backupMsgFromManualStatus(
-  st: DashRecord,
+function formatBackupApiError(
+  json: Record<string, unknown>,
   tp: (k: string, o?: Record<string, string | number>) => string
 ): string {
+  const raw = String(json.message ?? "").trim()
+  if (raw && raw !== "invalid_html_response" && !raw.startsWith("bad_json") && !raw.startsWith("http_")) {
+    return raw
+  }
+  if (raw === "invalid_html_response") {
+    const status = Number(json.http_status)
+    if (status === 504) {
+      return tp("backupGatewayTimeout")
+    }
+    const base = tp("invalidHtmlResponse")
+    const hint = tp("invalidHtmlNetworkHint")
+    const line = Number.isFinite(status) && status > 0 ? `${base} (HTTP ${status})` : base
+    return `${line}\n${hint}`
+  }
+  if (raw.startsWith("bad_json")) {
+    return `${tp("invalidHtmlResponse")}\n${tp("invalidHtmlNetworkHint")}`
+  }
+  if (raw.startsWith("http_")) {
+    const code = raw.slice(5) || "?"
+    if (code === "500" || code === "502" || code === "503") {
+      return tp("backupHttpServerError", { code })
+    }
+    return `${tp("backupNowError")} (HTTP ${code})`
+  }
+  return raw || tp("backupNowError")
+}
+
+type BackupDiagnostics = {
+  elapsed_seconds?: number
+  worker_lock_active?: boolean
+  worker_heartbeat_age_sec?: number
+  dispatch_mode?: string
+  cron_hook_scheduled?: boolean
+  internal_secret_set?: boolean
+  kick_dispatched?: boolean
+  wp_cron_disabled?: boolean
+  wp_cron_stale?: boolean
+  last_wp_cron_run_at?: number
+  last_fallback?: string
+}
+
+function formatBackupDiagnostics(
+  diag: BackupDiagnostics | undefined,
+  tp: (k: string, o?: Record<string, string | number>) => string,
+  isFa: boolean
+): string {
+  if (!diag || typeof diag !== "object") return ""
+  const lines: string[] = [tp("backupDiagnosticsTitle")]
+  if (typeof diag.elapsed_seconds === "number") {
+    lines.push(tp("backupDiagElapsed", { sec: diag.elapsed_seconds }))
+  }
+  lines.push(tp("backupDiagWorkerLock", { on: diag.worker_lock_active ? tp("yesLabel") : tp("noLabel") }))
+  const hbAge = diag.worker_heartbeat_age_sec
+  if (typeof hbAge === "number" && hbAge >= 0) {
+    lines.push(tp("backupDiagHeartbeatAge", { sec: hbAge }))
+  } else if (diag.worker_lock_active) {
+    lines.push(tp("backupDiagHeartbeatMissing"))
+  }
+  const dispatch = String(diag.dispatch_mode ?? "").trim()
+  if (dispatch) {
+    lines.push(tp("backupDiagDispatchMode", { mode: dispatch }))
+  }
+  lines.push(tp("backupDiagCronHook", { on: diag.cron_hook_scheduled ? tp("yesLabel") : tp("noLabel") }))
+  lines.push(tp("backupDiagInternalSecret", { on: diag.internal_secret_set ? tp("yesLabel") : tp("noLabel") }))
+  if (typeof diag.kick_dispatched === "boolean") {
+    lines.push(tp("backupDiagKickDispatched", { on: diag.kick_dispatched ? tp("yesLabel") : tp("noLabel") }))
+  }
+  lines.push(tp("backupDiagWpCronDisabled", { on: diag.wp_cron_disabled ? tp("yesLabel") : tp("noLabel") }))
+  if (diag.wp_cron_stale) {
+    lines.push(tp("backupDiagWpCronStale"))
+  }
+  if (num(diag.last_wp_cron_run_at) > 0) {
+    lines.push(tp("backupDiagLastWpCron", { at: tsLabel(num(diag.last_wp_cron_run_at), isFa) }))
+  }
+  const fallback = String(diag.last_fallback ?? "").trim()
+  if (fallback && fallback !== "none") {
+    lines.push(tp("backupDiagLastFallback", { kind: fallback }))
+  }
+  return lines.join("\n")
+}
+
+type BackupMsgSeverity = "success" | "warn" | "error" | "info"
+
+function backupMsgSeverity(st: DashRecord): BackupMsgSeverity {
   const status = String(st.status ?? "")
   const code = String(st.code ?? "")
-  if (code === "already_running") return tp("backupAlreadyRunning")
-  if (status === "error" || st.ok === false) {
-    return typeof st.message === "string" && st.message ? st.message : tp("backupNowError")
+  const errorCodes = new Set([
+    "worker_timeout",
+    "worker_lost",
+    "worker_lock_busy",
+    "poll_timeout",
+    "delivery_and_storage_failed",
+    "delivery_misconfigured",
+    "exception",
+    "build_failed",
+    "panel_db_all_failed",
+  ])
+  if (status === "error" || st.ok === false || errorCodes.has(code)) {
+    return "error"
   }
   const data = st.data as BackupRunData | undefined
-  const report = formatBackupRunReport(data, tp)
-  return report || tp("backupNowSuccess")
+  if (
+    data?.panel_db_critical ||
+    (typeof data?.panel_db_warning === "string" && data.panel_db_warning) ||
+    num(data?.failed) > 0
+  ) {
+    return "warn"
+  }
+  if (status === "done" || st.ok === true) {
+    return "success"
+  }
+  return "info"
+}
+
+function formatBackupFullReport(
+  st: DashRecord,
+  tp: (k: string, o?: Record<string, string | number>) => string,
+  isFa: boolean
+): string {
+  const parts: string[] = []
+  const code = String(st.code ?? "").trim()
+  const status = String(st.status ?? "")
+  if (code) parts.push(tp("backupReportCode", { code }))
+  if (status) parts.push(tp("backupReportStatus", { status }))
+  const msg =
+    typeof st.message === "string" && st.message
+      ? st.message
+      : status === "error" || st.ok === false
+        ? formatBackupApiError(st, tp)
+        : ""
+  if (msg) parts.push(msg)
+  const data = st.data as BackupRunData | undefined
+  const runReport = formatBackupRunReport(data, tp)
+  if (runReport) parts.push(runReport)
+  const diag =
+    (st.diagnostics as BackupDiagnostics | undefined) ?? data?.diagnostics ?? undefined
+  const diagBlock = formatBackupDiagnostics(diag, tp, isFa)
+  if (diagBlock) parts.push(diagBlock)
+  return parts.filter(Boolean).join("\n\n")
+}
+
+function backupMsgFromManualStatus(
+  st: DashRecord,
+  tp: (k: string, o?: Record<string, string | number>) => string,
+  isFa: boolean
+): { text: string; severity: BackupMsgSeverity } {
+  const code = String(st.code ?? "")
+  if (code === "already_running") {
+    return { text: tp("backupAlreadyRunning"), severity: "info" }
+  }
+  const text = formatBackupFullReport(st, tp, isFa) || tp("backupNowSuccess")
+  return { text, severity: backupMsgSeverity(st) }
 }
 
 function panelDbListLabel(row: BackupRow, tp: (k: string, o?: Record<string, string | number>) => string): string {
@@ -355,8 +507,10 @@ export function BackupAdminClient() {
   )
 
   const [form, setForm] = useState(initial)
+  const [includeDatabase, setIncludeDatabase] = useState(true)
   useEffect(() => setForm(initial), [initial])
 
+  const [scopePanels, setScopePanels] = useState<BackupScopePanel[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [backupRows, setBackupRows] = useState<BackupRow[]>([])
@@ -370,6 +524,8 @@ export function BackupAdminClient() {
   const [listError, setListError] = useState<string | null>(null)
   const [backupRunning, setBackupRunning] = useState(false)
   const [backupMsg, setBackupMsg] = useState<string | null>(null)
+  const [backupMsgSeverity, setBackupMsgSeverity] = useState<BackupMsgSeverity>("info")
+  const [backupCopyHint, setBackupCopyHint] = useState<string | null>(null)
   const [downloadBusy, setDownloadBusy] = useState<string | null>(null)
   const [restoreTarget, setRestoreTarget] = useState<BackupRow | null>(null)
   const [restorePanelDb, setRestorePanelDb] = useState(false)
@@ -614,6 +770,27 @@ export function BackupAdminClient() {
       setCronPingIntervalSeconds(Math.max(0, num(json.cron_ping_interval_seconds)))
       const crontabFromBackup = String(json.server_crontab_line ?? "").trim()
       if (crontabFromBackup) setServerCrontabLine(crontabFromBackup)
+      const scopeRaw = json.backup_scope
+      if (scopeRaw && typeof scopeRaw === "object" && !Array.isArray(scopeRaw)) {
+        const scopeObj = scopeRaw as Record<string, unknown>
+        setIncludeDatabase(scopeObj.include_database === undefined ? true : bool(scopeObj.include_database))
+        const scopeList = Array.isArray(scopeObj.panels) ? scopeObj.panels : []
+        setScopePanels(
+          scopeList
+            .map((row) => {
+              if (!row || typeof row !== "object") return null
+              const r = row as Record<string, unknown>
+              const id = num(r.id)
+              const label = String(r.label ?? "").trim()
+              return {
+                id,
+                label: label || (id === 0 ? "legacy" : `#${id}`),
+                enabled: bool(r.enabled),
+              }
+            })
+            .filter((p): p is BackupScopePanel => p !== null)
+        )
+      }
       const warn = String(json.delivery_warning ?? "").trim()
       setDeliveryWarning(warn || null)
     } catch {
@@ -652,6 +829,38 @@ export function BackupAdminClient() {
     void loadCronStatus()
   }, [loadBackups, loadStatus, loadCronStatus])
 
+  const onCopyBackupReport = useCallback(async () => {
+    const text = backupMsg?.trim()
+    if (!text) return
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text)
+      } else {
+        const ta = document.createElement("textarea")
+        ta.value = text
+        ta.style.position = "fixed"
+        ta.style.left = "-9999px"
+        document.body.appendChild(ta)
+        ta.select()
+        document.execCommand("copy")
+        document.body.removeChild(ta)
+      }
+      setBackupCopyHint(t("backupCopyFullReportCopied"))
+    } catch {
+      setBackupCopyHint(null)
+    }
+    window.setTimeout(() => setBackupCopyHint(null), 2200)
+  }, [backupMsg, t])
+
+  const applyBackupStatusToUi = useCallback(
+    (st: DashRecord) => {
+      const { text, severity } = backupMsgFromManualStatus(st, t, isFa)
+      setBackupMsg(text)
+      setBackupMsgSeverity(severity)
+    },
+    [isFa, t]
+  )
+
   const onCopyCrontabLine = useCallback(async () => {
     const line = serverCrontabLine.trim()
     if (!line) return
@@ -675,7 +884,26 @@ export function BackupAdminClient() {
     window.setTimeout(() => setCronCopyHint(null), 2200)
   }, [serverCrontabLine, t])
 
+  const backupScopeHasAny = useMemo(() => {
+    if (includeDatabase) return true
+    return scopePanels.some((p) => p.enabled)
+  }, [includeDatabase, scopePanels])
+
+  const panelScopeLabel = useCallback(
+    (panel: BackupScopePanel) => {
+      if (panel.id === 0) return t("backupScopePanelLegacy")
+      const label = panel.label.trim()
+      return label ? t("backupScopePanelNamed", { label }) : t("backupScopePanelNamed", { label: `#${panel.id}` })
+    },
+    [t]
+  )
+
   const onSave = useCallback(async () => {
+    if (!backupScopeHasAny) {
+      setBackupMsg(t("backupScopeEmpty"))
+      setBackupMsgSeverity("warn")
+      return
+    }
     setSaving(true)
     setError(null)
     try {
@@ -691,6 +919,8 @@ export function BackupAdminClient() {
         backup_store_on_site: form.backup_store_on_site ? 1 : 0,
         backup_site_retention_count: Math.max(1, Math.min(500, num(form.backup_site_retention_count))),
         backup_max_zip_mb: Math.max(0, num(form.backup_max_zip_mb)),
+        backup_include_database: includeDatabase ? 1 : 0,
+        backup_panel_disabled: scopePanels.filter((p) => !p.enabled).map((p) => p.id),
       })
       if (!res.ok) {
         setError(res.message || t("saveError"))
@@ -701,7 +931,7 @@ export function BackupAdminClient() {
     } finally {
       setSaving(false)
     }
-  }, [form, reload, t])
+  }, [backupScopeHasAny, form, includeDatabase, reload, scopePanels, t])
 
   const onResetBackupStuck = useCallback(async () => {
     setResetStuckBusy(true)
@@ -727,15 +957,21 @@ export function BackupAdminClient() {
   }, [backupRunning, backupRunStartedAt])
 
   const onBackupNow = useCallback(async () => {
+    if (!backupScopeHasAny) {
+      setBackupMsg(t("backupScopeEmpty"))
+      setBackupMsgSeverity("warn")
+      return
+    }
     setBackupRunning(true)
     setBackupRunStartedAt(Date.now())
     setBackupMsg(t("backupNowRunning"))
+    setBackupMsgSeverity("info")
     try {
       const json = await postAdminJson("/admin/backup/run", {})
       const gateway504 =
         !json.ok && json.message === "invalid_html_response" && Number(json.http_status) === 504
       if (!json.ok && !gateway504) {
-        setBackupMsg(backupMsgFromManualStatus(json as DashRecord, t))
+        applyBackupStatusToUi(json as DashRecord)
         setBackupRunning(false)
         setBackupRunStartedAt(0)
         return
@@ -744,14 +980,29 @@ export function BackupAdminClient() {
       if (warn) setDeliveryWarning(warn)
       if (gateway504) {
         setBackupMsg(t("backupGatewayTimeout"))
-      } else if (json.async === true || json.status === "running") {
-        setBackupMsg(
-          warn ? `${t("backupRunningAsync")}\n${t("backupDeliveryWarning")}\n${warn}` : t("backupRunningAsync")
-        )
+        setBackupMsgSeverity("warn")
+        setBackupRunning(false)
+        setBackupRunStartedAt(0)
+        await loadBackups()
+        await loadStatus()
+        return
+      }
+      if (json.async === true || json.status === "running") {
+        const diag = json.diagnostics as BackupDiagnostics | undefined
+        const diagBlock = formatBackupDiagnostics(diag, t, isFa)
+        const parts = [
+          warn ? `${t("backupRunningAsync")}\n${t("backupDeliveryWarning")}\n${warn}` : t("backupRunningAsync"),
+          diagBlock,
+        ].filter(Boolean)
+        setBackupMsg(parts.join("\n\n"))
+        setBackupMsgSeverity("info")
         const final = await pollManualBackupUntilDone(t, (elapsed) => {
           if (elapsed >= BACKUP_POLL_LONG_HINT_MS) setBackupMsg(t("backupRunningLong"))
         })
-        setBackupMsg(backupMsgFromManualStatus(final, t))
+        const finalDiag = formatBackupDiagnostics(final.diagnostics as BackupDiagnostics | undefined, t, isFa)
+        const { text: finalMsg, severity } = backupMsgFromManualStatus(final, t, isFa)
+        setBackupMsg([finalMsg, finalDiag].filter(Boolean).join("\n\n"))
+        setBackupMsgSeverity(severity)
         if (final.status === "done" || (final.data && typeof final.data === "object")) {
           await loadBackups()
         }
@@ -760,8 +1011,9 @@ export function BackupAdminClient() {
       }
       if (json.data && typeof json.data === "object") {
         setBackupMsg(formatBackupRunReport(json.data as BackupRunData, t) || t("backupNowSuccess"))
+        setBackupMsgSeverity("success")
       } else {
-        setBackupMsg(backupMsgFromManualStatus(json as DashRecord, t))
+        applyBackupStatusToUi(json as DashRecord)
       }
       await loadBackups()
       await loadStatus()
@@ -769,7 +1021,7 @@ export function BackupAdminClient() {
       setBackupRunning(false)
       setBackupRunStartedAt(0)
     }
-  }, [loadBackups, loadStatus, t])
+  }, [applyBackupStatusToUi, backupScopeHasAny, isFa, loadBackups, loadStatus, t])
 
   const onDownloadBackup = useCallback(
     async (filename: string) => {
@@ -1055,6 +1307,44 @@ export function BackupAdminClient() {
               {showBale ? chk("backup_send_bale_channel", "sendBaleChannel") : null}
             </div>
             <div className="space-y-3 border-t border-border pt-3">
+              <p className="text-sm font-medium">{t("backupScopeTitle")}</p>
+              <p className="text-xs text-muted-foreground">{t("backupScopeHint")}</p>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="size-4 rounded border-input"
+                  checked={includeDatabase}
+                  onChange={(e) => setIncludeDatabase(e.target.checked)}
+                />
+                {t("backupScopeDatabase")}
+              </label>
+              {scopePanels.length > 0 ? (
+                <div className="space-y-2 ps-1">
+                  {scopePanels.map((panel) => (
+                    <label key={`scope-panel-${panel.id}`} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        className="size-4 rounded border-input"
+                        checked={panel.enabled}
+                        onChange={(e) => {
+                          const enabled = e.target.checked
+                          setScopePanels((rows) =>
+                            rows.map((row) => (row.id === panel.id ? { ...row, enabled } : row))
+                          )
+                        }}
+                      />
+                      {panelScopeLabel(panel)}
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">{t("backupScopeNoPanels")}</p>
+              )}
+              {!backupScopeHasAny ? (
+                <p className="text-xs text-amber-700 dark:text-amber-400">{t("backupScopeEmpty")}</p>
+              ) : null}
+            </div>
+            <div className="space-y-3 border-t border-border pt-3">
               <p className="text-sm font-medium">{t("siteStorageTitle")}</p>
               {chk("backup_store_on_site", "storeOnSite")}
               <div className="space-y-2">
@@ -1237,7 +1527,33 @@ export function BackupAdminClient() {
                 ) : null}
               </div>
             ) : null}
-            {backupMsg ? <p className="whitespace-pre-wrap text-sm text-muted-foreground">{backupMsg}</p> : null}
+            {backupMsg ? (
+              <div className="space-y-2">
+                <div
+                  role="alert"
+                  className={cn(
+                    "rounded-md border px-3 py-2 text-sm whitespace-pre-wrap",
+                    backupMsgSeverity === "error" &&
+                      "border-destructive/50 bg-destructive/10 text-destructive",
+                    backupMsgSeverity === "warn" &&
+                      "border-amber-500/50 bg-amber-500/10 text-amber-800 dark:text-amber-200",
+                    backupMsgSeverity === "success" &&
+                      "border-emerald-500/50 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200",
+                    backupMsgSeverity === "info" && "border-border/80 bg-muted/30 text-muted-foreground"
+                  )}
+                >
+                  {backupMsg}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => void onCopyBackupReport()}>
+                    {t("backupCopyFullReport")}
+                  </Button>
+                  {backupCopyHint ? (
+                    <span className="text-xs text-emerald-600">{backupCopyHint}</span>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
             {!storeOnSiteLive ? <p className="text-sm text-amber-700 dark:text-amber-400">{t("storeOffHint")}</p> : null}
             {listError ? <p className="text-sm text-destructive">{listError}</p> : null}
             <DashTableShell minWidth="40rem" colWidths={["28%", "12%", "28%", "32%"]}>

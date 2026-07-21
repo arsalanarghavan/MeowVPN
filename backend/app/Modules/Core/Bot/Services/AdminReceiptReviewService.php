@@ -114,6 +114,7 @@ class AdminReceiptReviewService
         $fileId = $ctx->platform === 'bale'
             ? (string) ($rec->bale_file_id ?? '')
             : (string) ($rec->tg_file_id ?? '');
+        $storedPath = trim((string) ($rec->stored_image_path ?? ''));
 
         $sentMsgId = 0;
         if ($fileId !== '') {
@@ -127,6 +128,23 @@ class AdminReceiptReviewService
                 ], $markup));
                 if (is_array($r) && ! empty($r['ok'])) {
                     $sentMsgId = (int) ($r['result']['message_id'] ?? 0);
+                    $this->trackAdminMessage($rid, $ctx->platform, $chatId, $sentMsgId);
+
+                    return;
+                }
+            }
+        }
+        if ($storedPath !== '' && is_readable($storedPath)) {
+            $r = $this->runtime->sendPhotoFile($ctx, $chatId, $storedPath, $body);
+            if (is_array($r) && ! empty($r['ok'])) {
+                $sentMsgId = (int) ($r['result']['message_id'] ?? 0);
+                // Re-edit markup if sendPhotoFile doesn't accept reply_markup — send follow-up keyboard via edit.
+                if ($sentMsgId > 0) {
+                    $this->runtime->editMessageReplyMarkup($ctx, [
+                        'chat_id' => $chatId,
+                        'message_id' => $sentMsgId,
+                        'reply_markup' => $this->keyboards->inlineReceipt($rid),
+                    ]);
                     $this->trackAdminMessage($rid, $ctx->platform, $chatId, $sentMsgId);
 
                     return;

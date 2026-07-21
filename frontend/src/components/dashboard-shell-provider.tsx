@@ -100,13 +100,6 @@ export function DashboardShellProvider({ children }: { children: ReactNode }) {
     void refreshMe()
   }, [refreshMe])
 
-  useEffect(() => {
-    if (loading || !me) return
-    if (me.activePersona === "user") {
-      router.replace(`/${locale}/portal`)
-    }
-  }, [loading, me, locale, router])
-
   const impersonating = Boolean(me?.impersonating)
   const isAdmin = Boolean(me?.isAdmin) || me?.activePersona === "admin"
   const isReseller =

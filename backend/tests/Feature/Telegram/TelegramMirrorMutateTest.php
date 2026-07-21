@@ -98,6 +98,45 @@ class TelegramMirrorMutateTest extends TestCase
         });
     }
 
+    public function test_mirror_delete_webhook_test_and_diagnostics_via_http(): void
+    {
+        Http::fake([
+            'api.telegram.org/*' => Http::response(['ok' => true, 'result' => ['username' => 'mirror_bot', 'url' => '']], 200),
+        ]);
+
+        $mirrorId = (int) SvpTelegramMirrorBot::query()->insertGetId([
+            'label' => 'Mirror Ops',
+            'telegram_token' => Crypt::encryptString('123:ABC'),
+            'telegram_bot_username' => 'mirror_bot',
+            'webhook_secret' => Crypt::encryptString('mirror-ops-secret'),
+            'telegram_secret_token' => '',
+            'enabled' => true,
+            'sort_order' => 0,
+            'updated_at' => now(),
+        ]);
+
+        $this->actingAsAdmin()->postJson('/api/v1/admin/mutate', [
+            'op' => 'telegram_mirror_test',
+            'mirror_id' => $mirrorId,
+        ])->assertOk()->assertJsonPath('ok', true);
+
+        $this->actingAsAdmin()->postJson('/api/v1/admin/mutate', [
+            'op' => 'telegram_mirror_diagnostics',
+            'mirror_id' => $mirrorId,
+        ])->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonStructure(['local', 'issues']);
+
+        $this->actingAsAdmin()->postJson('/api/v1/admin/mutate', [
+            'op' => 'telegram_mirror_delete_webhook',
+            'mirror_id' => $mirrorId,
+        ])->assertOk()->assertJsonPath('ok', true);
+
+        Http::assertSent(function ($request) {
+            return str_contains($request->url(), 'deleteWebhook');
+        });
+    }
+
     public function test_reseller_blocked_from_mirror_ops(): void
     {
         $this->actingAsReseller()->postJson('/api/v1/admin/mutate', [

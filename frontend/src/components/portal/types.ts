@@ -112,7 +112,21 @@ declare global {
   }
 }
 
+/** SSR / prop-injected bootstrap (checked before window globals). */
+let injectedPortalData: PortalInitialData | null = null
+
+export function setPortalBootstrap(data: PortalInitialData | null | undefined): void {
+  injectedPortalData = data ?? null
+  if (typeof window !== "undefined" && data) {
+    window.__SIMPLEVPBOT_PORTAL__ = data
+    window.__INITIAL_DATA__ = data
+  }
+}
+
 export function getInitialData(): PortalInitialData {
+  if (injectedPortalData) {
+    return injectedPortalData
+  }
   if (typeof window !== "undefined" && window.__SIMPLEVPBOT_PORTAL__) {
     return window.__SIMPLEVPBOT_PORTAL__
   }

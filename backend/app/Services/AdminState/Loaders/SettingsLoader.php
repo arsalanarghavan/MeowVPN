@@ -2,6 +2,7 @@
 
 namespace App\Services\AdminState\Loaders;
 
+use App\Modules\Core\Bot\Services\BotTextDefaults;
 use App\Services\AdminState\AdminStateContext;
 use App\Services\AdminState\AdminStateResult;
 use App\Services\DashboardBootBuilder;
@@ -30,6 +31,7 @@ class SettingsLoader extends AbstractLoader
         $all = array_merge($this->siteSettingsDefaults(), $all);
         $all['features'] = $boot['features'] ?? [];
         $all = $this->enrichGatewaySettings($all);
+        $all = $this->enrichBotUpdateModeSettings($all);
 
         if ($ctx->isReseller) {
             foreach (['telegram_bot_token', 'bale_bot_token', 'relay_master_secret'] as $secret) {
@@ -42,7 +44,7 @@ class SettingsLoader extends AbstractLoader
         $result->merge([
             'settings' => $all,
             'resellersDefaults' => $this->resellerDefaults->forAdminState(),
-            'textDefaults' => is_array($all['text_defaults'] ?? null) ? $all['text_defaults'] : [],
+            'textDefaults' => BotTextDefaults::valuesMap(),
             'paymentMethods' => $all['payment_methods'] ?? null,
         ]);
     }
@@ -99,6 +101,28 @@ class SettingsLoader extends AbstractLoader
         return $all;
     }
 
+    /**
+     * WP Settings aliases for poll offset / last-poll UI (stored as simplevpbot_* options).
+     *
+     * @param  array<string, mixed>  $all
+     * @return array<string, mixed>
+     */
+    protected function enrichBotUpdateModeSettings(array $all): array
+    {
+        $all['telegram_update_mode'] = in_array(($all['telegram_update_mode'] ?? 'webhook'), ['polling'], true)
+            ? 'polling'
+            : 'webhook';
+        $all['bale_update_mode'] = in_array(($all['bale_update_mode'] ?? 'webhook'), ['polling'], true)
+            ? 'polling'
+            : 'webhook';
+        $all['telegram_update_offset'] = (int) ($all['simplevpbot_tg_update_offset'] ?? $all['telegram_update_offset'] ?? 0);
+        $all['bale_update_offset'] = (int) ($all['simplevpbot_bale_update_offset'] ?? $all['bale_update_offset'] ?? 0);
+        $all['telegram_last_poll_at'] = (int) ($all['simplevpbot_tg_last_poll_at'] ?? $all['telegram_last_poll_at'] ?? 0);
+        $all['bale_last_poll_at'] = (int) ($all['simplevpbot_bale_last_poll_at'] ?? $all['bale_last_poll_at'] ?? 0);
+
+        return $all;
+    }
+
     /** @return array<string, mixed> */
     protected function siteSettingsDefaults(): array
     {
@@ -121,6 +145,27 @@ class SettingsLoader extends AbstractLoader
             'internal_cron_allowed_ips' => '',
             'live_metrics_poll_seconds' => 15,
             'live_sse_push_seconds' => 5,
+            // Default remains webhook; polling is opt-in via bot_set_update_mode.
+            'telegram_update_mode' => 'webhook',
+            'bale_update_mode' => 'webhook',
+            // Force-join platform keys + membership cache TTLs (WP Settings defaults).
+            'force_join_telegram_enabled' => false,
+            'force_join_telegram_chat_id' => 0,
+            'force_join_telegram_username' => '',
+            'force_join_telegram_invite_link' => '',
+            'force_join_telegram_prompt_text' => '',
+            'force_join_telegram_announce_text' => '',
+            'force_join_bale_enabled' => false,
+            'force_join_bale_chat_id' => 0,
+            'force_join_bale_username' => '',
+            'force_join_bale_invite_link' => '',
+            'force_join_bale_prompt_text' => '',
+            'force_join_bale_announce_text' => '',
+            'force_join_cache_ttl_sec' => 180,
+            'force_join_negative_cache_ttl_sec' => 45,
+            'buy_catalog_cache_ttl_sec' => 90,
+            'buy_panel_step_enabled' => false,
+            'suppress_bulk_user_notifications' => false,
         ];
     }
 

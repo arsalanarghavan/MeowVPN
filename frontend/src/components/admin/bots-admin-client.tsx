@@ -29,8 +29,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { DataPagination } from "@/components/data-pagination"
 import { getAdminState, postAdminMutate } from "@/lib/dash-admin-mutate"
-import { formatNumber } from "@/lib/format-locale"
+import { parsePaginationMeta, type PaginationMeta } from "@/lib/dash-pagination"
+import { formatDateTime, formatNumber } from "@/lib/format-locale"
 import { useDashLocale } from "@/lib/dash-locale-context"
 import { DashboardForceJoinAdmin } from "@/components/dashboard-force-join-admin"
 import { DashboardBotDiagnosticsDialog } from "@/components/dashboard-bot-diagnostics-dialog"
@@ -96,16 +98,31 @@ function resellerIdOf(row: DashRecord): number {
   return num(row.reseller_id ?? row.reseller_svp_user_id)
 }
 
+function pickPagination(data: DashRecord, key: string): PaginationMeta | null {
+  const raw = data.pagination
+  if (raw && typeof raw === "object") {
+    const parsed = parsePaginationMeta((raw as DashRecord)[key])
+    if (parsed) return parsed
+  }
+  return parsePaginationMeta(data[`${key}Pagination`])
+}
+
 export function BotsAdminClient() {
   const t = useTranslations("botsAdmin")
   const { isFa } = useDashLocale()
   const [settings, setSettings] = useState<DashRecord>({})
   const [bots, setBots] = useState<DashRecord[]>([])
   const [mirrors, setMirrors] = useState<DashRecord[]>([])
+  const [mirrorsPage, setMirrorsPage] = useState(1)
+  const [mirrorsPerPage, setMirrorsPerPage] = useState(25)
+  const [mirrorsPagination, setMirrorsPagination] = useState<PaginationMeta | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState("")
   const [msg, setMsg] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [botsPage, setBotsPage] = useState(1)
+  const [botsPerPage, setBotsPerPage] = useState(25)
+  const [botsPagination, setBotsPagination] = useState<PaginationMeta | null>(null)
   const [tokenForm, setTokenForm] = useState<Record<string, string>>({})
   const [adminIdForm, setAdminIdForm] = useState<Record<string, string>>({})
   const [editRow, setEditRow] = useState<DashRecord | null>(null)
@@ -121,7 +138,12 @@ export function BotsAdminClient() {
     setLoading(true)
     setErr(null)
     try {
-      const data = await getAdminState("bots", { bots_per_page: 100 })
+      const data = await getAdminState("bots", {
+        bots_page: botsPage,
+        bots_per_page: botsPerPage,
+        mirrors_page: mirrorsPage,
+        mirrors_per_page: mirrorsPerPage,
+      })
       const nextSettings = data.settings && typeof data.settings === "object" ? (data.settings as DashRecord) : {}
       setSettings(nextSettings)
       setTokenForm({
@@ -131,13 +153,15 @@ export function BotsAdminClient() {
         bale_wallet_provider_token: "",
       })
       setBots(Array.isArray(data.botsList) ? (data.botsList as DashRecord[]) : [])
+      setBotsPagination(pickPagination(data, "botsList"))
       setMirrors(Array.isArray(data.telegramMirrorsList) ? (data.telegramMirrorsList as DashRecord[]) : [])
+      setMirrorsPagination(pickPagination(data, "telegramMirrorsList"))
     } catch {
       setErr(t("loadError"))
     } finally {
       setLoading(false)
     }
-  }, [t])
+  }, [botsPage, botsPerPage, mirrorsPage, mirrorsPerPage, t])
 
   useEffect(() => {
     void load()
@@ -388,6 +412,59 @@ export function BotsAdminClient() {
                   <p className="text-xs text-muted-foreground" dir="ltr">
                     @{username || "-"}
                   </p>
+                  {(() => {
+                    const modeKey = platform === "telegram" ? "telegram_update_mode" : "bale_update_mode"
+                    const updateMode =
+                      String(settings[modeKey] ?? "webhook") === "polling" ? "polling" : "webhook"
+                    const isPolling = updateMode === "polling"
+                    const lastPollAt = num(
+                      platform === "telegram" ? settings.telegram_last_poll_at : settings.bale_last_poll_at
+                    )
+                    const updateOffset = num(
+                      platform === "telegram" ? settings.telegram_update_offset : settings.bale_update_offset
+                    )
+                    return (
+                      <div className="space-y-1.5">
+                        <p className="text-xs font-medium">{t("updateModeLabel")}</p>
+                        <p className="text-[11px] text-muted-foreground">{t("updateModeHint")}</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={!isPolling ? "default" : "outline"}
+                            disabled={isBusy || !isPolling}
+                            onClick={() =>
+                              void run("bot_set_update_mode", { platform, mode: "webhook" })
+                            }
+                          >
+                            {t("updateModeWebhook")}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={isPolling ? "default" : "outline"}
+                            disabled={isBusy || isPolling}
+                            onClick={() =>
+                              void run("bot_set_update_mode", { platform, mode: "polling" })
+                            }
+                          >
+                            {t("updateModePolling")}
+                          </Button>
+                        </div>
+                        {isPolling ? (
+                          <p className="text-[11px] text-muted-foreground">
+                            {t("pollingStatus", {
+                              offset: formatNumber(updateOffset, isFa),
+                              last:
+                                lastPollAt > 0
+                                  ? formatDateTime(lastPollAt * 1000, isFa)
+                                  : t("pollingNever"),
+                            })}
+                          </p>
+                        ) : null}
+                      </div>
+                    )
+                  })()}
                   {relayOn && platform === "telegram" ? (
                     <p className="text-xs text-muted-foreground" dir="ltr">
                       {t("relayWebhookVia")}:{" "}
@@ -610,6 +687,16 @@ export function BotsAdminClient() {
               </Table>
             </div>
           )}
+          {mirrorsPagination ? (
+            <DataPagination
+              meta={mirrorsPagination}
+              onPageChange={setMirrorsPage}
+              onPerPageChange={(n) => {
+                setMirrorsPerPage(n)
+                setMirrorsPage(1)
+              }}
+            />
+          ) : null}
         </CardContent>
       </Card>
 
@@ -758,6 +845,16 @@ export function BotsAdminClient() {
               </TableBody>
             </Table>
           </div>
+          <DataPagination
+            data-testid="bots-pagination"
+            meta={botsPagination}
+            onPageChange={setBotsPage}
+            onPerPageChange={(n) => {
+              setBotsPerPage(n)
+              setBotsPage(1)
+            }}
+            perPageOptions={[25, 50, 100, 150, 200]}
+          />
         </CardContent>
       </Card>
 

@@ -13,8 +13,12 @@ use App\Modules\Core\Bot\Services\BotRuntime;
 use App\Modules\Core\Bot\Services\BotPlanPricingService;
 use App\Modules\Core\Bot\Services\BotStateService;
 use App\Modules\Core\Bot\Services\KeyboardBuilder;
+use App\Modules\Core\Bot\Services\ReceiptNotifyService;
 use App\Modules\Core\Bot\Services\TextService;
+use App\Services\SettingsStore;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class BuyHandler
 {
@@ -26,13 +30,58 @@ class BuyHandler
         protected BotCommerceCheckoutService $checkout,
         protected BotPlanPricingService $planPricing,
         protected BotDeferredCacheService $deferredCache,
+        protected SettingsStore $settings,
+        protected ReceiptNotifyService $receiptNotify,
     ) {}
 
-    public function showCategoryPicker(BotContext $ctx, SvpUser $user, int $chatId): void
+    public function showBuyEntry(BotContext $ctx, SvpUser $user, int $chatId): void
     {
-        $cats = DB::table('svp_plan_categories')->where('active', true)->orderBy('sort_order')->limit(12)->get();
-        if ($cats->isEmpty()) {
-            $this->showPlanPicker($ctx, $user, $chatId);
+        if ((bool) $this->settings->get('buy_panel_step_enabled', false)) {
+            $this->showPanelPicker($ctx, $user, $chatId);
+
+            return;
+        }
+        $this->showCategoryPicker($ctx, $user, $chatId);
+    }
+
+    public function showPanelPicker(BotContext $ctx, SvpUser $user, int $chatId): void
+    {
+        $panels = $this->buyablePanels($ctx);
+        if ($panels === []) {
+            $this->runtime->sendMessage($ctx, $chatId, $this->texts->getForUser('msg.buy.no_panels', $user, 'No panels available'));
+
+            return;
+        }
+        $row = [];
+        $lines = [];
+        foreach ($panels as $panel) {
+            $pid = (int) ($panel->id ?? 0);
+            if ($pid < 1) {
+                continue;
+            }
+            $lab = (string) ($panel->label ?? ('#'.$pid));
+            if (mb_strlen($lab) > 32) {
+                $lab = mb_substr($lab, 0, 32);
+            }
+            $row[] = ['text' => $lab, 'callback_data' => 'buy:pl:'.$pid];
+            if (count($row) >= 2) {
+                $lines[] = $row;
+                $row = [];
+            }
+        }
+        if ($row !== []) {
+            $lines[] = $row;
+        }
+        $this->runtime->sendMessage($ctx, $chatId, $this->texts->getForUser('msg.buy.pick_panel', $user, 'Choose a panel:'), [
+            'reply_markup' => $this->keyboards->inline($lines),
+        ]);
+    }
+
+    public function showCategoryPicker(BotContext $ctx, SvpUser $user, int $chatId, ?int $panelId = null): void
+    {
+        $cats = $this->buyableCategoriesCached($ctx, $panelId);
+        if ($cats === []) {
+            $this->showPlanPicker($ctx, $user, $chatId, null, $panelId);
 
             return;
         }
@@ -41,28 +90,20 @@ class BuyHandler
             $slug = (string) ($cat->slug ?? $cat->id);
             $rows[] = [[
                 'text' => (string) ($cat->label ?? $slug),
-                'callback_data' => 'buy:g:'.$slug,
+                'callback_data' => 'buy:g:'.$slug.($panelId ? ':'.$panelId : ''),
             ]];
+        }
+        if ($panelId) {
+            $rows[] = [['text' => '←', 'callback_data' => 'buy:pl:0']];
         }
         $this->runtime->sendMessage($ctx, $chatId, $this->texts->getForUser('msg.buy.pick_category', $user, 'Choose category:'), [
             'reply_markup' => $this->keyboards->inline($rows),
         ]);
     }
 
-    public function showPlanPicker(BotContext $ctx, SvpUser $user, int $chatId, ?string $category = null): void
+    public function showPlanPicker(BotContext $ctx, SvpUser $user, int $chatId, ?string $category = null, ?int $panelId = null): void
     {
-        $q = SvpPlan::query()->where('active', true)->orderBy('sort_order');
-        if ($category) {
-            $q->where('category', $category);
-        }
-        if ($ctx->resellerSvpUserId > 0) {
-            $q->where(function ($sub) use ($ctx) {
-                $sub->where('owner_svp_user_id', $ctx->resellerSvpUserId)
-                    ->orWhere('owner_svp_user_id', 0)
-                    ->orWhereNull('owner_svp_user_id');
-            });
-        }
-        $plans = $q->limit(20)->get();
+        $plans = $this->plansForCategoryCached($ctx, $category, $panelId);
         $rows = [];
         foreach ($plans as $plan) {
             $preview = $this->planPricing->calculatePurchaseAmount($plan, 0, 1);
@@ -76,8 +117,9 @@ class BuyHandler
 
             return;
         }
-        if ($category) {
-            $rows[] = [['text' => '←', 'callback_data' => 'buy:g:all']];
+        if ($category || $panelId) {
+            $back = $panelId ? 'buy:pl:'.$panelId : 'buy:g:all';
+            $rows[] = [['text' => '←', 'callback_data' => $back]];
         }
         $this->runtime->sendMessage($ctx, $chatId, $this->texts->getForUser('msg.buy.pick_plan', $user, 'Choose a plan:'), [
             'reply_markup' => $this->keyboards->inline($rows),
@@ -98,13 +140,37 @@ class BuyHandler
             return;
         }
         $txId = (int) ($created['transaction_id'] ?? 0);
+        $offerStash = $this->state->get($user) === 'marketing_offer_cta' ? $this->state->data($user) : [];
         $this->state->set($user, 'buy_checkout', [
             'transaction_id' => $txId,
             'plan_id' => $planId,
             'extra_gb' => $extraGb,
             'amount' => $amount,
         ]);
-        $this->sendCheckoutSummary($ctx, $user, $chatId, $plan, $amount, $extraGb, $txId);
+        $this->maybeApplyStashedMarketingOffer($user, $txId, is_array($offerStash) ? $offerStash : []);
+        $this->sendCheckoutSummary($ctx, $user, $chatId, $plan, $this->checkout->transactionAmount($txId), $extraGb, $txId);
+    }
+
+    /** @param  array<string, mixed>  $stash */
+    protected function maybeApplyStashedMarketingOffer(SvpUser $user, int $txId, array $stash): void
+    {
+        $offerId = (int) ($stash['offer_id'] ?? 0);
+        $codeId = (int) ($stash['code_id'] ?? 0);
+        if ($offerId < 1 || $codeId < 1 || $txId < 1) {
+            return;
+        }
+        $code = DB::table('svp_discount_codes')->where('id', $codeId)->value('code');
+        if (! $code) {
+            return;
+        }
+        $res = $this->checkout->applyDiscountCode($txId, (string) $code, (int) $user->id);
+        if (! empty($res['ok'])) {
+            $tx = DB::table('svp_transactions')->where('id', $txId)->first();
+            $meta = json_decode((string) ($tx->meta_json ?? '{}'), true);
+            $meta = is_array($meta) ? $meta : [];
+            $meta['marketing_offer_id'] = $offerId;
+            DB::table('svp_transactions')->where('id', $txId)->update(['meta_json' => json_encode($meta)]);
+        }
     }
 
     /** @param  array<string, mixed>  $payload */
@@ -150,16 +216,34 @@ class BuyHandler
         }
         if ($action === 'g' && isset($parts[2])) {
             $cat = (string) $parts[2];
+            $panelId = isset($parts[3]) ? (int) $parts[3] : null;
             if ($cat === 'all') {
-                $this->showPlanPicker($ctx, $user, $chatId);
+                $this->showPlanPicker($ctx, $user, $chatId, null, $panelId);
             } else {
-                $this->showPlanPicker($ctx, $user, $chatId, $cat);
+                $this->showPlanPicker($ctx, $user, $chatId, $cat, $panelId);
             }
 
             return;
         }
+        if ($action === 'pl' && isset($parts[2])) {
+            $panelId = (int) $parts[2];
+            if ($panelId < 1) {
+                $this->showPanelPicker($ctx, $user, $chatId);
+
+                return;
+            }
+            $panel = DB::table('svp_panels')->where('id', $panelId)->where('active', true)->first();
+            if (! $panel) {
+                $this->runtime->sendMessage($ctx, $chatId, $this->texts->getForUser('msg.buy.panel_not_for_sale', $user, 'Panel unavailable'));
+
+                return;
+            }
+            $this->showCategoryPicker($ctx, $user, $chatId, $panelId);
+
+            return;
+        }
         if ($action === 'c' && isset($parts[2], $parts[3])) {
-            $this->showPlanPicker($ctx, $user, $chatId, (string) $parts[3]);
+            $this->showPlanPicker($ctx, $user, $chatId, (string) $parts[3], (int) $parts[2]);
 
             return;
         }
@@ -190,6 +274,22 @@ class BuyHandler
         if ($action === 'pm' && isset($parts[2], $parts[3])) {
             $cbId = (string) ($payload['callback_query_id'] ?? '');
             $this->dispatchDeferredC2c($user->id, $chatId, $ctx->platform, (int) $parts[2], (int) $parts[3], $cbId !== '' ? $cbId : null);
+
+            return;
+        }
+        if ($action === 'cd' && isset($parts[2], $parts[3])) {
+            $cardId = (int) $parts[2];
+            $txId = (int) $parts[3];
+            $cbId = (string) ($payload['callback_query_id'] ?? '');
+            $tx = DB::table('svp_transactions')->where('id', $txId)->where('user_id', $user->id)->first();
+            if (! $tx) {
+                if ($cbId !== '') {
+                    $this->runtime->answerCallbackQuery($ctx, ['callback_query_id' => $cbId, 'ok' => true]);
+                }
+
+                return;
+            }
+            $this->deliverCardPayment($ctx, $user, $chatId, $txId, $cardId, $cbId !== '' ? $cbId : null);
 
             return;
         }
@@ -359,7 +459,19 @@ class BuyHandler
                     'crypto' => $this->texts->getForUser('btn.buy.pay_crypto_manual', $user, 'Crypto'),
                     default => $this->texts->getForUser('btn.buy.pay_c2c', $user, 'Card'),
                 };
-                $rows[] = [['text' => $label, 'callback_data' => 'buy:pm:'.$txId.':'.(int) $card->id]];
+                $cid = (int) $card->id;
+                // C2C card-select uses buy:cd:{card}:{tx}; gateways keep buy:pm:{tx}:{card}.
+                $cb = BotCommerceCheckoutService::isGatewayMethod($mk)
+                    ? 'buy:pm:'.$txId.':'.$cid
+                    : 'buy:cd:'.$cid.':'.$txId;
+                $row = [['text' => $label, 'callback_data' => $cb]];
+                if ($ctx->platform === 'telegram' && ! BotCommerceCheckoutService::isGatewayMethod($mk)) {
+                    $pan = preg_replace('/\D+/', '', (string) ($card->card_number ?? '')) ?? '';
+                    if ($pan !== '') {
+                        $row[] = ['text' => $this->texts->getForUser('btn.common.copy_card', $user, 'Copy'), 'copy_text' => ['text' => $pan]];
+                    }
+                }
+                $rows[] = $row;
             }
         }
         if (in_array('site_wallet', $methods, true)) {
@@ -487,15 +599,26 @@ class BuyHandler
         if ($receiptId < 1) {
             return;
         }
-        $fileId = $message['photo'][0]['file_id'] ?? $message['document']['file_id'] ?? null;
+        $photos = is_array($message['photo'] ?? null) ? $message['photo'] : [];
+        $fileId = null;
+        if ($photos !== []) {
+            $best = $photos[count($photos) - 1] ?? $photos[0];
+            $fileId = is_array($best) ? ($best['file_id'] ?? null) : null;
+        }
+        if (! $fileId && is_array($message['document'] ?? null)) {
+            $fileId = $message['document']['file_id'] ?? null;
+        }
         if ($fileId) {
-            $path = storage_path('app/receipts/'.$receiptId.'.jpg');
+            $dir = storage_path('app/receipts');
+            if (! is_dir($dir)) {
+                @mkdir($dir, 0775, true);
+            }
+            $path = $dir.'/'.$receiptId.'.jpg';
             $this->runtime->downloadFileToPath($ctx, (string) $fileId, $path);
-            DB::table('svp_receipts')->where('id', $receiptId)->update([
-                'file_id' => $fileId,
-                'file_path' => is_file($path) ? $path : null,
-                'status' => 'pending',
-            ]);
+            $local = is_file($path) ? $path : null;
+            $this->receiptNotify->onUpload($ctx, $receiptId, (string) $fileId, $local);
+        } elseif (Schema::hasTable('svp_receipts')) {
+            DB::table('svp_receipts')->where('id', $receiptId)->update(['status' => 'pending']);
         }
         $this->state->clear($user);
         $this->runtime->sendMessage($ctx, $chatId, $this->texts->getForUser('msg.buy.receipt_received', $user, 'Receipt received, pending review.'));
@@ -591,5 +714,86 @@ class BuyHandler
     ): void {
         $this->deferredCache->putC2c($userId, $chatId, $platform, $txId, $cardId, $cbId);
         DeferredC2cInvoiceJob::dispatch($userId, $chatId, $platform, $txId, $cardId, $cbId);
+    }
+
+    /** WP buy_catalog_cache_ttl_sec (clamped 15–600). */
+    public function buyCatalogCacheTtlSec(): int
+    {
+        return max(15, min(600, (int) $this->settings->get('buy_catalog_cache_ttl_sec', 90)));
+    }
+
+    /** @return list<object> */
+    protected function buyablePanels(BotContext $ctx): array
+    {
+        $q = DB::table('svp_panels')->where('active', true)->orderBy('sort_order');
+        $panels = $q->limit(40)->get();
+        $out = [];
+        foreach ($panels as $panel) {
+            $pid = (int) ($panel->id ?? 0);
+            if ($pid < 1) {
+                continue;
+            }
+            if ($this->buyableCategoriesCached($ctx, $pid) !== [] || $this->plansForCategoryCached($ctx, null, $pid) !== []) {
+                $out[] = $panel;
+            }
+        }
+
+        return $out;
+    }
+
+    /** @return list<object> */
+    protected function buyableCategoriesCached(BotContext $ctx, ?int $panelId = null): array
+    {
+        $ttl = $this->buyCatalogCacheTtlSec();
+        $rid = (int) ($ctx->resellerSvpUserId ?? 0);
+        $key = 'svp_buy_cats_'.substr(md5($rid.'|'.(string) ($panelId ?? 0)), 0, 16);
+        $ids = Cache::remember($key, $ttl, function () use ($panelId) {
+            $q = DB::table('svp_plan_categories')->where('active', true)->orderBy('sort_order');
+            if ($panelId !== null && $panelId > 0) {
+                $q->where('panel_id', $panelId);
+            }
+
+            return $q->limit(40)->pluck('id')->map(fn ($v) => (int) $v)->all();
+        });
+        if ($ids === []) {
+            return [];
+        }
+
+        return DB::table('svp_plan_categories')
+            ->whereIn('id', $ids)
+            ->orderBy('sort_order')
+            ->get()
+            ->all();
+    }
+
+    /** @return \Illuminate\Support\Collection<int, SvpPlan> */
+    protected function plansForCategoryCached(BotContext $ctx, ?string $category, ?int $panelId = null)
+    {
+        $ttl = $this->buyCatalogCacheTtlSec();
+        $rid = (int) ($ctx->resellerSvpUserId ?? 0);
+        $key = 'svp_buy_plans_'.substr(md5($rid.'|'.($category ?? '').'|'.(string) ($panelId ?? 0)), 0, 16);
+        $ids = Cache::remember($key, $ttl, function () use ($ctx, $category, $panelId) {
+            $q = SvpPlan::query()->where('active', true)->orderBy('sort_order');
+            if ($category) {
+                $q->where('category', $category);
+            }
+            if ($panelId !== null && $panelId > 0) {
+                $q->where('panel_id', $panelId);
+            }
+            if ($ctx->resellerSvpUserId > 0) {
+                $q->where(function ($sub) use ($ctx) {
+                    $sub->where('owner_svp_user_id', $ctx->resellerSvpUserId)
+                        ->orWhere('owner_svp_user_id', 0)
+                        ->orWhereNull('owner_svp_user_id');
+                });
+            }
+
+            return $q->limit(20)->pluck('id')->map(fn ($v) => (int) $v)->all();
+        });
+        if ($ids === []) {
+            return collect();
+        }
+
+        return SvpPlan::query()->whereIn('id', $ids)->orderBy('sort_order')->get();
     }
 }

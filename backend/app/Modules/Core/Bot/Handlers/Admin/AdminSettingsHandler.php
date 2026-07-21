@@ -4,6 +4,7 @@ namespace App\Modules\Core\Bot\Handlers\Admin;
 
 use App\Models\SvpUser;
 use App\Modules\Core\Bot\BotContext;
+use App\Modules\Core\Bot\Services\AdminBotScopeService;
 use App\Modules\Core\Bot\Services\AdminPermissionService;
 use App\Modules\Core\Bot\Services\BotAdminMutateService;
 use App\Modules\Core\Bot\Services\BotRuntime;
@@ -27,6 +28,20 @@ class AdminSettingsHandler extends AbstractAdminHandler
         'force_join_channel_id' => 'force_join',
         'force_join_channel_url' => 'force_join',
         'force_join_prompt' => 'force_join',
+        'force_join_telegram_enabled' => 'force_join',
+        'force_join_telegram_chat_id' => 'force_join',
+        'force_join_telegram_username' => 'force_join',
+        'force_join_telegram_invite_link' => 'force_join',
+        'force_join_telegram_prompt_text' => 'force_join',
+        'force_join_telegram_announce_text' => 'force_join',
+        'force_join_bale_enabled' => 'force_join',
+        'force_join_bale_chat_id' => 'force_join',
+        'force_join_bale_username' => 'force_join',
+        'force_join_bale_invite_link' => 'force_join',
+        'force_join_bale_prompt_text' => 'force_join',
+        'force_join_bale_announce_text' => 'force_join',
+        'force_join_cache_ttl_sec' => 'force_join',
+        'force_join_negative_cache_ttl_sec' => 'force_join',
         'purge_expired_enabled' => 'purge_expired',
         'purge_expired_grace_days' => 'purge_expired',
         'purge_expired_notify_user' => 'purge_expired',
@@ -52,6 +67,12 @@ class AdminSettingsHandler extends AbstractAdminHandler
 
     public function openTab(BotContext $ctx, int $chatId, SvpUser $user, string $tabKey): void
     {
+        if ($this->isGlobalSettingsTab($tabKey) && $this->permissions->blocksGlobalSettingsForResellerBot($ctx)) {
+            $this->send($ctx, $chatId, $this->texts->getForUser('msg.reseller.global_settings_denied', $user, 'Global settings are not available on this bot.'));
+
+            return;
+        }
+
         match ($tabKey) {
             'bots' => $this->sendBotsStatus($ctx, $chatId, $user),
             'site_settings' => $this->sendSiteSettings($ctx, $chatId, $user),
@@ -76,8 +97,8 @@ class AdminSettingsHandler extends AbstractAdminHandler
 
     public function handleOp(BotContext $ctx, int $chatId, SvpUser $user, string $code): void
     {
-        if ($this->denyGlobalSettings($user, $code)) {
-            $this->send($ctx, $chatId, $this->texts->getForUser('msg.admin.denied_permission', $user));
+        if ($this->denyGlobalSettings($ctx, $user, $code)) {
+            $this->send($ctx, $chatId, $this->texts->getForUser('msg.reseller.global_settings_denied', $user, 'Global settings are not available on this bot.'));
 
             return;
         }
@@ -126,11 +147,50 @@ class AdminSettingsHandler extends AbstractAdminHandler
             $this->texts->getForUser('btn.admin.force_join_publish', $user, 'Publish force join') => [
                 'wizard' => ['state' => 'admin_force_join_publish', 'prompt' => 'Send channel message text (or - for default prompt)'],
             ],
-            $this->texts->getForUser('btn.admin.edit_force_join_channel', $user, 'Edit force join channel') => [
-                'wizard' => ['key' => 'force_join_channel_id', 'prompt' => 'Send force join channel id'],
+            $this->texts->getForUser('btn.admin.edit_force_join_tg_enabled', $user, 'Toggle TG force join') => [
+                'wizard' => ['key' => 'force_join_telegram_enabled', 'prompt' => 'Send yes/no for Telegram force join'],
             ],
-            $this->texts->getForUser('btn.admin.edit_force_join_prompt', $user, 'Edit force join prompt') => [
-                'wizard' => ['key' => 'force_join_prompt', 'prompt' => 'Send force join prompt text'],
+            $this->texts->getForUser('btn.admin.edit_force_join_tg_chat', $user, 'Edit TG force join chat id') => [
+                'wizard' => ['key' => 'force_join_telegram_chat_id', 'prompt' => 'Send Telegram force join channel chat id'],
+            ],
+            $this->texts->getForUser('btn.admin.edit_force_join_tg_username', $user, 'Edit TG force join username') => [
+                'wizard' => ['key' => 'force_join_telegram_username', 'prompt' => 'Send Telegram force join @username'],
+            ],
+            $this->texts->getForUser('btn.admin.edit_force_join_tg_invite', $user, 'Edit TG force join invite') => [
+                'wizard' => ['key' => 'force_join_telegram_invite_link', 'prompt' => 'Send Telegram force join invite link'],
+            ],
+            $this->texts->getForUser('btn.admin.edit_force_join_tg_prompt', $user, 'Edit TG force join prompt') => [
+                'wizard' => ['key' => 'force_join_telegram_prompt_text', 'prompt' => 'Send Telegram force join prompt text'],
+            ],
+            $this->texts->getForUser('btn.admin.edit_force_join_tg_announce', $user, 'Edit TG force join announce') => [
+                'wizard' => ['key' => 'force_join_telegram_announce_text', 'prompt' => 'Send Telegram force join announce text'],
+            ],
+            $this->texts->getForUser('btn.admin.edit_force_join_bale_enabled', $user, 'Toggle Bale force join') => [
+                'wizard' => ['key' => 'force_join_bale_enabled', 'prompt' => 'Send yes/no for Bale force join'],
+            ],
+            $this->texts->getForUser('btn.admin.edit_force_join_bale_chat', $user, 'Edit Bale force join chat id') => [
+                'wizard' => ['key' => 'force_join_bale_chat_id', 'prompt' => 'Send Bale force join channel chat id'],
+            ],
+            $this->texts->getForUser('btn.admin.edit_force_join_bale_username', $user, 'Edit Bale force join username') => [
+                'wizard' => ['key' => 'force_join_bale_username', 'prompt' => 'Send Bale force join @username'],
+            ],
+            $this->texts->getForUser('btn.admin.edit_force_join_bale_invite', $user, 'Edit Bale force join invite') => [
+                'wizard' => ['key' => 'force_join_bale_invite_link', 'prompt' => 'Send Bale force join invite link'],
+            ],
+            $this->texts->getForUser('btn.admin.edit_force_join_bale_prompt', $user, 'Edit Bale force join prompt') => [
+                'wizard' => ['key' => 'force_join_bale_prompt_text', 'prompt' => 'Send Bale force join prompt text'],
+            ],
+            $this->texts->getForUser('btn.admin.edit_force_join_bale_announce', $user, 'Edit Bale force join announce') => [
+                'wizard' => ['key' => 'force_join_bale_announce_text', 'prompt' => 'Send Bale force join announce text'],
+            ],
+            $this->texts->getForUser('btn.admin.edit_force_join_cache_ttl', $user, 'Edit force join cache TTL') => [
+                'wizard' => ['key' => 'force_join_cache_ttl_sec', 'prompt' => 'Send positive cache TTL seconds (min 30)'],
+            ],
+            $this->texts->getForUser('btn.admin.edit_force_join_neg_cache_ttl', $user, 'Edit force join negative cache TTL') => [
+                'wizard' => ['key' => 'force_join_negative_cache_ttl_sec', 'prompt' => 'Send negative cache TTL seconds (min 10)'],
+            ],
+            $this->texts->getForUser('btn.admin.force_join_publish', $user, 'Publish force join') => [
+                'wizard' => ['state' => 'admin_force_join_publish', 'prompt' => 'Send channel message text (or - for default prompt)'],
             ],
             $this->texts->getForUser('btn.admin.purge_run_cron', $user, 'Run purge cron') => [
                 'mutate' => ['op' => 'purge_expired_run_cron'],
@@ -460,12 +520,30 @@ class AdminSettingsHandler extends AbstractAdminHandler
 
     protected function sendForceJoin(BotContext $ctx, int $chatId, SvpUser $user): void
     {
-        $enabled = ! empty($this->settings->get('force_join_enabled', false)) ? '✅' : '❌';
-        $channel = (string) $this->settings->get('force_join_channel_id', '—');
-        $body = "Force join {$enabled}\nChannel: {$channel}";
+        $tgEnabled = ! empty($this->settings->get('force_join_telegram_enabled', false));
+        $tgChat = (string) ($this->settings->get('force_join_telegram_chat_id', 0) ?: '—');
+        $baleEnabled = ! empty($this->settings->get('force_join_bale_enabled', false));
+        $baleChat = (string) ($this->settings->get('force_join_bale_chat_id', '—') ?: '—');
+        $cacheTtl = (string) $this->settings->get('force_join_cache_ttl_sec', 180);
+        $negTtl = (string) $this->settings->get('force_join_negative_cache_ttl_sec', 45);
+        $tgMark = $tgEnabled ? '✅' : '❌';
+        $baleMark = $baleEnabled ? '✅' : '❌';
+        $body = "Force join\nTelegram {$tgMark} chat: {$tgChat}\nBale {$baleMark} chat: {$baleChat}\nCache TTL: {$cacheTtl}s / neg {$negTtl}s";
         if ($this->permissions->permissionActorId($user) < 1) {
-            $body .= "\n\n".$this->texts->getForUser('btn.admin.edit_force_join_channel', $user, 'Edit force join channel');
-            $body .= "\n".$this->texts->getForUser('btn.admin.edit_force_join_prompt', $user, 'Edit force join prompt');
+            $body .= "\n\n".$this->texts->getForUser('btn.admin.edit_force_join_tg_enabled', $user, 'Toggle TG force join');
+            $body .= "\n".$this->texts->getForUser('btn.admin.edit_force_join_tg_chat', $user, 'Edit TG force join chat id');
+            $body .= "\n".$this->texts->getForUser('btn.admin.edit_force_join_tg_username', $user, 'Edit TG force join username');
+            $body .= "\n".$this->texts->getForUser('btn.admin.edit_force_join_tg_invite', $user, 'Edit TG force join invite');
+            $body .= "\n".$this->texts->getForUser('btn.admin.edit_force_join_tg_prompt', $user, 'Edit TG force join prompt');
+            $body .= "\n".$this->texts->getForUser('btn.admin.edit_force_join_tg_announce', $user, 'Edit TG force join announce');
+            $body .= "\n".$this->texts->getForUser('btn.admin.edit_force_join_bale_enabled', $user, 'Toggle Bale force join');
+            $body .= "\n".$this->texts->getForUser('btn.admin.edit_force_join_bale_chat', $user, 'Edit Bale force join chat id');
+            $body .= "\n".$this->texts->getForUser('btn.admin.edit_force_join_bale_username', $user, 'Edit Bale force join username');
+            $body .= "\n".$this->texts->getForUser('btn.admin.edit_force_join_bale_invite', $user, 'Edit Bale force join invite');
+            $body .= "\n".$this->texts->getForUser('btn.admin.edit_force_join_bale_prompt', $user, 'Edit Bale force join prompt');
+            $body .= "\n".$this->texts->getForUser('btn.admin.edit_force_join_bale_announce', $user, 'Edit Bale force join announce');
+            $body .= "\n".$this->texts->getForUser('btn.admin.edit_force_join_cache_ttl', $user, 'Edit force join cache TTL');
+            $body .= "\n".$this->texts->getForUser('btn.admin.edit_force_join_neg_cache_ttl', $user, 'Edit force join negative cache TTL');
             $body .= "\n".$this->texts->getForUser('btn.admin.force_join_publish', $user, 'Publish force join');
         }
         $this->send($ctx, $chatId, $body);
@@ -506,20 +584,37 @@ class AdminSettingsHandler extends AbstractAdminHandler
             return in_array($v, ['1', 'yes', 'y', 'true', 'on', 'بله'], true) ? true
                 : (in_array($v, ['0', 'no', 'n', 'false', 'off', 'خیر'], true) ? false : $value);
         }
-        if (str_ends_with($key, '_days') || str_ends_with($key, '_port') || $key === 'admin_notify_chat_id' || $key === 'force_join_channel_id') {
+        if (str_ends_with($key, '_days') || str_ends_with($key, '_port') || str_ends_with($key, '_ttl_sec')
+            || $key === 'admin_notify_chat_id'
+            || $key === 'force_join_channel_id'
+            || $key === 'force_join_telegram_chat_id'
+            || $key === 'force_join_bale_chat_id') {
             return is_numeric($value) ? (int) $value : $value;
         }
 
         return $value;
     }
 
-    protected function denyGlobalSettings(SvpUser $user, string $code): bool
+    protected function denyGlobalSettings(BotContext $ctx, SvpUser $user, string $code): bool
     {
+        if ($this->permissions->blocksGlobalSettingsForResellerBot($ctx)) {
+            return in_array($code, ['pan', 'tg', 'wtg', 'wbl', 'swtg', 'swbl'], true);
+        }
+
         if ($this->permissions->permissionActorId($user) < 1) {
             return false;
         }
 
         return in_array($code, ['pan', 'wtg', 'wbl', 'swtg', 'swbl'], true);
+    }
+
+    protected function isGlobalSettingsTab(string $tabKey): bool
+    {
+        return in_array(strtolower(trim($tabKey)), [
+            'bots', 'site_settings', 'notifications', 'bot_ui', 'proxy', 'force_join',
+            'purge_expired', 'finance', 'backup', 'logs', 'whitelabel', 'service_naming',
+            'resellers_defaults', 'referral', 'plans_catalog', 'cards', 'receipts',
+        ], true);
     }
 
     /** @return array{ok: bool, message?: string} */

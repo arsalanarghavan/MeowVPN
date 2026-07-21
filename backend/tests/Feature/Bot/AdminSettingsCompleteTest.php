@@ -2,11 +2,13 @@
 
 namespace Tests\Feature\Bot;
 
+use App\Models\DashboardUser;
 use App\Models\SvpUser;
 use App\Modules\Core\Bot\BotContext;
 use App\Modules\Core\Bot\Handlers\Admin\AdminSettingsHandler;
 use App\Modules\Core\Bot\Services\BotStateService;
 use App\Services\SettingsStore;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Tests\Concerns\CreatesSvpTestSchema;
 use Tests\Concerns\TogglesModules;
@@ -27,12 +29,21 @@ class AdminSettingsCompleteTest extends TestCase
 
     protected function admin(): SvpUser
     {
-        return SvpUser::query()->create([
+        $user = SvpUser::query()->create([
             'tg_user_id' => 7800,
             'status' => 'approved',
+            'role' => 'admin',
             'admin_mode' => true,
             'created_at' => now(),
         ]);
+        DashboardUser::query()->create([
+            'username' => 'admin_settings_'.$user->id,
+            'password' => Hash::make('secret'),
+            'role' => 'admin',
+            'svp_user_id' => (int) $user->id,
+        ]);
+
+        return $user;
     }
 
     /** @return array<string, array{0: string}> */
@@ -68,7 +79,7 @@ class AdminSettingsCompleteTest extends TestCase
             'purge_expired' => ['purge_expired', 'purge_expired_enabled', '1', 'purge_expired_enabled'],
             'proxy' => ['proxy', 'telegram_http_proxy', 'socks5://127.0.0.1:1080', 'telegram_http_proxy'],
             'cards' => ['cards', 'display_order_hint', 'newest-first', 'cards.display_order_hint'],
-            'force_join' => ['force_join', 'force_join_enabled', '1', 'force_join_enabled'],
+            'force_join' => ['force_join', 'force_join_telegram_enabled', '1', 'force_join_telegram_enabled'],
             'whitelabel' => ['whitelabel', 'brand_name', 'BotBrand', 'brand_name'],
             'referral' => ['referral', 'referral_percent', '12', 'referral_percent'],
             'backup' => ['backup', 'backup_interval_minutes', '90', 'backup_interval_minutes'],
@@ -102,7 +113,7 @@ class AdminSettingsCompleteTest extends TestCase
         $stored = app(SettingsStore::class)->get($settingKey);
         if ($field === 'default_visible') {
             $this->assertTrue((bool) $stored);
-        } elseif (str_contains($settingKey, 'logs_retention') || in_array($field, ['purge_expired_enabled', 'force_join_enabled', 'backup_interval_minutes', 'referral_percent', 'default_commission_percent', 'notify_idle_after_days'], true)) {
+        } elseif (str_contains($settingKey, 'logs_retention') || in_array($field, ['purge_expired_enabled', 'force_join_enabled', 'force_join_telegram_enabled', 'backup_interval_minutes', 'referral_percent', 'default_commission_percent', 'notify_idle_after_days'], true)) {
             $this->assertSame((int) $value, (int) $stored);
         } else {
             $this->assertSame($value, (string) $stored);

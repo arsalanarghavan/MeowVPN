@@ -1,6 +1,6 @@
 "use client"
 
-import { useTranslations } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { QRCodeSVG } from "qrcode.react"
 import {
@@ -394,6 +394,7 @@ configsActive?: boolean
   onMutateSuccess?: () => void
 }) {
   const { isFa, dir: dialogDir } = useDashLocale()
+  const locale = useLocale()
 
   const t = useTranslations("configsAdmin")
   const tInbound = useTranslations("inboundLinkAdmin")
@@ -952,11 +953,8 @@ configsActive?: boolean
   }, [afterMutate, merged?.default_svp_user_id, quickPlanId, quickTarget, t, tl])
 
   const purgeSettingsUrl = useMemo(() => {
-    if (typeof window === "undefined") return "#"
-    const boot = window.__SIMPLEVPBOT_DASH__ || {}
-    const base = String(boot.dashboardUrl || `${window.location.origin}/dashboard/`).replace(/\/$/, "")
-    return `${base}/site_settings/?site_subtab=purge_expired`
-  }, [])
+    return `/${locale}/dashboard/site_settings/?site_subtab=purge_expired`
+  }, [locale])
 
   const toggleBulkRow = useCallback(
     (rk: string, panel_id: number, inboundId: number, email: string, checked: boolean) => {

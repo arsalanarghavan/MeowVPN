@@ -52,6 +52,13 @@ class AdminKeyboardBuilder
     /** @return array<string, mixed> */
     public function sectionReply(string $sectionId, SvpUser $user): array
     {
+        foreach ($this->studioSurfaceCandidates($sectionId) as $surface) {
+            $custom = $this->layout->buildReplySubmenuWithBack($surface, $user);
+            if ($custom !== null) {
+                return $custom;
+            }
+        }
+
         $allowed = $this->permissions->allowedTabs($user);
         $rows = [];
         $pair = [];
@@ -218,6 +225,11 @@ class AdminKeyboardBuilder
     /** @return array<string, mixed> */
     public function usersSubmenuReply(SvpUser $user): array
     {
+        $custom = $this->layout->buildReplySubmenuWithBack('admin_users_submenu', $user);
+        if ($custom !== null) {
+            return $custom;
+        }
+
         return [
             'keyboard' => [
                 [
@@ -255,7 +267,11 @@ class AdminKeyboardBuilder
                 continue;
             }
             $label = (string) ($row->username ?? $row->tg_username ?? '#'.$uid);
-            $rows[] = [['text' => '👤 '.$label, 'callback_data' => 'pnl:ui:'.$uid]];
+            $line = [['text' => '👤 '.$label, 'callback_data' => 'pnl:ui:'.$uid]];
+            if ($queue === 'rejected') {
+                $line[] = ['text' => '↩', 'callback_data' => 'pnl:rr:'.$uid];
+            }
+            $rows[] = $line;
         }
         $nav = [];
         if ($off > 0) {
@@ -282,6 +298,54 @@ class AdminKeyboardBuilder
             ['text' => 'Approved', 'callback_data' => 'pnl:aq:0'],
             ['text' => 'Rejected', 'callback_data' => 'pnl:rq:0'],
         ];
+
+        return ['inline_keyboard' => $rows];
+    }
+
+    /**
+     * Admin create-service payment mode (pnl:nsx fixed / pnl:nsm per-GB).
+     *
+     * @return array{inline_keyboard: list<list<array<string, string>>>}
+     */
+    public function adminCreateServiceModeKeyboard(int $targetUid, int $planId, ?int $volumeGb = null): array
+    {
+        $t = $targetUid;
+        $p = $planId;
+        $modes = ['w' => '💳 Wallet', 'f' => '🎁 Free', 'i' => '🧾 Invoice'];
+        $rows = [];
+        foreach ($modes as $k => $lab) {
+            $cb = $volumeGb === null
+                ? 'pnl:nsx:'.$t.':'.$p.':'.$k
+                : 'pnl:nsm:'.$t.':'.$p.':'.(int) $volumeGb.':'.$k;
+            if (strlen($cb) <= 64) {
+                $rows[] = [['text' => $lab, 'callback_data' => $cb]];
+            }
+        }
+
+        return ['inline_keyboard' => $rows];
+    }
+
+    /**
+     * Admin renew / add-volume / add-slots payment mode (pnl:nrr / nva / nus).
+     *
+     * @param  'renew'|'vol'|'slots'  $kind
+     * @return array{inline_keyboard: list<list<array<string, string>>>}
+     */
+    public function adminServicePaymentModeKeyboard(string $kind, int $serviceId, ?int $extra = null): array
+    {
+        $sid = $serviceId;
+        $modes = ['w' => '💳 Wallet', 'f' => '🎁 Free', 'i' => '🧾 Invoice'];
+        $rows = [];
+        foreach ($modes as $k => $lab) {
+            $cb = match ($kind) {
+                'renew' => 'pnl:nrr:'.$sid.':'.$k,
+                'vol' => 'pnl:nva:'.$sid.':'.(int) $extra.':'.$k,
+                default => 'pnl:nus:'.$sid.':'.(int) $extra.':'.$k,
+            };
+            if (strlen($cb) <= 64) {
+                $rows[] = [['text' => $lab, 'callback_data' => $cb]];
+            }
+        }
 
         return ['inline_keyboard' => $rows];
     }
@@ -376,5 +440,17 @@ class AdminKeyboardBuilder
                 ['text' => '📄 Next', 'callback_data' => $cb],
             ]],
         ];
+    }
+
+    /** @return list<string> */
+    protected function studioSurfaceCandidates(string $sectionId): array
+    {
+        $sectionId = strtolower(trim($sectionId));
+
+        return match ($sectionId) {
+            'users' => ['admin_users_submenu'],
+            'finance' => ['admin_finance_submenu'],
+            default => [],
+        };
     }
 }

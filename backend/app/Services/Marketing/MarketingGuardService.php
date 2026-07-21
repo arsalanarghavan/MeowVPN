@@ -240,39 +240,15 @@ class MarketingGuardService
     }
 
     /** @return array<string, mixed> */
-    public function lifecycleStatsStub(int $windowDays = 30): array
+    public function lifecycleStatsStub(int $windowDays = 30, int $ownerId = 0): array
     {
-        $since = now()->subDays(max(1, $windowDays));
-        $sent = 0;
-        $converted = 0;
-        $revenue = 0.0;
-        if (Schema::hasTable('svp_marketing_offers')) {
-            $sent = SvpMarketingOffer::query()
-                ->whereIn('status', ['sent', 'converted'])
-                ->where('sent_at', '>=', $since)
-                ->count();
-            $converted = SvpMarketingOffer::query()
-                ->where('status', 'converted')
-                ->where('sent_at', '>=', $since)
-                ->count();
-        }
-        $eligible = Schema::hasTable('svp_users')
-            ? SvpUser::query()->where('status', 'approved')->count()
-            : 0;
+        return $this->lifecycleStats($windowDays, $ownerId);
+    }
 
-        return [
-            'window_days' => $windowDays,
-            'summary' => [
-                'eligible_now' => $eligible,
-                'sent' => $sent,
-                'converted' => $converted,
-                'revenue_toman' => $revenue,
-                'lifecycle_confirmed' => $this->lifecycleConfirmed(),
-            ],
-            'health' => [
-                'last_cron' => $this->lastCronRun(),
-                'cron_block_reason' => $this->cronBlockReason(),
-            ],
-        ];
+    /** @return array<string, mixed> */
+    public function lifecycleStats(int $windowDays = 30, int $ownerId = 0): array
+    {
+        return app(MarketingLifecycleAnalyticsService::class)
+            ->buildDashboardPayload($windowDays, $ownerId, $ownerId < 1);
     }
 }

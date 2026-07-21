@@ -62,6 +62,16 @@ class MutateScopeGuard
             }
         }
 
+        if ($op === 'plan') {
+            $planId = (int) ($payload['plan_id'] ?? $payload['id'] ?? 0);
+            if ($planId > 0) {
+                $plan = DB::table('svp_plans')->where('id', $planId)->first();
+                if (! $plan || (int) ($plan->owner_svp_user_id ?? 0) !== $actorId) {
+                    return ['ok' => false, 'message' => 'forbidden_scope', 'code' => 'forbidden'];
+                }
+            }
+        }
+
         if ($op === 'user_service_transfer') {
             $target = trim((string) ($payload['target'] ?? ''));
             if ($target !== '') {

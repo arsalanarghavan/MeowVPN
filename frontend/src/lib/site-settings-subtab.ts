@@ -31,3 +31,10 @@ export function writeSiteSubtabToUrl(subtab: SiteSettingsSubtab) {
   url.searchParams.set("site_subtab", subtab)
   window.history.replaceState(window.history.state, "", url.toString())
 }
+
+/** Legacy top-level tabs folded into site_settings hub. */
+export function resolveLegacySiteTab(tab: string): { tab: string; subtab?: SiteSettingsSubtab } {
+  if (tab === "notifications") return { tab: "site_settings", subtab: "notifications" }
+  if (tab === "logs") return { tab: "site_settings", subtab: "logs" }
+  return { tab }
+}

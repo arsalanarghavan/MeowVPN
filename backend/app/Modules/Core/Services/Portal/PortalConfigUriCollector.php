@@ -3,6 +3,7 @@
 namespace App\Modules\Core\Services\Portal;
 
 use App\Models\SvpUser;
+use App\Modules\XuiPanel\Services\PanelAdminService;
 use App\Services\Reseller\ResellerBrandingService;
 use App\Modules\XrayCore\Services\SubscriptionUriBuilder;
 use Illuminate\Support\Facades\DB;

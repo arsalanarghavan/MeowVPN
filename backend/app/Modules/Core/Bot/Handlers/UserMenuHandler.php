@@ -15,11 +15,21 @@ class UserMenuHandler
         protected SupportHandler $support,
         protected AppsHandler $apps,
         protected ReferralHandler $referral,
+        protected \App\Modules\Core\Bot\Services\KeyboardBuilder $keyboards,
+        protected \App\Modules\Core\Bot\Services\BotRuntime $runtime,
+        protected \App\Modules\Core\Bot\Services\TextService $texts,
     ) {}
+
+    public function showMainMenu(BotContext $ctx, SvpUser $user, int $chatId): void
+    {
+        $this->runtime->sendMessage($ctx, $chatId, $this->texts->getForUser('msg.main_menu', $user, 'Main menu'), [
+            'reply_markup' => $this->keyboards->userMainReply($user),
+        ]);
+    }
 
     public function showBuy(BotContext $ctx, SvpUser $user, int $chatId): void
     {
-        $this->buy->showCategoryPicker($ctx, $user, $chatId);
+        $this->buy->showBuyEntry($ctx, $user, $chatId);
     }
 
     public function showManage(BotContext $ctx, SvpUser $user, int $chatId): void

@@ -93,7 +93,7 @@ class MutationPipeline
         }
 
         $botOps = ['bot_toggle_enabled', 'bot_toggle_platform_enabled', 'bot_test_telegram', 'bot_test_bale',
-            'bot_diagnostics', 'bot_set_webhook', 'bot_delete_webhook', 'bot_admin_id_add', 'bot_admin_id_remove',
+            'bot_diagnostics', 'bot_set_webhook', 'bot_delete_webhook', 'bot_set_update_mode', 'bot_admin_id_add', 'bot_admin_id_remove',
             'force_join_publish', 'telegram_proxy_test', 'texts_save', 'text_reset_one', 'texts_reset',
             'bot_ui_layout_save', 'bot_ui_layout_reset', 'bot_ui_group_create', 'bot_ui_group_delete',
             'telegram_mirror_save', 'telegram_mirror_delete', 'telegram_mirror_set_webhook',

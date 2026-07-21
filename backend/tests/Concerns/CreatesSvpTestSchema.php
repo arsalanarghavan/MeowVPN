@@ -48,6 +48,8 @@ trait CreatesSvpTestSchema
             $table->text('state_data')->nullable();
             $table->string('phone')->nullable();
             $table->string('username')->nullable();
+            $table->string('tg_username')->nullable();
+            $table->string('bale_username')->nullable();
             $table->string('first_name')->nullable();
             $table->string('last_name')->nullable();
             $table->string('role', 20)->default('user');
@@ -140,6 +142,11 @@ trait CreatesSvpTestSchema
             $table->string('reject_reason')->nullable();
             $table->string('file_id')->nullable();
             $table->string('file_path')->nullable();
+            $table->string('tg_file_id')->nullable();
+            $table->string('bale_file_id')->nullable();
+            $table->string('stored_image_path')->nullable();
+            $table->text('admin_messages_json')->nullable();
+            $table->unsignedBigInteger('billing_reseller_svp_id')->nullable();
             $table->timestamp('created_at')->nullable();
         });
 
@@ -430,6 +437,9 @@ trait CreatesSvpTestSchema
             $table->unsignedBigInteger('panel_id')->default(1);
             $table->unsignedBigInteger('inbound_id')->default(0);
             $table->string('label')->nullable();
+            $table->string('default_service_type', 16)->default('xray');
+            $table->integer('default_inbound_id')->default(0);
+            $table->unsignedBigInteger('default_l2tp_server_id')->default(0);
             $table->decimal('price_per_gb', 15, 4)->default(0);
             $table->decimal('price_per_day', 15, 4)->default(0);
             $table->boolean('active')->default(true);

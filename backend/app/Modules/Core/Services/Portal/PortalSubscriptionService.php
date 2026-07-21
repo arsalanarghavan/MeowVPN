@@ -23,10 +23,11 @@ class PortalSubscriptionService
             return null;
         }
 
-        $userId = (int) $request->query('svp_u', 0);
-        $serviceId = (int) $request->query('svp_sid', 0);
-        $exp = (int) $request->query('svp_e', 0);
-        $sig = (string) $request->query('svp_s', '');
+        $params = $this->portal->signedParamsFromRequest($request);
+        $userId = $params['user_id'];
+        $serviceId = $params['service_id'];
+        $exp = $params['exp'];
+        $sig = $params['sig'];
 
         $user = $this->portal->verifyCustomerSignature($userId, $exp, $sig, $serviceId);
         if (! $user) {

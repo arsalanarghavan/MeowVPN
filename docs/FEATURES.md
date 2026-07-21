@@ -1,8 +1,8 @@
 # گزارش جامع وضعیت پنل نماینده و ربات مستقل
 
-**آخرین به‌روزرسانی:** **Absolute UI residual** — shell impersonate/nav، plan mutate fields، monitoring/VPN/panels depth، reseller UI rules، Playwright `frontend/e2e/{shell,shell-depth,admin-tabs,admin-mutate,admin-depth}.spec.ts`.
+**آخرین به‌روزرسانی:** **Residual Parity Wave D** — docs honesty، quarantine Vite-era e2e، Next depth (`residual-closeout-wave-d`)، configs/mirror HTTP tests.
 
-## Playwright (current — Next)
+## Playwright (current — Next App Router)
 
 | Spec | Coverage |
 |------|----------|
@@ -10,79 +10,85 @@
 | `frontend/e2e/shell-depth.spec.ts` | CSRF, `/me/state`, impersonate banner, magic/portal, users deep-link, ui-preferences |
 | `frontend/e2e/admin-tabs.spec.ts` | Tab smoke + auth guard |
 | `frontend/e2e/admin-mutate.spec.ts` | API login when backend up; merge/orphans/rial/crypto/configs mutates |
-| `frontend/e2e/admin-depth.spec.ts` | overview/backup/marketing/bot_ui/plans inbound/mirror |
+| `frontend/e2e/admin-depth.spec.ts` | OverviewAdminClient shell; backup; `marketing_lifecycle` (+ confirm mutate); bot_ui; plans inbound; bots mirror |
+| `frontend/e2e/residual-closeout-p2.spec.ts` | Portal invalid-`sig` smoke; overview/bots pager; texts/force-join/marketing_lifecycle URL smoke; user persona portal |
+| `frontend/e2e/residual-closeout-wave-d.spec.ts` | `bot_set_update_mode`; `texts_save` fa/en; `force_join_publish`; `marketing_rule_save` + `rule_id`; payments tx pager; backup error surface |
 
-Legacy archive: `frontend-vite-legacy/e2e/` (v23–v25, session-v27).
+Notes: overview/marketing/payments checks are **smoke** (heading / visible controls / mutate fired), not full KPI/automation depth. Portal e2e does **not** verify HMAC — crypto/TTL stays on PHPUnit (`PortalSignedLinkTtlTest`, `PortalSubscriptionAcceptanceTest`).
+
+Primary UI is Next App Router (`npm run build`). Dead Vite SPA archived at `frontend/src/_vite_legacy_archive/` and `frontend-vite-legacy/`.
+
+**Quarantined (not CI, not evidence):** `frontend/e2e/quarantine/` — `dashboard-v23`, `dashboard-v24-qa`, `dashboard-v25-depth`, `dashboard-auth-v23`, `dashboard-session-v27` (Vite paths / `dash-tab-*` testids). Older: `frontend/e2e/archive/`.
 
 Set `PLAYWRIGHT_SKIP_BACKEND=1` to fall back to session-cookie mocks.
 
 ## Laravel backend (spec v28 — خلاصه)
 
-- §14+§16: [`SECTION14-GAP-MATRIX-V28-FA.md`](docs/SECTION14-GAP-MATRIX-V28-FA.md) — generated from `*-v28.log`
-- OPS: [`OPS-EVIDENCE-INDEX-V28.md`](docs/evidence/OPS-EVIDENCE-INDEX-V28.md) + [`run-v28-evidence.sh`](backend/scripts/ops/run-v28-evidence.sh)
-- Sync: `docs/scripts/sync-spec-from-matrix.py` + `docs/scripts/sync-spec-checkboxes.sh` (v28)
-- Playwright CI: v23 + v24-qa + v25-depth + dashboard-session-v27 (cookie fix)
+- §14+§16: [`SECTION14-GAP-MATRIX-V28-FA.md`](SECTION14-GAP-MATRIX-V28-FA.md) — generated from `*-v28.log`
+- OPS: [`OPS-EVIDENCE-INDEX-V28.md`](evidence/OPS-EVIDENCE-INDEX-V28.md) + [`run-v28-evidence.sh`](../backend/scripts/ops/run-v28-evidence.sh)
+- Sync: `scripts/sync-spec-from-matrix.py` + `scripts/sync-spec-checkboxes.sh` (v28)
+- Playwright CI: Next only — `shell*`, `admin-*`, `residual-closeout-*` (Vite v23–v27 specs quarantined)
 - Tag: `arch-decommission-v28` (pending push)
 
 ## Laravel dashboard (spec v27 — خلاصه)
 
-- §14+§16: [`SECTION14-GAP-MATRIX-V27-FA.md`](docs/SECTION14-GAP-MATRIX-V27-FA.md) — **145 DONE / 13 OPS**
-- OPS: [`OPS-EVIDENCE-INDEX-V27.md`](docs/evidence/OPS-EVIDENCE-INDEX-V27.md) + [`run-v27-evidence.sh`](backend/scripts/ops/run-v27-evidence.sh)
+- §14+§16: [`SECTION14-GAP-MATRIX-V27-FA.md`](SECTION14-GAP-MATRIX-V27-FA.md) — **145 DONE / 13 OPS**
+- OPS: [`OPS-EVIDENCE-INDEX-V27.md`](evidence/OPS-EVIDENCE-INDEX-V27.md) + [`run-v27-evidence.sh`](../backend/scripts/ops/run-v27-evidence.sh)
 - Code fixes: `normalizeAdminApiPath` §7.1، nginx `dashboard/admin` only، `NavTabsBuilder` broadcast gate
-- Playwright CI: v23 + v24-qa + v25-depth + **dashboard-session-v27**
+- Playwright: superseded by Next e2e (legacy v27 session spec in `frontend/e2e/quarantine/`)
 - Tag: `arch-decommission-v27` (pending push)
 
 ## Laravel dashboard (spec v26 — خلاصه)
 
-- §14+§16: [`SECTION14-GAP-MATRIX-V26-FA.md`](docs/SECTION14-GAP-MATRIX-V26-FA.md) — **158/158 DONE**
-- OPS: [`OPS-EVIDENCE-INDEX-V26.md`](docs/evidence/OPS-EVIDENCE-INDEX-V26.md) + [`run-v26-evidence.sh`](backend/scripts/ops/run-v26-evidence.sh)
-- Playwright CI: `dashboard-v23` + `dashboard-v24-qa` + `dashboard-v25-depth`
+- §14+§16: [`SECTION14-GAP-MATRIX-V26-FA.md`](SECTION14-GAP-MATRIX-V26-FA.md) — **158/158 DONE**
+- OPS: [`OPS-EVIDENCE-INDEX-V26.md`](evidence/OPS-EVIDENCE-INDEX-V26.md) + [`run-v26-evidence.sh`](backend/scripts/ops/run-v26-evidence.sh)
+- Playwright: legacy Vite specs quarantined (`frontend/e2e/quarantine/`)
 - Route alias: `/api/v1/dashboard/admin/*` در `routes/api.php`
 - Tag: `arch-decommission-v26`
 
 ## Laravel dashboard (spec v25 — خلاصه)
 
-- §14+§16: [`SECTION14-GAP-MATRIX-V25-FA.md`](docs/SECTION14-GAP-MATRIX-V25-FA.md) — **146 DONE / 12 OPS**
-- Plan execution: [`SPEC-DEVIATIONS-V24-SUMMARY-FA.md`](docs/SPEC-DEVIATIONS-V24-SUMMARY-FA.md) + v25 SQL/CI/matrix
+- §14+§16: [`SECTION14-GAP-MATRIX-V25-FA.md`](SECTION14-GAP-MATRIX-V25-FA.md) — **146 DONE / 12 OPS**
+- Plan execution: [`SPEC-DEVIATIONS-V24-SUMMARY-FA.md`](SPEC-DEVIATIONS-V24-SUMMARY-FA.md) + v25 SQL/CI/matrix
 - Legacy WP root: [`archive/wp-plugin-root/`](archive/wp-plugin-root/)
-- OPS: [`OPS-MAINTENANCE-CALENDAR-V24-FA.md`](docs/OPS-MAINTENANCE-CALENDAR-V24-FA.md) — next quarterly **2026-09-16**
-- Playwright: `dashboard-v23` + `dashboard-v24-qa` + `dashboard-v25-depth` in CI
+- OPS: [`OPS-MAINTENANCE-CALENDAR-V24-FA.md`](OPS-MAINTENANCE-CALENDAR-V24-FA.md) — next quarterly **2026-09-16**
+- Playwright: legacy Vite specs quarantined (`frontend/e2e/quarantine/`)
 - ARCH-12: commit `4bb296f` + tag `arch-decommission-v25`
 
 ## Laravel dashboard (spec v24 — خلاصه)
 
-- §14+§16: [`SECTION14-GAP-MATRIX-V24-FA.md`](docs/SECTION14-GAP-MATRIX-V24-FA.md) — **158 DONE carried forward**
-- Plan execution: [`SPEC-DEVIATIONS-V24-SUMMARY-FA.md`](docs/SPEC-DEVIATIONS-V24-SUMMARY-FA.md)
+- §14+§16: [`SECTION14-GAP-MATRIX-V24-FA.md`](SECTION14-GAP-MATRIX-V24-FA.md) — **158 DONE carried forward**
+- Plan execution: [`SPEC-DEVIATIONS-V24-SUMMARY-FA.md`](SPEC-DEVIATIONS-V24-SUMMARY-FA.md)
 - Legacy WP root: [`archive/wp-plugin-root/`](archive/wp-plugin-root/)
-- OPS: [`OPS-MAINTENANCE-CALENDAR-V24-FA.md`](docs/OPS-MAINTENANCE-CALENDAR-V24-FA.md)
-- Playwright: `dashboard-v23` + `dashboard-v24-qa` in CI
+- OPS: [`OPS-MAINTENANCE-CALENDAR-V24-FA.md`](OPS-MAINTENANCE-CALENDAR-V24-FA.md)
+- Playwright: legacy Vite specs quarantined (`frontend/e2e/quarantine/`)
 - ARCH-12: decommission commit in v24 plan
 
 ## Laravel dashboard (spec v23 — خلاصه)
 
-- §14+§16: [`SECTION14-GAP-MATRIX-V23-FA.md`](docs/SECTION14-GAP-MATRIX-V23-FA.md) — **158 DONE / 0 PARTIAL / 0 OPEN**
-- Spec: [`LARAVEL-BACKEND-SPEC-FA.md`](docs/LARAVEL-BACKEND-SPEC-FA.md) — **158 `[x]`** (32 checkbox implicit جدید + 126 قبلی)
-- Matrix: Line drift اصلاح شد؛ `sync-spec-from-matrix.py` match by criterion text
-- Playwright: `frontend/e2e/dashboard-v23.spec.ts`, `dashboard-auth-v23.spec.ts` — CI v23 only
+- §14+§16: [`SECTION14-GAP-MATRIX-V23-FA.md`](SECTION14-GAP-MATRIX-V23-FA.md) — **158 DONE / 0 PARTIAL / 0 OPEN**
+- Spec: [`LARAVEL-BACKEND-SPEC-FA.md`](LARAVEL-BACKEND-SPEC-FA.md) — **158 `[x]`** (32 checkbox implicit جدید + 126 قبلی)
+- Matrix: Line drift ~+24 vs current spec; `sync-spec-from-matrix.py` match by criterion text
+- Playwright: **quarantined** — `frontend/e2e/quarantine/dashboard-v23*.ts` (Vite-era; not Next evidence)
 - Tests: `GroupAcceptanceV23Test`, `MutateDepthBatchV23Part1/2/3/4`, `MarketingCronOffersTest`, `CryptoIpnConfirmedTest`, `L2tpModuleGateTest`, `WpImportRowCountTest`, `BackupRestoreStagingTest`, `RelaySetupOrderTest`
-- OPS: [`OPS-EVIDENCE-INDEX-V23.md`](docs/evidence/OPS-EVIDENCE-INDEX-V23.md) — 2026-06-16 re-verify
-- Docs: [`SPEC-DEVIATIONS-FA.md`](docs/SPEC-DEVIATIONS-FA.md) v23 + inline amendments §2/§6/§7/§8/§13
+- OPS: [`OPS-EVIDENCE-INDEX-V23.md`](evidence/OPS-EVIDENCE-INDEX-V23.md) — 2026-06-16 re-verify
+- Docs: [`SPEC-DEVIATIONS-FA.md`](SPEC-DEVIATIONS-FA.md) v23 + inline amendments §2/§6/§7/§8/§13
 - ARCH-12: git commit فقط با درخواست صریح operator
 
 ## Laravel dashboard (spec v22 — خلاصه)
 
-- §14: [`SECTION14-GAP-MATRIX-V22-FA.md`](docs/SECTION14-GAP-MATRIX-V22-FA.md) — 126 سطر؛ 98 DONE، 18 PARTIAL، 10 OPEN (شناسه‌دار)
-- Spec: [`LARAVEL-BACKEND-SPEC-FA.md`](docs/LARAVEL-BACKEND-SPEC-FA.md) — 98 checkbox `[x]` (هم‌خوان با matrix؛ `sync-spec-checkboxes.sh` exit 1 اگر بیش‌ادعا)
+- §14: [`SECTION14-GAP-MATRIX-V22-FA.md`](SECTION14-GAP-MATRIX-V22-FA.md) — 126 سطر؛ 98 DONE، 18 PARTIAL، 10 OPEN (شناسه‌دار)
+- Spec: [`LARAVEL-BACKEND-SPEC-FA.md`](LARAVEL-BACKEND-SPEC-FA.md) — 98 checkbox `[x]` (هم‌خوان با matrix؛ `sync-spec-checkboxes.sh` exit 1 اگر بیش‌ادعا)
 - Backend: `$resellerMap` 61 entry؛ `bot_ui` reseller read-only در boot؛ `configs_client_*` admin-only؛ `link_wp_user` deprecated
 - Tests: `GroupAcceptanceV22Test`, `MutateDepthBatchV22Part1/2/3/4` (96 ops) + v21 44 = 140 depth؛ `MetricsIncrementTest` بدون skip؛ `BroadcastWorkerTimeoutTest`
 - Playwright: `frontend/e2e/dashboard-v22.spec.ts`, `dashboard-auth-v22.spec.ts` — CI testMatch v22 only (v14–v21 deprecated local default)
-- OPS: [`OPS-EVIDENCE-INDEX-V22.md`](docs/evidence/OPS-EVIDENCE-INDEX-V22.md) — `api.simplevpbot.ir`؛ soak ~579 خط
-- Docs: [`SPEC-DEVIATIONS-FA.md`](docs/SPEC-DEVIATIONS-FA.md) v22 + 6 amendment؛ [`MIGRATION-AUDIT-V22-FA.md`](docs/MIGRATION-AUDIT-V22-FA.md)
+- OPS: [`OPS-EVIDENCE-INDEX-V22.md`](evidence/OPS-EVIDENCE-INDEX-V22.md) — `api.simplevpbot.ir`؛ soak ~579 خط
+- Docs: [`SPEC-DEVIATIONS-FA.md`](SPEC-DEVIATIONS-FA.md) v22 + 6 amendment؛ [`MIGRATION-AUDIT-V22-FA.md`](MIGRATION-AUDIT-V22-FA.md)
 - ARCH-12: git commit فقط با درخواست صریح operator
 
 ## Laravel dashboard (spec v21 — خلاصه)
 
-- §14: [`SECTION14-GAP-MATRIX-V21-FA.md`](docs/SECTION14-GAP-MATRIX-V21-FA.md) — 98 DONE، 18 PARTIAL، 10 OPEN
+- §14: [`SECTION14-GAP-MATRIX-V21-FA.md`](SECTION14-GAP-MATRIX-V21-FA.md) — 98 DONE، 18 PARTIAL، 10 OPEN
 - Backend: bots/xui admin-only §10.2؛ broadcast marketing gate؛ marketing.lifecycle write admin-only؛ overview `data-testid`
 - Tests: `GroupAcceptanceV21Test`, `MutateDepthBatchV21Part1/2/3` (44 ops), `MetricsIncrementTest` catalog
 - Playwright: `frontend/e2e/dashboard-v21.spec.ts`, `dashboard-auth-v21.spec.ts` — superseded by v22
@@ -92,7 +98,7 @@ Set `PLAYWRIGHT_SKIP_BACKEND=1` to fall back to session-cookie mocks.
 
 ## Laravel dashboard (spec v20 — خلاصه)
 
-- §14: [`SECTION14-GAP-MATRIX-V20-FA.md`](docs/SECTION14-GAP-MATRIX-V20-FA.md) — 126/126 DONE
+- §14: [`SECTION14-GAP-MATRIX-V20-FA.md`](SECTION14-GAP-MATRIX-V20-FA.md) — 126/126 DONE
 - Backend: `activeTab`/`tab` alias، `OverviewLoader` stats series، configs_client admin-only، `reseller_xui_panels` §E.4
 - Tests: `GroupAcceptanceV20Test`, `MutateDepthBatchV20Part1/2`, `DatabaseIndexesParityTest` + billing_reseller KEY
 - Playwright: `frontend/e2e/dashboard-v20.spec.ts`, `dashboard-auth-v20.spec.ts` — CI testMatch v20 only
@@ -102,7 +108,7 @@ Set `PLAYWRIGHT_SKIP_BACKEND=1` to fall back to session-cookie mocks.
 
 ## Laravel dashboard (spec v19 — خلاصه)
 
-- §14: [`SECTION14-GAP-MATRIX-V19-FA.md`](docs/SECTION14-GAP-MATRIX-V19-FA.md) — 122 DONE + 4 OPS rotation
+- §14: [`SECTION14-GAP-MATRIX-V19-FA.md`](SECTION14-GAP-MATRIX-V19-FA.md) — 122 DONE + 4 OPS rotation
 - Auth: `POST /api/v1/auth/token` + `BearerTokenTest`؛ CSRF path fix در `api-base.ts`
 - Tests: `GroupAcceptanceV19Test`, expanded `DatabaseIndexesParityTest`, `SettingsTabKeysBatchTest`, `NavTabParityTest`
 - Playwright: `frontend/e2e/dashboard-v19.spec.ts` — real subtabs, reseller actor, legacy redirects, groups A–H
@@ -112,7 +118,7 @@ Set `PLAYWRIGHT_SKIP_BACKEND=1` to fall back to session-cookie mocks.
 
 ## Laravel dashboard (spec v18 — خلاصه)
 
-- §14: [`SECTION14-GAP-MATRIX-V18-FA.md`](docs/SECTION14-GAP-MATRIX-V18-FA.md) — 118 DONE + 8 OPS rotation
+- §14: [`SECTION14-GAP-MATRIX-V18-FA.md`](SECTION14-GAP-MATRIX-V18-FA.md) — 118 DONE + 8 OPS rotation
 - Tests: `MutateAdminPositiveMatrixTest`, `MutateSmokeTest` ok:true, `MutateDepthBatchV18Part1/2`, `GroupAcceptanceV18Test`, `AuditControllerFilterTest`, `DatabaseIndexesParityTest`, `CryptoModuleAcceptanceTest`, `L2tpProvisionerSshMockTest`
 - Playwright: `frontend/e2e/dashboard-v18.spec.ts` — site_settings 10 subtabs, reseller_charge/settings, merge, bot_ui RO, configs, receipts, audit strict, backup upload, cards
 - Docs: `SPEC-DEVIATIONS-FA.md` v18، `BEARER-TOKEN-FA.md` OPEN، `NGINX-DASHBOARD-API-ALIAS-FA.md`، `QUEUE-HORIZON-DEVIATION-FA.md` v18 broadcast decision

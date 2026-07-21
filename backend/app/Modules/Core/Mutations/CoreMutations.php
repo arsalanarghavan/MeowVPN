@@ -105,17 +105,21 @@ class CoreMutations
             };
         }
 
-        $channelId = (string) $this->settings->get('force_join_channel_id', '');
-        if ($channelId === '' || ! $this->settings->get('force_join_enabled', false)) {
+        $required = app(\App\Modules\Core\Bot\Services\RequiredChannelService::class);
+        $sent = [];
+        foreach (['telegram' => (int) ($user->tg_user_id ?? 0), 'bale' => (int) ($user->bale_user_id ?? 0)] as $platform => $chatId) {
+            if ($chatId < 1 || ! $required->isEnabled($platform)) {
+                continue;
+            }
+            $ctx = new BotContext($platform);
+            $required->sendPrompt($ctx, $chatId, $user);
+            $sent[] = $platform;
+        }
+        if ($sent === []) {
             return svp_err('not_configured');
         }
-        $prompt = (string) ($this->settings->get('force_join_prompt', 'Please join our channel to continue.'));
-        $ctx = new BotContext('telegram');
-        if ((int) ($user->tg_user_id ?? 0) > 0) {
-            $this->runtime->sendMessage($ctx, (int) $user->tg_user_id, $prompt);
-        }
 
-        return svp_ok(['user_id' => $userId, 'channel_id' => $channelId]);
+        return svp_ok(['user_id' => $userId, 'platforms' => $sent]);
     }
 
     protected function applyMembershipStatus(

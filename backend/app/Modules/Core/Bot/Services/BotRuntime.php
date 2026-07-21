@@ -53,6 +53,12 @@ class BotRuntime
     }
 
     /** @param  array<string, mixed>  $params */
+    public function pinChatMessage(BotContext $ctx, array $params): ?array
+    {
+        return $this->client($ctx)?->pinChatMessage($params);
+    }
+
+    /** @param  array<string, mixed>  $params */
     public function editMessageText(BotContext $ctx, array $params): ?array
     {
         return $this->client($ctx)?->editMessageText($params);
@@ -89,7 +95,7 @@ class BotRuntime
         }
 
         if ($ctx->platform === 'bale') {
-            return (string) $this->settings->get('bale_token', '');
+            return (string) $this->settings->get('bale_bot_token', $this->settings->get('bale_token', ''));
         }
 
         return (string) $this->settings->get('telegram_bot_token', $this->settings->get('telegram_token', ''));

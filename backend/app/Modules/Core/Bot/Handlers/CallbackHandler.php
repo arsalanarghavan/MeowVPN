@@ -49,24 +49,59 @@ class CallbackHandler
         $chatId = (int) ($msg['chat']['id'] ?? ($payload['chat_id'] ?? 0));
         $msgId = (int) ($msg['message_id'] ?? 0);
 
+        $this->scope->bindBotContext($ctx);
+
         if ($data === 'noop' || str_starts_with($data, 'alnoop:')) {
             $this->runtime->answerCallbackQuery($ctx, ['callback_query_id' => $cbId]);
 
             return;
         }
 
+        if ($user instanceof SvpUser && $data !== '') {
+            $isAdmin = $this->adminGuard->isPlatformAdmin($ctx->platform, $fromId);
+            $skipClear = ((int) $user->admin_mode && $isAdmin)
+                || str_starts_with($data, 'pnl:')
+                || str_starts_with($data, 'reg:')
+                || str_starts_with($data, 'rc:')
+                || str_starts_with($data, 'chjoin:')
+                || str_starts_with($data, 'buy:pm:')
+                || str_starts_with($data, 'buy:bw:')
+                || str_starts_with($data, 'buy:sw:')
+                || str_starts_with($data, 'buy:cd:')
+                || ($this->state->get($user) === 'buy_discount' && str_starts_with($data, 'buy:'));
+            if (! $skipClear && $this->state->clearBlockingStateOnCallback($ctx, $fromId, $user, $chatId, $data)) {
+                $user = $user->fresh() ?? $user;
+                $payload['user'] = $user;
+            }
+        }
+
         $defer = str_starts_with($data, 'rc:')
             || str_starts_with($data, 'buy:cf:')
             || str_starts_with($data, 'buy:pm:')
+            || str_starts_with($data, 'buy:cd:')
             || str_starts_with($data, 'buy:sw')
             || str_starts_with($data, 'buy:bw:')
             || str_starts_with($data, 'svc:p:')
-            || str_starts_with($data, 'svc:l:');
+            || str_starts_with($data, 'svc:l:')
+            || str_starts_with($data, 'svc:q:')
+            || str_starts_with($data, 'svc:ca:')
+            || str_starts_with($data, 'svc:w:')
+            || str_starts_with($data, 'chjoin:');
         if (! $defer) {
             $this->runtime->answerCallbackQuery($ctx, ['callback_query_id' => $cbId]);
         }
 
+        if ($data === 'chjoin:verify') {
+            app(\App\Modules\Core\Bot\Services\ForceJoinGate::class)
+                ->handleVerifyCallback($ctx, $fromId, $chatId, $cbId, $user instanceof SvpUser ? $user : null);
+
+            return;
+        }
         if (str_starts_with($data, 'chjoin:')) {
+            if ($cbId !== '') {
+                $this->runtime->answerCallbackQuery($ctx, ['callback_query_id' => $cbId]);
+            }
+
             return;
         }
 
@@ -130,6 +165,19 @@ class CallbackHandler
                 return;
             }
             $this->handleReceiptCallback($ctx, $parts, $from, $chatId, $msgId, $cbId);
+
+            return;
+        }
+
+        if ((str_starts_with($data, 'mkt_offer_cta:') || str_starts_with($data, 'mkt_offer_apply:'))
+            && $user instanceof SvpUser) {
+            $prefix = str_starts_with($data, 'mkt_offer_cta:') ? 'mkt_offer_cta:' : 'mkt_offer_apply:';
+            $offerId = (int) substr($data, strlen($prefix));
+            app(\App\Modules\Marketing\Services\MarketingAutomationService::class)->handleCallbackCta([
+                'platform' => $ctx->platform,
+                'chat_id' => $chatId,
+                'user' => $user,
+            ], $offerId);
 
             return;
         }

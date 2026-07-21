@@ -34,7 +34,7 @@
 
 ### ۱.۱ زمینه
 
-SimpleVPBot یک پلتفرم مدیریت VPN/پروکسی مبتنی بر ربات تلگرام/بله و پنل 3x-ui است. **نسخه فعلی (runtime v25):** Backend **Laravel 11** در [`backend/`](../backend/) با **Dashboard React** ([`frontend/`](../frontend/)) و **Relay Node.js** ([`relay-server/`](../relay-server/)). کد WP legacy در [`archive/wp-plugin-root/`](../archive/wp-plugin-root/) آرشیو شده است.
+SimpleVPBot یک پلتفرم مدیریت VPN/پروکسی مبتنی بر ربات تلگرام/بله و پنل 3x-ui است. **نسخه فعلی (runtime):** Backend **Laravel 11** در [`backend/`](../backend/) با **Dashboard Next App Router** ([`frontend/`](../frontend/)) و **Relay Node.js** ([`relay-server/`](../relay-server/)). کد WP legacy در [`archive/wp-plugin-root/`](../archive/wp-plugin-root/) آرشیو شده است.
 
 ### ۱.۲ هدف مهاجرت
 
@@ -45,7 +45,7 @@ SimpleVPBot یک پلتفرم مدیریت VPN/پروکسی مبتنی بر رب
 | هدف | معیار موفقیت |
 |-----|-------------|
 | حذف وابستگی WP | هیچ endpoint تولیدی به `wp-json` یا `admin-ajax.php` وابسته نباشد |
-| حفظ SPA | `frontend` بدون تغییر breaking در URLها و payloadهای `admin/state` |
+| حفظ Dashboard | Next App Router در `frontend/src/app/[locale]/dashboard/`؛ API `admin/state` + mutate بدون breaking |
 | ماژولار بودن | هر قابلیت (telegram، bale، relay، crypto، l2tp، …) قابل enable/disable |
 | داده یکسان | ۴۳ جدول `svp_*` + settings با `wp:import` قابل مهاجرت |
 | امنیت | Sanctum، secret rotation، rate limit، audit log |
@@ -89,23 +89,15 @@ SimpleVPBot یک پلتفرم مدیریت VPN/پروکسی مبتنی بر رب
 
 **اصل:** هیچ فایل PHP وردپرس در production باقی نماند.
 
-### ۲.۲ حفظ React Dashboard
+### ۲.۲ Dashboard (Next App Router)
 
-- Build فرانت در `frontend/dist/` و سرو از nginx (Docker `web`) انجام می‌شود
-- `window.__SIMPLEVPBOT_DASH__` از Blade view تزریق می‌شود:
-
-```php
-// resources/views/dashboard.blade.php
-window.__SIMPLEVPBOT_DASH__ = {
-    restUrl: '{{ url('/api/v1') }}',
-    nonce: '', // حذف — Sanctum cookie/token
-    dashboardBaseUrl: '{{ url('/dashboard') }}',
-    // ...
-};
-```
-
+- Build فرانت: `npm run build` (Next) — dev `npm run dev`
+- API calls از browser: `/api/v1/*` (Sanctum cookie) — see `frontend/src/lib/dash-admin-mutate.ts`
+- Legacy Vite SPA: archived (`frontend/src/_vite_legacy_archive/`, `frontend-vite-legacy/`)
 - احراز هویت: **Laravel Sanctum** (SPA cookie برای same-origin)
 - Header قدیمی `X-WP-Nonce` → `X-XSRF-TOKEN` + `Authorization: Bearer` (اختیاری)
+
+> **v29 amendment:** Runtime routes are `/[locale]/dashboard/{tab}` (e.g. `/fa/dashboard/payments`), not `/dashboard?tab=`. Site settings subtabs: `/[locale]/dashboard/site_settings?site_subtab=…`. Component mapping: `frontend/src/app/[locale]/dashboard/[tab]/page.tsx` → `frontend/src/components/admin/*-admin-client.tsx`.
 
 ### ۲.۳ Docker-first Deployment
 
@@ -724,7 +716,7 @@ SettingsService::setEncrypted('telegram_token', $value);
 
 > **v24 amendment (nav):** `notifications` and `logs` are **subtabs** of `site_settings` in SPA — not top-level `navTabs`.
 
-**Inline (from NAV-TABS-NOTIFICATIONS-FA.md):** Spec §14 در برخی نسخه‌ها `notifications` و `logs` را به‌عنوان tab سطح بالا در `navTabs` سرور ذکر می‌کند. **پیاده‌سازی:** این دو بخش زیرمجموعه `site_settings` هستند (`?site_subtab=notifications` / `logs`) و در `NavTabsBuilder` به‌صورت tab جداگانه برگردانده نمی‌شوند. فرانت‌اند (`admin-nav.ts`) آن‌ها را در `ADMIN_ONLY_TAB_KEYS` نگه می‌دارد و از طریق subtab بارگذاری می‌شوند. **تست:** Playwright `dashboard-v23.spec.ts` — `site_settings` با subtab.
+**Inline (from NAV-TABS-NOTIFICATIONS-FA.md):** Spec §14 در برخی نسخه‌ها `notifications` و `logs` را به‌عنوان tab سطح بالا در `navTabs` سرور ذکر می‌کند. **پیاده‌سازی:** این دو بخش زیرمجموعه `site_settings` هستند (`?site_subtab=notifications` / `logs`) و در `NavTabsBuilder` به‌صورت tab جداگانه برگردانده نمی‌شوند. **تست:** Playwright Next — `admin-tabs` + `admin-mutate` site_settings proxy smoke (نه quarantined `dashboard-v23`).
 
 > **v22 amendment:** `reseller_xui_panels` با `services.manage` برای reseller مجاز است (§E.4). `bot_ui` برای reseller فقط read-only در SPA است (§D.4).
 
@@ -928,6 +920,8 @@ POST /api/v1/portal/admin
 
 > **قالب هر صفحه:** Route، Roles، Component، Module(s)، Fields، GET endpoints، Mutate ops، Models، Jobs، Acceptance criteria
 
+> **v29 (Next — Wave D honesty):** جدول‌های زیر مسیر/component Vite legacy (`?tab=`, `dashboard-*-admin.tsx`) را برای تاریخچه نگه داشته‌اند. **Runtime:** `/[locale]/dashboard/{tabKey}` + `frontend/src/components/admin/{tabKey}-admin-client.tsx` (یا shared client — e.g. `payments-admin-client` برای `payments`/`receipts`). Playwright evidence: `frontend/e2e/admin-*`, `residual-closeout-*` — **نه** `e2e/quarantine/dashboard-v23*`.
+
 ---
 
 ### گروه A — Overview & Auth
@@ -936,9 +930,9 @@ POST /api/v1/portal/admin
 
 | فیلد | مقدار |
 |------|-------|
-| **Route** | `/dashboard?tab=dashboard` |
+| **Route** | `/[locale]/dashboard` (overview) |
 | **Roles** | admin، reseller |
-| **Component** | `frontend/src/components/dashboard-overview.tsx` |
+| **Component** | `frontend/src/components/admin/overview-admin-client.tsx` |
 | **Module(s)** | core، xui_panel |
 
 **Fields/Forms:** فیلتر بازه متریک (۷/۳۰/۹۰ روز)، stats day، لینک‌های سریع
@@ -1268,14 +1262,14 @@ POST /api/v1/portal/admin
 
 #### D.1 Bots (Site)
 
-| **Route** | `/dashboard?tab=bots` |
-| **Component** | `dashboard-bots-admin.tsx` (variant=site) |
+| **Route** | `/dashboard/bots` |
+| **Component** | `bots-admin-client.tsx` |
 | **Roles** | admin |
 | **Module(s)** | telegram، bale |
 
 **Fields:** token per platform، enabled، webhook status، admin IDs
 
-**Mutate:** `settings_tab` (tab=`bots`)، `bot_toggle_enabled`، `bot_toggle_platform_enabled`، `bot_test_telegram`، `bot_test_bale`، `bot_diagnostics`، `bot_set_webhook`، `bot_delete_webhook`، `bot_admin_id_add`، `bot_admin_id_remove`
+**Mutate:** `settings_tab` (tab=`bots`)، `bot_toggle_enabled`، `bot_toggle_platform_enabled`، `bot_test_telegram`، `bot_test_bale`، `bot_diagnostics`، `bot_set_webhook`، `bot_delete_webhook`، `bot_set_update_mode` (`telegram_update_mode` / `bale_update_mode`؛ cron `svp:bot_poll`)، `bot_admin_id_add`، `bot_admin_id_remove`
 
 **Acceptance criteria:**
 - [x] webhook register/delete
@@ -1289,23 +1283,25 @@ POST /api/v1/portal/admin
 | **Route** | embedded در bots tab |
 | **Component** | `dashboard-force-join-admin.tsx` |
 
-**Fields:** telegram/bale channel id، invite link، prompt text، enabled
+**Fields:** per-platform `force_join_telegram_*` / `force_join_bale_*` (enabled, chat_id, username, invite_link, prompt_text, announce_text). Legacy flat keys (`force_join_channel_id` / `force_join_prompt`) هنوز در برخی مسیرهای bot-admin خوانده می‌شوند.
 
-**Mutate:** `settings_tab` (tab=`force_join`)، `force_join_publish`
+**Mutate:** `settings_tab` (tab=`force_join`)، `force_join_publish` (با `platform` → publish+pin؛ بدون `platform` مسیر legacy فقط `sendMessage`)
+
+**Runtime:** `ForceJoinGate` وقتی enabled + chat_id + join URL؛ `/start` و `chjoin:` bypass
 
 **Acceptance criteria:**
-- [x] publish announcement به channel
-- [x] gate در bot handler فعال شود
+- [x] publish announcement به channel (pin روی مسیر `platform`)
+- [x] gate در bot handler با کلیدهای per-platform وقتی پیکربندی کامل باشد
 
 ---
 
 #### D.3 Texts
 
-| **Route** | `/dashboard?tab=texts` |
-| **Component** | `dashboard-texts-admin.tsx` |
+| **Route** | `/dashboard/texts` |
+| **Component** | `texts-admin-client.tsx` |
 | **Roles** | admin |
 
-**Mutate:** `texts_save`، `text_reset_one`، `texts_reset`
+**Mutate:** `texts_save` (WP bulk `{ texts: { key: { fa, en } } }` + single key)، `text_reset_one`، `texts_reset` (reseed از `text_defaults`)
 
 **Models:** `SvpText`
 
@@ -1470,10 +1466,10 @@ POST /api/v1/portal/admin
 
 ---
 
-#### F.4 Receipts
+#### F.4 Receipts / Payments
 
-| **Route** | `/dashboard?tab=receipts` |
-| **Component** | `dashboard-receipts-admin.tsx` |
+| **Route** | `/[locale]/dashboard/payments` (subtab `receipts`; legacy alias `/receipts`) |
+| **Component** | `frontend/src/components/admin/payments-admin-client.tsx` |
 
 **Mutate:** `receipt_action`، `receipt_set_status`، `receipt_update`، `receipt_reject_reasons_save`
 
@@ -1483,6 +1479,7 @@ POST /api/v1/portal/admin
 - [x] approve/reject با delivery
 - [x] filters و aggregates
 - [x] reseller scope
+- [x] transactions/orders subtabs با `transactions_page` / `transactions_per_page` pagination در Next (`PaymentsAdminClient` + `DataPagination`) — receipts pager از قبل موجود بود
 
 ---
 
@@ -1830,6 +1827,7 @@ POST /api/v1/portal/admin
 | 131 | `bot_diagnostics` | telegram/bale | bots | services.manage |
 | 132 | `bot_set_webhook` | telegram/bale | bots | — |
 | 133 | `bot_delete_webhook` | telegram/bale | bots | — |
+| 133a | `bot_set_update_mode` | telegram/bale | bots | — |
 | 134 | `reseller_bot_webhook_delete` | reseller | reseller_bots | services.manage |
 | 135 | `bot_admin_id_add` | telegram/bale | bots | services.manage |
 | 136 | `bot_admin_id_remove` | telegram/bale | bots | services.manage |
@@ -1904,7 +1902,7 @@ POST /api/v1/portal/admin
 
 **معیار پذیرش:**
 - [x] تب users، plans، panels داده واقعی نشان دهند
-- [x] pagination keys سازگار با SPA
+- [x] pagination keys سازگار با `admin/state` (Next clients: `payments-admin-client` tx/receipts/orders، `users-admin-client`, …)
 - [x] reseller scoping verified
 
 ---
@@ -2143,40 +2141,41 @@ Log::channel('svp')->info('webhook.received', [
 
 ---
 
-## پیوست الف — نگاشت Component → Tab
+## پیوست الف — نگاشت Component → Tab (Next runtime)
 
 | tabKey | Component Path |
 |--------|----------------|
-| `dashboard` | `components/dashboard-overview.tsx` |
-| `monitoring` | `components/dashboard-monitoring.tsx` |
-| `site_settings` | `components/dashboard-site-settings-admin.tsx` |
-| `users` | `components/dashboard-users-admin.tsx` |
-| `users` (detail) | `components/dashboard-user-detail-admin.tsx` |
-| `users_bulk` | `components/dashboard-users-bulk-admin.tsx` |
-| `bots` | `components/dashboard-bots-admin.tsx` |
-| `reseller_bots` | `components/dashboard-bots-admin.tsx` |
-| `texts` | `components/dashboard-texts-admin.tsx` |
-| `bot_ui` | `components/dashboard-bot-ui-studio.tsx` |
-| `xui_panels` | `components/dashboard-panels-admin.tsx` |
-| `configs` | `components/dashboard-configs-admin.tsx` |
-| `reseller_xui_panels` | `components/dashboard-reseller-panels-admin.tsx` |
-| `plans` | `components/dashboard-plans-admin.tsx` |
-| `plan_cats` | `components/dashboard-plan-cats-admin.tsx` |
-| `cards` | `components/dashboard-cards-admin.tsx` |
-| `receipts` | `components/dashboard-receipts-admin.tsx` |
-| `unit_economics` | `components/dashboard-unit-economics-admin.tsx` |
-| `reseller_charge` | `components/dashboard-reseller-charge-admin.tsx` |
-| `broadcast` | `components/dashboard-broadcast-admin.tsx` |
-| `marketing_lifecycle` | `components/dashboard-marketing-lifecycle-admin.tsx` |
-| `referral` | `components/dashboard-referral-admin.tsx` |
-| `referral_reports` | `components/dashboard-referral-admin.tsx` |
-| `resellers` | `components/dashboard-resellers-admin.tsx` |
-| `reseller_reports` | `components/dashboard-reseller-reports-admin.tsx` |
-| `reseller_settings` | `components/dashboard-reseller-settings.tsx` |
-| `l2tp_servers` | `components/dashboard-l2tp-admin.tsx` |
-| `backup` | `components/dashboard-backup-admin.tsx` |
-| `audit` | `components/dashboard-audit-admin.tsx` |
-| login | `components/dashboard-login.tsx` |
+| `dashboard` | `components/admin/overview-admin-client.tsx` |
+| `monitoring` | `components/admin/monitoring-admin-client.tsx` |
+| `site_settings` | `components/admin/site-settings-admin-client.tsx` |
+| `users` | `components/admin/users-admin-client.tsx` |
+| `users` (detail) | `components/admin/users/user-detail-admin.tsx` |
+| `users_bulk` | `components/admin/users-bulk-admin-client.tsx` |
+| `bots` | `components/admin/bots-admin-client.tsx` |
+| `reseller_bots` | `components/admin/reseller-bots-admin-client.tsx` |
+| `texts` | `components/admin/texts-admin-client.tsx` |
+| `bot_ui` | `components/admin/bot-ui-admin-client.tsx` |
+| `xui_panels` | `components/admin/panels-admin-client.tsx` |
+| `configs` | `components/admin/configs-admin-client.tsx` |
+| `reseller_xui_panels` | `components/admin/reseller-panels-admin-client.tsx` |
+| `plans` | `components/admin/plans-admin-client.tsx` |
+| `plan_cats` | `components/admin/plan-cats-admin-client.tsx` |
+| `cards` | `components/admin/cards-admin-client.tsx` |
+| `payments` / `receipts` | `components/admin/payments-admin-client.tsx` |
+| `unit_economics` | `components/admin/unit-economics-admin-client.tsx` |
+| `reseller_charge` | `components/admin/reseller-charge-admin-client.tsx` |
+| `broadcast` | `components/admin/broadcast-admin-client.tsx` |
+| `marketing_lifecycle` | `components/admin/marketing-lifecycle-admin-client.tsx` |
+| `referral` / `referral_reports` | `components/admin/referral-admin-client.tsx` |
+| `resellers` | `components/admin/resellers-admin-client.tsx` |
+| `reseller_reports` | `components/admin/reseller-reports-admin-client.tsx` |
+| `reseller_settings` | `components/admin/reseller-settings-admin-client.tsx` |
+| `l2tp_servers` | `components/admin/l2tp-servers-admin-client.tsx` |
+| `backup` | `components/admin/backup-admin-client.tsx` |
+| `audit` | `components/admin/audit-admin-client.tsx` |
+| login | `app/[locale]/login` + auth API |
+
+Legacy Vite mapping (`components/dashboard-*-admin.tsx`) archived under `frontend/src/_vite_legacy_archive/`.
 
 ---
 

@@ -1,15 +1,23 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
+import { EllipsisVertical } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { DataPagination } from "@/components/data-pagination"
 import { getAdminState, postAdminMutate } from "@/lib/dash-admin-mutate"
 import { formatNumber } from "@/lib/format-locale"
 
@@ -131,11 +139,6 @@ export function L2tpServersAdminClient() {
     void load()
   }, [load])
 
-  const totalPages = useMemo(
-    () => Math.max(1, Math.ceil((pagination?.total ?? 0) / (pagination?.perPage || perPage))),
-    [pagination, perPage]
-  )
-
   const openAdd = () => {
     setError(null)
     setMode("add")
@@ -230,7 +233,7 @@ export function L2tpServersAdminClient() {
                   <TableHead>{t("colAuth")}</TableHead>
                   <TableHead>{t("colSecrets")}</TableHead>
                   <TableHead>{t("colActive")}</TableHead>
-                  <TableHead>{t("edit")}</TableHead>
+                  <TableHead className="w-12" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -256,10 +259,21 @@ export function L2tpServersAdminClient() {
                         <Badge variant={active(row) ? "default" : "secondary"}>{active(row) ? t("active") : t("inactive")}</Badge>
                       </TableCell>
                       <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          <Button type="button" size="sm" variant="outline" onClick={() => openEdit(row)}>{t("edit")}</Button>
-                          <Button type="button" size="sm" variant="destructive" onClick={() => setDeleteTarget(row)}>{t("delete")}</Button>
-                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={
+                              <Button type="button" variant="ghost" size="icon" className="h-8 w-8">
+                                <EllipsisVertical className="size-4" />
+                              </Button>
+                            }
+                          />
+                          <DropdownMenuContent align={isFa ? "start" : "end"}>
+                            <DropdownMenuItem onClick={() => openEdit(row)}>{t("edit")}</DropdownMenuItem>
+                            <DropdownMenuItem className="text-destructive" onClick={() => setDeleteTarget(row)}>
+                              {t("delete")}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   )
@@ -268,23 +282,14 @@ export function L2tpServersAdminClient() {
             </Table>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-            <p className="text-muted-foreground">
-              {pagination ? formatNumber(pagination.total, isFa) : "0"}
-            </p>
-            <div className="flex items-center gap-2">
-              <Button type="button" size="sm" variant="outline" disabled={page <= 1 || loading} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-                ‹
-              </Button>
-              <span className="tabular-nums" dir="ltr">{formatNumber(page, isFa)} / {formatNumber(totalPages, isFa)}</span>
-              <Button type="button" size="sm" variant="outline" disabled={page >= totalPages || loading} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
-                ›
-              </Button>
-              <select className="h-8 rounded-md border bg-background px-2 text-sm" value={perPage} onChange={(e) => { setPerPage(num(e.target.value)); setPage(1) }}>
-                {[10, 20, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
-              </select>
-            </div>
-          </div>
+          <DataPagination
+            meta={pagination}
+            onPageChange={setPage}
+            onPerPageChange={(n) => {
+              setPerPage(n)
+              setPage(1)
+            }}
+          />
         </CardContent>
       </Card>
 

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Modules\Backup\Jobs\ManualBackupJob;
 use App\Modules\Backup\Services\BackupExportService;
 use App\Modules\Backup\Services\BackupRestoreService;
+use App\Modules\Backup\Services\BackupScopeService;
 use App\Modules\Backup\Services\BackupStatusService;
 use App\Services\BackupIntervalResolver;
 use App\Services\SettingsStore;
@@ -16,7 +17,7 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class BackupController extends Controller
 {
-    public function index(Request $request, BackupExportService $export, SettingsStore $settings): JsonResponse
+    public function index(Request $request, BackupExportService $export, SettingsStore $settings, BackupScopeService $scope): JsonResponse
     {
         $panels = [];
         if (DB::getSchemaBuilder()->hasTable('svp_panels')) {
@@ -47,6 +48,7 @@ class BackupController extends Controller
             'last_run' => $lastRun,
             'backup_display_timezone' => config('app.timezone', 'UTC'),
             'site_timezone' => config('app.timezone', 'UTC'),
+            'backup_scope' => $scope->forApi($panels),
         ]);
     }
 
@@ -55,8 +57,26 @@ class BackupController extends Controller
         return response()->json($status->getStatus());
     }
 
-    public function run(Request $request, BackupStatusService $status): JsonResponse
+    public function run(Request $request, BackupStatusService $status, BackupScopeService $scope): JsonResponse
     {
+        $panels = [];
+        if (DB::getSchemaBuilder()->hasTable('svp_panels')) {
+            $panels = DB::table('svp_panels')
+                ->where('active', true)
+                ->orderBy('sort_order')
+                ->get(['id', 'label'])
+                ->map(fn ($p) => ['id' => (int) $p->id, 'label' => (string) $p->label])
+                ->all();
+        }
+        if (! $scope->hasAnyEnabled($panels)) {
+            return response()->json([
+                'ok' => false,
+                'code' => 'backup_scope_empty',
+                'status' => 'error',
+                'message' => 'هیچ بخشی برای بکاپ انتخاب نشده است.',
+            ]);
+        }
+
         $status->resetStale();
         if ($status->isRunning()) {
             return response()->json([

@@ -4,12 +4,11 @@ namespace App\Modules\Core\Bot\Services;
 
 use App\Models\SvpUser;
 use App\Modules\Core\Bot\BotContext;
-use App\Services\SettingsStore;
 
 class ForceJoinGate
 {
     public function __construct(
-        protected SettingsStore $settings,
+        protected RequiredChannelService $requiredChannel,
         protected BotRuntime $runtime,
         protected TextService $texts,
     ) {}
@@ -22,7 +21,9 @@ class ForceJoinGate
         string $cmd = '',
         string $cbData = '',
     ): bool {
-        if (! $this->settings->get('force_join_enabled', false)) {
+        $plat = $this->requiredChannel->normalizePlatform($ctx->platform);
+
+        if (! $this->requiredChannel->shouldGate($plat)) {
             return false;
         }
 
@@ -30,41 +31,79 @@ class ForceJoinGate
             return false;
         }
 
-        $channelId = (string) $this->settings->get('force_join_channel_id', '');
-        if ($channelId === '') {
+        // Interactive path: cache hit only; miss fail-open + background refresh (WP router ~522-531).
+        if ($this->requiredChannel->gateAllowsInteractive($ctx, $fromId)) {
             return false;
         }
 
-        if ($this->isMember($ctx, $channelId, $fromId)) {
-            return false;
-        }
-
-        $url = (string) $this->settings->get('force_join_channel_url', '');
-        $msg = $this->texts->get('msg.force_join', 'Join our channel to continue');
-        $extra = [];
-        if ($url !== '') {
-            $extra['reply_markup'] = [
-                'inline_keyboard' => [[
-                    ['text' => $this->texts->get('btn.force_join', 'Join'), 'url' => $url],
-                ]],
-            ];
-        }
-        $this->runtime->sendMessage($ctx, $chatId, $msg, $extra);
+        $this->requiredChannel->sendPrompt($ctx, $chatId, $user);
 
         return true;
     }
 
-    protected function isMember(BotContext $ctx, string $channelId, int $userId): bool
+    public function shouldGate(string $platform): bool
     {
-        $r = $this->runtime->client($ctx)?->getChatMember([
-            'chat_id' => $channelId,
-            'user_id' => $userId,
-        ]);
-        if (! is_array($r) || empty($r['ok'])) {
-            return false;
-        }
-        $status = (string) ($r['result']['status'] ?? '');
+        return $this->requiredChannel->shouldGate($platform);
+    }
 
-        return in_array($status, ['creator', 'administrator', 'member', 'restricted'], true);
+    public function isEnabled(string $platform): bool
+    {
+        return $this->requiredChannel->isEnabled($platform);
+    }
+
+    public function sendPrompt(BotContext $ctx, int $chatId, ?SvpUser $user = null): void
+    {
+        $this->requiredChannel->sendPrompt($ctx, $chatId, $user);
+    }
+
+    /** @return array{ok:bool, message?:string, message_id?:int} */
+    public function publishAnnouncement(string $platform): array
+    {
+        return $this->requiredChannel->publishAnnouncement($platform);
+    }
+
+    public function handleVerifyCallback(
+        BotContext $ctx,
+        int $fromId,
+        int $chatId,
+        string $cbId,
+        ?SvpUser $user,
+    ): void {
+        $ok = $this->requiredChannel->userPasses($ctx, $fromId, true);
+        if (! $ok) {
+            usleep(300000);
+            $ok = $this->requiredChannel->userPasses($ctx, $fromId, true);
+        }
+
+        if ($cbId !== '') {
+            $success = $user
+                ? $this->texts->getForUser('msg.force_join.success', $user, 'Membership verified.')
+                : $this->texts->get('msg.force_join.success', 'Membership verified.');
+            $fail = $user
+                ? $this->texts->getForUser('msg.force_join.fail', $user, 'You are not in the channel yet.')
+                : $this->texts->get('msg.force_join.fail', 'You are not in the channel yet.');
+            $this->runtime->answerCallbackQuery($ctx, [
+                'callback_query_id' => $cbId,
+                'text' => $ok ? $success : $fail,
+                'show_alert' => ! $ok,
+            ]);
+        }
+
+        if (! $ok) {
+            $this->requiredChannel->sendPrompt($ctx, $chatId, $user);
+
+            return;
+        }
+
+        if ($user) {
+            $this->requiredChannel->onVerifySuccess($ctx, $chatId, $user);
+        } else {
+            $this->runtime->sendMessage(
+                $ctx,
+                $chatId,
+                $this->texts->get('msg.force_join.success', 'Membership verified.')
+                ."\n".$this->texts->get('msg.start_first', 'Please send /start')
+            );
+        }
     }
 }

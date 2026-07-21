@@ -1,10 +1,12 @@
 "use client"
 
 import * as React from "react"
+import type { ReactNode } from "react"
 import Link from "next/link"
 import { useLocale, useTranslations } from "next-intl"
 import { usePathname } from "next/navigation"
 import { CheckIcon, GalleryVerticalEndIcon, UserRoundCogIcon } from "lucide-react"
+import { cn } from "@/lib/utils"
 import {
   ADMIN_NAV_SECTIONS,
   filterAdminNavByFeatures,
@@ -220,6 +222,9 @@ export function AppSidebar({
   personaSwitchBlocked,
   activePersona,
   availablePersonas,
+  siteName,
+  siteIconUrl,
+  mobileHeaderToolbar,
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
   user?: { name: string; email: string; avatar?: string }
@@ -229,6 +234,9 @@ export function AppSidebar({
   personaSwitchBlocked?: boolean
   activePersona?: string
   availablePersonas?: string[]
+  siteName?: string
+  siteIconUrl?: string
+  mobileHeaderToolbar?: ReactNode
 }) {
   const t = useTranslations()
   const locale = useLocale()
@@ -304,25 +312,44 @@ export function AppSidebar({
         ? "reseller"
         : "admin"
 
+  const mobileToolbarBlock = mobileHeaderToolbar ? (
+    <div className="w-full border-t border-sidebar-border pt-2 pb-1 md:hidden">
+      {mobileHeaderToolbar}
+    </div>
+  ) : null
+
   return (
     <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader>
+      <SidebarHeader
+        className={cn(
+          "h-auto min-h-16 shrink-0 gap-0",
+          mobileHeaderToolbar && "flex flex-col items-stretch"
+        )}
+      >
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"
               render={<Link href={`/${locale}/dashboard`} />}
             >
-                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                  <GalleryVerticalEndIcon className="size-4" />
+                <div className="flex aspect-square size-8 items-center justify-center overflow-hidden rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+                  {siteIconUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={siteIconUrl} alt="" className="size-8 object-cover" />
+                  ) : (
+                    <GalleryVerticalEndIcon className="size-4" />
+                  )}
                 </div>
                 <div className="grid flex-1 text-start text-sm leading-tight">
-                  <span className="truncate font-semibold">MeowVPN</span>
+                  <span className="truncate font-semibold">
+                    {siteName?.trim() || t("sidebar.siteFallback")}
+                  </span>
                   <span className="truncate text-xs">{t("layout.dashboard")}</span>
                 </div>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
+        {mobileToolbarBlock}
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={navMain} />

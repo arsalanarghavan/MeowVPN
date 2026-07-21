@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useTranslation } from "react-i18next"
+import { useTranslations } from "next-intl"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -26,8 +26,7 @@ const STEPS = [1, 2, 3, 4] as const
 type BackupKind = "none" | "meowvpn" | "wordpress"
 
 export function InstallWizard() {
-  const { t } = useTranslation()
-  const tw = (k: string) => t(`installWizard.${k}`)
+  const tw = useTranslations("installWizard")
   const token = useMemo(() => readInstallToken(), [])
 
   const [step, setStep] = useState<(typeof STEPS)[number]>(1)

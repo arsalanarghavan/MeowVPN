@@ -6,6 +6,7 @@ use App\Models\SvpService;
 use App\Models\SvpUser;
 use App\Modules\Core\Services\Portal\PortalLinkService;
 use App\Services\AdminState\AdminRowFormatter;
+use App\Support\PlanQuotaDisplay;
 
 class UserPortalStateBuilder
 {
@@ -48,8 +49,13 @@ class UserPortalStateBuilder
                 ]);
                 $tt = (int) ($row['total_traffic'] ?? 0);
                 $ut = (int) ($row['used_traffic'] ?? 0);
-                $row['quota_gb'] = $tt > 0 ? round($tt / (1024 * 1024 * 1024), 4) : 0.0;
+                $quotaHidden = PlanQuotaDisplay::isHiddenForService($svc);
+                $row['quota_gb'] = ($quotaHidden || $tt <= 0)
+                    ? 0.0
+                    : round($tt / (1024 * 1024 * 1024), 4);
                 $row['used_gb'] = $ut > 0 ? round($ut / (1024 * 1024 * 1024), 4) : 0.0;
+                $row['quota_hidden_from_user'] = $quotaHidden ? 1 : 0;
+                $row['plan_quota_display_mode'] = PlanQuotaDisplay::resolveModeForService($svc);
 
                 return $row;
             })

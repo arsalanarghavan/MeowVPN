@@ -87,6 +87,8 @@ class DashboardBootBuilder
             'logoutUrl' => url('/api/v1/auth/logout'),
             'siteName' => (string) $this->settings->get('site_name', 'SimpleVPBot'),
             'siteIconUrl' => (string) $this->settings->get('site_icon_url', ''),
+            'telegramBotUsername' => ltrim((string) $this->settings->get('telegram_bot_username', ''), '@'),
+            'baleBotUsername' => ltrim((string) $this->settings->get('bale_bot_username', ''), '@'),
             'dashPath' => $dashPath,
             'siteTimeZone' => (string) config('app.timezone', 'UTC'),
             'uiAccent' => (string) ($user->ui_accent ?: $this->settings->get('ui_accent', 'default')),

@@ -2,10 +2,12 @@
 
 namespace App\Services\AdminState;
 
+use App\Models\SvpPlan;
 use App\Models\SvpReceipt;
 use App\Models\SvpService;
 use App\Models\SvpUser;
 use App\Modules\Reseller\Services\ResellerScopeService;
+use App\Support\PlanQuotaDisplay;
 use App\Support\Xui\ServiceNaming;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -41,6 +43,22 @@ class AdminUserDetailBuilder
                 $row['quota_gb'] = $tt > 0 ? round($tt / (1024 * 1024 * 1024), 4) : 0.0;
                 $row['used_gb'] = $ut > 0 ? round($ut / (1024 * 1024 * 1024), 4) : 0.0;
                 $row['subscription_name'] = ServiceNaming::formatServiceDisplayLabel($svc, $idx + 1);
+                $pid = (int) ($row['plan_id'] ?? 0);
+                if ($pid > 0) {
+                    $pl = SvpPlan::query()->find($pid);
+                    if ($pl) {
+                        $row['plan_name'] = (string) ($pl->name ?? '');
+                        $row['plan_pricing_type'] = (string) ($pl->pricing_type ?? 'fixed');
+                        $row['plan_quota_display_mode'] = PlanQuotaDisplay::normalizeMode(
+                            (string) ($pl->quota_display_mode ?? PlanQuotaDisplay::MODE_SHOW)
+                        );
+                        $row['plan_price'] = (float) ($pl->price ?? 0);
+                        $row['plan_price_per_gb'] = (float) ($pl->price_per_gb ?? 0);
+                    }
+                }
+                if (! isset($row['plan_quota_display_mode'])) {
+                    $row['plan_quota_display_mode'] = PlanQuotaDisplay::resolveModeForService($svc);
+                }
 
                 return $row;
             })

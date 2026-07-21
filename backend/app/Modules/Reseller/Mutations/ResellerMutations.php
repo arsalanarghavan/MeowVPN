@@ -434,12 +434,16 @@ class ResellerMutations
     public function userServiceAddSlots(array $payload, ?Authenticatable $actor): array
     {
         $serviceId = (int) ($payload['service_id'] ?? 0);
-        $slots = (int) ($payload['slots'] ?? 1);
+        $slots = (int) ($payload['slots'] ?? $payload['extra_users'] ?? 1);
         if ($serviceId < 1) {
             return svp_err('invalid');
         }
+        $mode = strtolower(trim((string) ($payload['mode'] ?? 'free')));
+        if (! in_array($mode, ['free', 'wallet', 'invoice'], true)) {
+            $mode = 'free';
+        }
 
-        return $this->provision->addSlots($serviceId, $slots, 'free');
+        return $this->provision->addSlots($serviceId, $slots, $mode);
     }
 
     /** @param  array<string, mixed>  $payload */

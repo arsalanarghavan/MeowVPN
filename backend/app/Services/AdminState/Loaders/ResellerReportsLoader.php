@@ -4,10 +4,12 @@ namespace App\Services\AdminState\Loaders;
 
 use App\Services\AdminState\AdminStateContext;
 use App\Services\AdminState\AdminStateResult;
-use Illuminate\Support\Facades\DB;
+use App\Services\AdminState\ResellerReportsBuilder;
 
 class ResellerReportsLoader extends AbstractLoader
 {
+    public function __construct(protected ResellerReportsBuilder $builder) {}
+
     protected function shouldLoad(AdminStateContext $ctx): bool
     {
         return $ctx->needsResellerReports();
@@ -16,46 +18,48 @@ class ResellerReportsLoader extends AbstractLoader
     protected function load(AdminStateContext $ctx, AdminStateResult $result): void
     {
         $p = $ctx->page('resellerReports');
-        $rows = [];
-        $total = 0;
-
-        if ($this->tableExists('svp_transactions')) {
-            $q = DB::table('svp_transactions as t')
-                ->where('t.billing_reseller_svp_id', '>', 0)
-                ->orderByDesc('t.id');
-            if ($ctx->moderatableUserIds !== []) {
-                $q->whereIn('t.user_id', $ctx->moderatableUserIds);
-            }
-            $total = (clone $q)->count();
-            $rows = (clone $q)->offset($p['offset'])->limit($p['per_page'])->get()->map(fn ($r) => (array) $r)->all();
+        $window = (int) ($ctx->request->query(
+            'reseller_reports_window_days',
+            $ctx->request->query('reseller_reports_days', 30)
+        ) ?? 30);
+        $q = (string) ($ctx->request->query('reseller_reports_q', '') ?? '');
+        $sort = strtolower(trim((string) ($ctx->request->query('reseller_reports_sort', 'sales') ?? 'sales')));
+        if ($sort === 'revenue_desc') {
+            $sort = 'sales';
         }
 
-        $daily = [];
-        if ($this->tableExists('svp_transactions')) {
-            $dailyQ = DB::table('svp_transactions as t')
-                ->selectRaw('DATE(t.created_at) as day, COUNT(*) as cnt, COALESCE(SUM(t.amount),0) as amount')
-                ->where('t.billing_reseller_svp_id', '>', 0)
-                ->where('t.created_at', '>=', now()->subDays(30))
-                ->groupBy('day')
-                ->orderBy('day');
-            if ($ctx->moderatableUserIds !== []) {
-                $dailyQ->whereIn('t.user_id', $ctx->moderatableUserIds);
-            }
-            $daily = $dailyQ->get()->map(fn ($r) => [
-                'day' => (string) $r->day,
-                'count' => (int) $r->cnt,
-                'amount' => (float) $r->amount,
-            ])->all();
+        $scopeAncestor = null;
+        if ($ctx->isReseller && $ctx->actorSvpUserId > 0) {
+            $scopeAncestor = $ctx->actorSvpUserId;
+        } elseif ($ctx->resellerContextId > 0) {
+            $scopeAncestor = $ctx->resellerContextId;
         }
 
-        $result->setTotal('resellerReports', $total);
+        $built = $this->builder->build(
+            $window,
+            $q,
+            $sort,
+            [
+                'page' => (int) ($p['page'] ?? 1),
+                'per_page' => (int) ($p['per_page'] ?? 25),
+                'offset' => (int) ($p['offset'] ?? 0),
+            ],
+            $scopeAncestor,
+        );
+
+        $rows = is_array($built['rows'] ?? null) ? $built['rows'] : [];
+        $result->setTotal('resellerReports', (int) ($built['total'] ?? 0));
         $result->merge([
+            'resellerReports' => $rows,
             'resellerReportsRows' => $rows,
             'resellerReportsStats' => [
-                'rows_total' => $total,
-                'amount_total' => array_sum(array_map(fn ($r) => (float) ($r['amount'] ?? 0), $rows)),
+                'window_days' => (int) ($built['window_days'] ?? 30),
+                'since' => (string) ($built['since'] ?? ''),
+                'backfill_done' => (bool) ($built['backfill_done'] ?? true),
+                'daily_scoped' => (bool) ($built['daily_scoped'] ?? false),
+                'summary' => is_array($built['summary'] ?? null) ? $built['summary'] : [],
             ],
-            'resellerReportsDaily' => $daily,
+            'resellerReportsDaily' => is_array($built['daily'] ?? null) ? $built['daily'] : [],
         ]);
     }
 }

@@ -85,6 +85,15 @@ export function DashboardForceJoinAdmin({
     setForms(initial)
   }, [initial])
 
+  const [cacheTtlSec, setCacheTtlSec] = useState(() => String(Math.max(30, num(s.force_join_cache_ttl_sec) || 180)))
+  const [negativeCacheTtlSec, setNegativeCacheTtlSec] = useState(() =>
+    String(Math.max(10, num(s.force_join_negative_cache_ttl_sec) || 45))
+  )
+  useEffect(() => {
+    setCacheTtlSec(String(Math.max(30, num(s.force_join_cache_ttl_sec) || 180)))
+    setNegativeCacheTtlSec(String(Math.max(10, num(s.force_join_negative_cache_ttl_sec) || 45)))
+  }, [s.force_join_cache_ttl_sec, s.force_join_negative_cache_ttl_sec])
+
   const [saving, setSaving] = useState(false)
   const [publishing, setPublishing] = useState<PlatformId | "">("")
   const [error, setError] = useState<string | null>(null)
@@ -113,6 +122,8 @@ export function DashboardForceJoinAdmin({
         tab: "force_join",
         ...payloadFromForm("telegram", forms.telegram),
         ...payloadFromForm("bale", forms.bale),
+        force_join_cache_ttl_sec: Math.max(30, Math.min(3600, num(cacheTtlSec) || 180)),
+        force_join_negative_cache_ttl_sec: Math.max(10, Math.min(600, num(negativeCacheTtlSec) || 45)),
       })
       if (!res.ok) {
         setError(res.message || t("saveError"))
@@ -123,7 +134,7 @@ export function DashboardForceJoinAdmin({
     } finally {
       setSaving(false)
     }
-  }, [forms, onMutateSuccess, t])
+  }, [cacheTtlSec, forms, negativeCacheTtlSec, onMutateSuccess, t])
 
   const onPublish = useCallback(
     async (platform: PlatformId) => {
@@ -251,6 +262,40 @@ export function DashboardForceJoinAdmin({
       <div className="grid gap-4 lg:grid-cols-2">
         {visiblePlatforms.map((plat) => platformCard(plat.id, platformTitle(plat.id)))}
       </div>
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">{t("cacheTitle")}</CardTitle>
+          <CardDescription className="text-xs">{t("cacheDesc")}</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label>{t("cacheTtlSec")}</Label>
+            <Input
+              type="number"
+              dir="ltr"
+              min={30}
+              max={3600}
+              value={cacheTtlSec}
+              disabled={busy}
+              onChange={(e) => setCacheTtlSec(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">{t("cacheTtlHint")}</p>
+          </div>
+          <div className="space-y-2">
+            <Label>{t("negativeCacheTtlSec")}</Label>
+            <Input
+              type="number"
+              dir="ltr"
+              min={10}
+              max={600}
+              value={negativeCacheTtlSec}
+              disabled={busy}
+              onChange={(e) => setNegativeCacheTtlSec(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">{t("negativeCacheTtlHint")}</p>
+          </div>
+        </CardContent>
+      </Card>
       <div className={cn("flex flex-wrap gap-2")}>
         <Button type="button" size="sm" disabled={busy} onClick={() => void onSave()}>
           {saving ? t("saving") : t("save")}

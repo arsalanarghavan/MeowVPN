@@ -4,6 +4,7 @@ namespace App\Modules\Core\Bot\Services;
 
 use App\Models\SvpUser;
 use App\Modules\Core\Bot\BotContext;
+use Illuminate\Support\Facades\Schema;
 
 class UserResolver
 {
@@ -20,12 +21,75 @@ class UserResolver
 
         if ($user) {
             $ctx->user = $user;
+            $this->syncPlatformIdentity($user, $ctx->platform, $from);
             $this->trackLastTelegramMirror($ctx, $user);
 
-            return $user;
+            return $user->fresh() ?? $user;
         }
 
         return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $from
+     */
+    public function syncPlatformIdentity(SvpUser $user, string $platform, array $from): void
+    {
+        $plat = $platform === 'bale' ? 'bale' : 'telegram';
+        $updates = [];
+
+        $fromUsername = $this->normalizeUsername((string) ($from['username'] ?? ''));
+        if ($fromUsername !== '') {
+            if ($plat === 'bale') {
+                if ($this->columnValue($user, 'bale_username') !== $fromUsername) {
+                    $updates['bale_username'] = $fromUsername;
+                }
+            } elseif ($this->columnValue($user, 'tg_username') !== $fromUsername) {
+                $updates['tg_username'] = $fromUsername;
+            }
+            if (trim((string) ($user->username ?? '')) === '') {
+                $updates['username'] = $fromUsername;
+            }
+        }
+
+        $fromId = (int) ($from['id'] ?? 0);
+        if ($fromId > 0) {
+            if ($plat === 'bale') {
+                if ((int) ($user->bale_user_id ?? 0) !== $fromId) {
+                    $updates['bale_user_id'] = $fromId;
+                }
+            } elseif ((int) ($user->tg_user_id ?? 0) !== $fromId) {
+                $updates['tg_user_id'] = $fromId;
+            }
+        }
+
+        if (! empty($from['first_name']) || ! empty($from['last_name'])) {
+            $fn = mb_substr(trim((string) ($from['first_name'] ?? '')), 0, 191, 'UTF-8');
+            $ln = mb_substr(trim((string) ($from['last_name'] ?? '')), 0, 191, 'UTF-8');
+            if ((string) ($user->first_name ?? '') !== $fn) {
+                $updates['first_name'] = $fn;
+            }
+            if ((string) ($user->last_name ?? '') !== $ln) {
+                $updates['last_name'] = $ln;
+            }
+        }
+
+        if ($updates === []) {
+            return;
+        }
+
+        foreach ($updates as $key => $value) {
+            if (! $this->hasColumn($key)) {
+                unset($updates[$key]);
+            }
+        }
+
+        if ($updates === []) {
+            return;
+        }
+
+        $user->fill($updates);
+        $user->save();
     }
 
     /** @param  array<string, mixed>  $from */
@@ -42,7 +106,7 @@ class UserResolver
         $data = [
             'first_name' => (string) ($from['first_name'] ?? ''),
             'last_name' => (string) ($from['last_name'] ?? ''),
-            'username' => (string) ($from['username'] ?? ''),
+            'username' => $this->normalizeUsername((string) ($from['username'] ?? '')),
             'role' => 'user',
             'balance' => 0,
             'status' => $autoApprove ? 'approved' : 'pending',
@@ -58,6 +122,15 @@ class UserResolver
             $data['approved_at'] = now();
         } else {
             $data['bale_user_id'] = $fromId;
+        }
+
+        $username = $this->normalizeUsername((string) ($from['username'] ?? ''));
+        if ($username !== '') {
+            if ($ctx->platform === 'bale' && $this->hasColumn('bale_username')) {
+                $data['bale_username'] = $username;
+            } elseif ($ctx->platform === 'telegram' && $this->hasColumn('tg_username')) {
+                $data['tg_username'] = $username;
+            }
         }
 
         if ($ctx->isResellerBot()) {
@@ -84,5 +157,33 @@ class UserResolver
 
         $user->last_tg_mirror_bot_id = $mid;
         $user->save();
+    }
+
+    protected function normalizeUsername(string $username): string
+    {
+        $username = trim($username);
+        if ($username === '') {
+            return '';
+        }
+
+        return mb_substr(ltrim($username, '@'), 0, 191, 'UTF-8');
+    }
+
+    protected function hasColumn(string $column): bool
+    {
+        if ($column === 'tg_username' || $column === 'bale_username') {
+            return Schema::hasColumn('svp_users', $column);
+        }
+
+        return true;
+    }
+
+    protected function columnValue(SvpUser $user, string $column): string
+    {
+        if (! $this->hasColumn($column)) {
+            return '';
+        }
+
+        return (string) ($user->{$column} ?? '');
     }
 }

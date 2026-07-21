@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { CreditCard, Layers, Radio, Receipt, Server, Tags, TrendingUp, UsersRound } from "lucide-react"
+import { Activity, Bot, Layers, Radio, Receipt, Server, TrendingUp, UsersRound } from "lucide-react"
 import {
   Area,
   AreaChart,
@@ -13,16 +13,20 @@ import {
   XAxis,
   YAxis,
 } from "recharts"
+import { useDashboardShellOptional } from "@/components/dashboard-shell-provider"
 import { getAdminState } from "@/lib/dash-admin-mutate"
+import { parsePaginationMeta, type PaginationMeta } from "@/lib/dash-pagination"
 import {
   formatBytes,
   formatChartDayLabel,
   formatChartTooltipDate,
+  formatDateOnly,
   formatDateTime,
   formatNumber,
   formatNumericString,
 } from "@/lib/format-locale"
 import { useChartPrimaryColor } from "@/lib/chart-accent"
+import { buildAllowedResellerTabs } from "@/lib/safe-reseller-tab"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -31,6 +35,7 @@ import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { DashSelect } from "@/components/dash-select"
+import { DataPagination } from "@/components/data-pagination"
 import {
   DashboardEconomicsOverviewCard,
   type EconomicsOverviewPayload,
@@ -111,6 +116,15 @@ function num(v: unknown): number {
 
 function arr(v: unknown): DashRecord[] {
   return Array.isArray(v) ? (v.filter((x) => x && typeof x === "object") as DashRecord[]) : []
+}
+
+function pickPagination(data: DashRecord, key: string): PaginationMeta | null {
+  const raw = data.pagination
+  if (raw && typeof raw === "object") {
+    const parsed = parsePaginationMeta((raw as DashRecord)[key])
+    if (parsed) return parsed
+  }
+  return parsePaginationMeta(data[`${key}Pagination`])
 }
 
 function clampPct(p: number): number {
@@ -214,7 +228,7 @@ function QuickLink({
 }: {
   href: string
   label: string
-  value: string
+  value?: string
   icon: ComponentType<{ className?: string }>
 }) {
   return (
@@ -222,7 +236,7 @@ function QuickLink({
       <Icon className="size-4 text-muted-foreground" aria-hidden />
       <span className="min-w-0 text-start">
         <span className="block text-sm font-medium">{label}</span>
-        <span className="block text-xs text-muted-foreground">{value}</span>
+        {value ? <span className="block text-xs text-muted-foreground">{value}</span> : null}
       </span>
     </Button>
   )
@@ -264,41 +278,61 @@ function hasResellerPerfMetrics(raw: unknown): raw is ResellerOverviewMetrics {
 
 export function OverviewAdminClient() {
   const t = useTranslations("dashboardOverview")
+  const tNav = useTranslations("sidebar.items")
   const locale = useLocale()
   const isFa = locale === "fa"
   const chartPrimary = useChartPrimaryColor()
+  const shell = useDashboardShellOptional()
   const [data, setData] = useState<DashRecord>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [metricsWindowDays, setMetricsWindowDays] = useState(30)
+  const [statsDay, setStatsDay] = useState(0)
   const [refreshingHealth, setRefreshingHealth] = useState(false)
+  const [panelsPage, setPanelsPage] = useState(1)
+  const [panelsPerPage, setPanelsPerPage] = useState(20)
+  const [panelsPagination, setPanelsPagination] = useState<PaginationMeta | null>(null)
   const metricsWindowRef = useRef(metricsWindowDays)
+  const statsDayRef = useRef(statsDay)
   metricsWindowRef.current = metricsWindowDays
+  statsDayRef.current = statsDay
 
   const load = useCallback(
-    async (opts?: { refreshPanelHealth?: boolean; overviewMetricsWindowDays?: number }) => {
+    async (opts?: {
+      refreshPanelHealth?: boolean
+      overviewMetricsWindowDays?: number
+      statsDay?: number
+    }) => {
       setLoading(true)
       setError(null)
       try {
         const windowDays = opts?.overviewMetricsWindowDays ?? metricsWindowRef.current
+        const dayRaw = opts?.statsDay ?? statsDayRef.current
+        const day = [0, 1, 2, 3, 4, 5, 6, 7].includes(dayRaw) ? dayRaw : 0
         const query: Record<string, string | number> = {
           overview_metrics_window_days: [7, 30, 90].includes(windowDays) ? windowDays : 30,
+          stats_day: day,
+          panels_page: panelsPage,
+          panels_per_page: panelsPerPage,
         }
         if (opts?.refreshPanelHealth) query.refreshPanelHealth = 1
 
         const dashboard = await getAdminState("dashboard", query)
         if (dashboard && Object.keys(dashboard).length > 0) {
           setData(dashboard)
+          setPanelsPagination(pickPagination(dashboard, "panels"))
           return
         }
-        setData(await getAdminState("overview", query))
+        const overview = await getAdminState("overview", query)
+        setData(overview)
+        setPanelsPagination(pickPagination(overview, "panels"))
       } catch {
         setError(t("loadError"))
       } finally {
         setLoading(false)
       }
     },
-    [t]
+    [panelsPage, panelsPerPage, t]
   )
 
   useEffect(() => {
@@ -324,7 +358,6 @@ export function OverviewAdminClient() {
   const bot = overview.bot && typeof overview.bot === "object" ? (overview.bot as DashRecord) : {}
   const counts = overview.counts && typeof overview.counts === "object" ? (overview.counts as DashRecord) : {}
   const plans = arr(data.plans)
-  const planCategories = arr(data.planCategories)
   const cards = arr(data.cards)
   const panels = arr(data.panels)
   const receipts = arr(data.receipts)
@@ -332,7 +365,14 @@ export function OverviewAdminClient() {
   const recentUsers = arr(data.usersList ?? data.users)
   const recentResellers = arr(data.resellers)
   const recentBroadcasts = arr(data.broadcasts)
-  const isReseller = data.isReseller === true || data.actorRole === "reseller"
+  const isReseller = data.isReseller === true || data.actorRole === "reseller" || shell?.isReseller === true
+  const allowedNavTabs = useMemo(() => {
+    if (!isReseller) return null
+    return buildAllowedResellerTabs(shell?.allowedResellerTabs, shell?.actorPermissions)
+  }, [isReseller, shell?.actorPermissions, shell?.allowedResellerTabs])
+  const allowTab = (tab: string) => !allowedNavTabs || allowedNavTabs.has(tab)
+  const statsDayClamped = [0, 1, 2, 3, 4, 5, 6, 7].includes(statsDay) ? statsDay : 0
+  const statDateRaw = String(stats.stat_date ?? overview.stat_date ?? "")
 
   const host = useMemo(() => {
     const nested = overviewPayload.host
@@ -495,6 +535,36 @@ export function OverviewAdminClient() {
         <div className="space-y-1">
           <h1 className="text-xl font-semibold">{t("title")}</h1>
           <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
+          {statDateRaw ? (
+            <p className="text-xs text-muted-foreground">
+              {t("statDate")}: {formatDateOnly(statDateRaw, isFa)}
+            </p>
+          ) : null}
+          {isReseller ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <Label htmlFor="overview-stats-day" className="text-xs text-muted-foreground">
+                {t("statsDayLabel")}
+              </Label>
+              <DashSelect
+                id="overview-stats-day"
+                triggerClassName="h-8 w-[10rem]"
+                value={String(statsDayClamped)}
+                onValueChange={(v) => {
+                  const d = Number(v)
+                  if (!Number.isFinite(d) || d < 0 || d > 7) return
+                  setStatsDay(d)
+                  void load({ statsDay: d })
+                }}
+                options={[0, 1, 2, 3, 4, 5, 6, 7].map((d) => ({
+                  value: String(d),
+                  label:
+                    d === 0
+                      ? t("statsDayToday")
+                      : t("statsDayAgo", { days: formatNumber(d, isFa) }),
+                }))}
+              />
+            </div>
+          ) : null}
         </div>
         <Button type="button" variant="outline" size="sm" disabled={loading} onClick={() => void load()}>
           {t("refresh")}
@@ -908,18 +978,27 @@ export function OverviewAdminClient() {
               )}
             </div>
           </TooltipProvider>
+          <DataPagination
+            data-testid="dash-overview-panels-pagination"
+            meta={panelsPagination}
+            onPageChange={setPanelsPage}
+            onPerPageChange={(n) => {
+              setPanelsPerPage(n)
+              setPanelsPage(1)
+            }}
+          />
         </section>
       ) : null}
 
       <OverviewPreviewGrid
         dashboardBaseUrl={base}
+        allowTab={allowTab}
         recentUsers={recentUsers}
         recentReceipts={receipts}
         pendingUsersPreview={pendingUsers}
         recentResellers={recentResellers}
         recentBroadcasts={recentBroadcasts}
-        showResellers={!isReseller}
-        showBroadcast={recentBroadcasts.length > 0}
+        isReseller={isReseller}
       />
 
       <Card>
@@ -928,12 +1007,47 @@ export function OverviewAdminClient() {
           <CardDescription>{t("financeCardHint")}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          <QuickLink href={`${base}/users`} label={t("recentUsers")} value={formatNumber(pendingUsers.length, isFa)} icon={UsersRound} />
-          <QuickLink href={`${base}/payments`} label={t("recentReceipts")} value={formatNumber(receipts.length, isFa)} icon={Receipt} />
-          <QuickLink href={`${base}/cards`} label={t("cardsCount")} value={formatNumber(cards.length, isFa)} icon={CreditCard} />
-          <QuickLink href={`${base}/plans`} label={t("plansCount")} value={formatNumber(plans.length, isFa)} icon={Layers} />
-          <QuickLink href={`${base}/plan_cats`} label={t("planCategories")} value={formatNumber(planCategories.length, isFa)} icon={Tags} />
-          <QuickLink href={`${base}/xui_panels`} label={t("panelsCount")} value={formatNumber(panels.length, isFa)} icon={Server} />
+          {allowTab("users") ? (
+            <QuickLink
+              href={`${base}/users`}
+              label={tNav("users")}
+              value={formatNumber(pendingUsers.length, isFa)}
+              icon={UsersRound}
+            />
+          ) : null}
+          {allowTab("receipts") || allowTab("payments") ? (
+            <QuickLink
+              href={`${base}/payments`}
+              label={tNav(allowTab("receipts") ? "receipts" : "payments")}
+              value={formatNumber(receipts.length, isFa)}
+              icon={Receipt}
+            />
+          ) : null}
+          {allowTab("xui_panels") ? (
+            <QuickLink
+              href={`${base}/xui_panels`}
+              label={tNav("xui_panels")}
+              value={formatNumber(panels.length, isFa)}
+              icon={Server}
+            />
+          ) : null}
+          {allowTab("plans") ? (
+            <QuickLink
+              href={`${base}/plans`}
+              label={tNav("plans")}
+              value={formatNumber(plans.length, isFa)}
+              icon={Layers}
+            />
+          ) : null}
+          {allowTab("bots") ? (
+            <QuickLink href={`${base}/bots`} label={tNav("bots")} icon={Bot} />
+          ) : null}
+          {allowTab("reseller_bots") ? (
+            <QuickLink href={`${base}/reseller_bots`} label={tNav("reseller_bots")} icon={Bot} />
+          ) : null}
+          {allowTab("monitoring") ? (
+            <QuickLink href={`${base}/monitoring`} label={tNav("monitoring")} icon={Activity} />
+          ) : null}
         </CardContent>
       </Card>
     </div>

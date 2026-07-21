@@ -1,10 +1,21 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useTheme } from "next-themes"
 import { useLocale, useTranslations } from "next-intl"
 import { usePathname, useRouter } from "next/navigation"
-import { CheckIcon, LanguagesIcon, MoonIcon, SunIcon, PaletteIcon } from "lucide-react"
+import {
+  CheckIcon,
+  LanguagesIcon,
+  MaximizeIcon,
+  MinimizeIcon,
+  MoonIcon,
+  SunIcon,
+  PaletteIcon,
+} from "lucide-react"
+import { BaleLogo } from "@/components/icons/bale-logo"
+import { TelegramLogo } from "@/components/icons/telegram-logo"
+import { useDashboardShellOptional } from "@/components/dashboard-shell-provider"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,15 +31,27 @@ import {
   normalizeAccent,
   type AccentPreset,
 } from "@/lib/accent"
+import { botPlatformUrl } from "@/lib/bot-links"
 import { saveUiPreferences, type UiTheme } from "@/lib/dash-ui-preferences"
+import { cn } from "@/lib/utils"
 
-export function DashboardToolbar() {
+export function DashboardToolbar({
+  variant = "header",
+  className,
+}: {
+  variant?: "header" | "sidebar"
+  className?: string
+} = {}) {
   const t = useTranslations()
   const { theme, setTheme } = useTheme()
   const locale = useLocale()
   const router = useRouter()
   const pathname = usePathname()
+  const shell = useDashboardShellOptional()
+  const me = shell?.me
   const [accent, setAccent] = useState<AccentPreset>("default")
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const isSidebar = variant === "sidebar"
 
   useEffect(() => {
     try {
@@ -41,6 +64,31 @@ export function DashboardToolbar() {
       /* ignore */
     }
   }, [])
+
+  useEffect(() => {
+    const fromMe = me?.uiAccent ?? me?.ui_accent
+    if (fromMe == null || fromMe === "") return
+    const next = normalizeAccent(String(fromMe))
+    setAccent(next)
+  }, [me?.uiAccent, me?.ui_accent])
+
+  useEffect(() => {
+    const onFsChange = () => setIsFullscreen(Boolean(document.fullscreenElement))
+    document.addEventListener("fullscreenchange", onFsChange)
+    return () => document.removeEventListener("fullscreenchange", onFsChange)
+  }, [])
+
+  const botLinks = useMemo(() => {
+    const features = me?.features as Record<string, unknown> | undefined
+    const tgUser = String(me?.telegramBotUsername ?? me?.telegram_bot_username ?? "").trim()
+    const baleUser = String(me?.baleBotUsername ?? me?.bale_bot_username ?? "").trim()
+    const tgOn = features?.telegram !== false
+    const baleOn = features?.bale === true
+    return {
+      telegram: tgOn && tgUser ? botPlatformUrl("telegram", tgUser) : null,
+      bale: baleOn && baleUser ? botPlatformUrl("bale", baleUser) : null,
+    }
+  }, [me])
 
   const applyAccent = (value: AccentPreset) => {
     setAccent(value)
@@ -73,10 +121,64 @@ export function DashboardToolbar() {
     }
   }
 
+  const toggleFullscreen = async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen()
+      } else {
+        await document.exitFullscreen()
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const iconBtn = isSidebar
+    ? "inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-background hover:bg-muted"
+    : "inline-flex size-8 items-center justify-center rounded-lg border border-transparent hover:bg-muted"
+
   return (
-    <div className="ms-auto flex items-center gap-1">
+    <div
+      className={cn(
+        isSidebar
+          ? "flex w-full flex-wrap items-center gap-2"
+          : "ms-auto flex shrink-0 items-center gap-1",
+        className
+      )}
+    >
+      <button
+        type="button"
+        className={iconBtn}
+        aria-label={t("layout.fullscreen")}
+        onClick={() => void toggleFullscreen()}
+      >
+        {isFullscreen ? <MinimizeIcon className="size-4" /> : <MaximizeIcon className="size-4" />}
+      </button>
+      {botLinks.telegram ? (
+        <a
+          href={botLinks.telegram}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={iconBtn}
+          aria-label={t("layout.openTelegramBot")}
+        >
+          <TelegramLogo className="size-4 text-muted-foreground" />
+        </a>
+      ) : null}
+      {botLinks.bale ? (
+        <a
+          href={botLinks.bale}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={iconBtn}
+          aria-label={t("layout.openBaleBot")}
+        >
+          <BaleLogo />
+        </a>
+      ) : null}
+
       <DropdownMenu>
-        <DropdownMenuTrigger className="inline-flex size-8 items-center justify-center rounded-lg hover:bg-muted">
+        <DropdownMenuTrigger className={iconBtn}>
           <LanguagesIcon className="size-4" />
           <span className="sr-only">{t("layout.language")}</span>
         </DropdownMenuTrigger>
@@ -93,7 +195,7 @@ export function DashboardToolbar() {
       </DropdownMenu>
 
       <DropdownMenu>
-        <DropdownMenuTrigger className="inline-flex size-8 items-center justify-center rounded-lg hover:bg-muted">
+        <DropdownMenuTrigger className={iconBtn}>
           <SunIcon className="size-4 dark:hidden" />
           <MoonIcon className="hidden size-4 dark:block" />
           <span className="sr-only">{t("layout.theme")}</span>
@@ -115,7 +217,7 @@ export function DashboardToolbar() {
       </DropdownMenu>
 
       <DropdownMenu>
-        <DropdownMenuTrigger className="inline-flex size-8 items-center justify-center rounded-lg hover:bg-muted">
+        <DropdownMenuTrigger className={iconBtn}>
           <PaletteIcon className="size-4" />
           <span className="sr-only">{t("layout.accent")}</span>
         </DropdownMenuTrigger>

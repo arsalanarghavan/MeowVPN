@@ -76,7 +76,7 @@ class MarketingMutations
             return svp_err('invalid_segment');
         }
 
-        $id = (int) ($payload['id'] ?? 0);
+        $id = (int) ($payload['rule_id'] ?? $payload['id'] ?? 0);
         $data = collect($payload)->only([
             'segment_key', 'enabled', 'priority', 'cooldown_days', 'after_days', 'pending_hours',
             'funnel_idle_hours', 'expires_within_days', 'discount_type', 'discount_value',
@@ -114,7 +114,7 @@ class MarketingMutations
     /** @param  array<string, mixed>  $payload */
     public function marketingRuleDelete(array $payload, ?Authenticatable $actor): array
     {
-        $id = (int) ($payload['id'] ?? 0);
+        $id = (int) ($payload['rule_id'] ?? $payload['id'] ?? 0);
         if ($actor instanceof DashboardUser && $actor->role === 'reseller') {
             $rule = DB::table('svp_marketing_rules')->where('id', $id)->first();
             if ($rule && (int) $rule->owner_svp_user_id !== (int) ($actor->svp_user_id ?? 0)) {

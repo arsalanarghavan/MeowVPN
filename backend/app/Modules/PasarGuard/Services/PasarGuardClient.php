@@ -924,26 +924,82 @@ class PasarGuardClient
     {
         $svc = DB::table('svp_services')->where('id', $serviceId)->first();
         if (! $svc) {
-            return ['ok' => false, 'message' => 'not_found'];
+            return ['ok' => false, 'message' => 'not_found', 'reason' => 'bad_service'];
         }
         $panelId = (int) ($svc->panel_id ?? 0);
 
         return $this->runWithPanel($panelId, function () use ($svc) {
-            if ($this->loginWithRetries()) {
-                $this->delClient(
-                    (int) $svc->inbound_id,
-                    (string) ($svc->xui_client_uuid ?? $svc->xui_client_id ?? ''),
-                    (string) $svc->email
-                );
+            if (! $this->loginWithRetries()) {
+                return ['ok' => false, 'reason' => 'panel_login', 'message' => 'panel_login'];
             }
+
+            $email = (string) ($svc->email ?? '');
+            $panelAbsent = false;
+            $existing = $this->clientGetV3($email);
+            if (! is_array($existing)) {
+                $panelAbsent = true;
+            } else {
+                $res = $this->delClient((int) ($svc->inbound_id ?? 0), $email, $email);
+                if (! $this->responseIsSuccess($res)) {
+                    $still = $this->clientGetV3($email);
+                    if (! is_array($still)) {
+                        $panelAbsent = true;
+                    } else {
+                        return ['ok' => false, 'reason' => 'del_failed', 'message' => 'del_failed', 'panel' => $res];
+                    }
+                }
+            }
+
             DB::table('svp_services')->where('id', $svc->id)->update([
                 'xui_client_id' => null,
                 'xui_client_uuid' => null,
-                'deleted_at' => now(),
             ]);
 
-            return ['ok' => true];
+            $out = ['ok' => true];
+            if ($panelAbsent) {
+                $out['panel_absent'] = true;
+            }
+
+            return $out;
         }, $panel);
+    }
+
+    /**
+     * WP xray_regenerate_sub_id PasarGuard path: revoke_subscription then sync.
+     *
+     * @return array{ok:bool, sub_id?:string, reason?:string, message?:string}
+     */
+    public function regenerateSubId(int $serviceId): array
+    {
+        $svc = DB::table('svp_services')->where('id', $serviceId)->first();
+        if (! $svc) {
+            return ['ok' => false, 'message' => 'not_found', 'reason' => 'bad_service'];
+        }
+        $panelId = (int) ($svc->panel_id ?? 0);
+        if ($panelId < 1) {
+            return ['ok' => false, 'message' => 'panel_not_found', 'reason' => 'panel_not_found'];
+        }
+
+        return $this->runWithPanel($panelId, function () use ($svc, $serviceId) {
+            if (! $this->loginWithRetries()) {
+                return ['ok' => false, 'reason' => 'panel_login', 'message' => 'panel_login'];
+            }
+            $rev = $this->revokeSubscription((string) ($svc->email ?? ''));
+            if (empty($rev['ok'])) {
+                return ['ok' => false, 'reason' => 'revoke_sub_failed', 'message' => 'revoke_sub_failed'];
+            }
+            $newSub = (string) ($rev['subId'] ?? '');
+            if ($newSub === '') {
+                return ['ok' => false, 'reason' => 'no_sub_id', 'message' => 'no_sub_id'];
+            }
+            DB::table('svp_services')->where('id', $serviceId)->update(['sub_id' => $newSub]);
+            $fresh = DB::table('svp_services')->where('id', $serviceId)->first();
+            if ($fresh) {
+                $this->syncServiceRowToPanel((array) $fresh);
+            }
+
+            return ['ok' => true, 'sub_id' => $newSub];
+        });
     }
 
     public function removePanelClientOnly(int $serviceId): array

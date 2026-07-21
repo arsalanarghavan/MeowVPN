@@ -442,6 +442,7 @@ isReseller: boolean
   const planPrice = num(svc.plan_price)
   const planPpg = num(svc.plan_price_per_gb)
   const pricingType = String(svc.plan_pricing_type ?? "")
+  const planQuotaDisplay = String(svc.plan_quota_display_mode ?? "show")
   const isL2tp = String(svc.service_type ?? "xray") === "l2tp"
   if (isL2tp) {
     return null
@@ -610,7 +611,14 @@ isReseller: boolean
           </InfoRow>
           <InfoRow icon={HardDrive} label={tp("svcVolume")} valueDir={valueDir}>
             <div className="space-y-1">
-              <span className="inline-block">{quotaLine}</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-block">{quotaLine}</span>
+                {planQuotaDisplay === "hide_as_unlimited" || planQuotaDisplay === "hide" ? (
+                  <Badge variant="outline" className="text-[10px] font-normal">
+                    {tp("planQuotaDisplayHidden")}
+                  </Badge>
+                ) : null}
+              </div>
               {quotaGb > 0 ? <Progress value={usedPct} className="h-1.5" /> : null}
             </div>
           </InfoRow>

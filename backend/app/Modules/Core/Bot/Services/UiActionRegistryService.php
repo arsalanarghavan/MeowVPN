@@ -737,6 +737,8 @@ class UiActionRegistryService {
 				return 'btn.svc.config_qr';
 			case 'svc_xray.regen':
 				return 'btn.svc.regenerate_key';
+			case 'svc_xray.regen_sub':
+				return 'btn.svc.regenerate_sub_id';
 			case 'svc_xray.panel_toggle':
 				return 'btn.svc.panel_enable';
 			case 'svc_xray.refresh':
@@ -815,6 +817,7 @@ class UiActionRegistryService {
 			'svc_xray.usage',
 			'svc_xray.config',
 			'svc_xray.regen',
+			'svc_xray.regen_sub',
 			'svc_xray.panel_toggle',
 			'svc_xray.refresh',
 			'svc_xray.renew',
@@ -994,7 +997,7 @@ class UiActionRegistryService {
 			'svc_menu_xray'            => array(
 				array( 'svc_xray.panel', 'svc_xray.usage' ),
 				array( 'svc_xray.config' ),
-				array( 'svc_xray.regen', 'svc_xray.panel_toggle', 'svc_xray.refresh' ),
+				array( 'svc_xray.regen', 'svc_xray.regen_sub', 'svc_xray.panel_toggle', 'svc_xray.refresh' ),
 				array( 'svc_xray.renew', 'svc_xray.volume', 'svc_xray.slots' ),
 				array( 'svc_xray.rename', 'svc_xray.note' ),
 				array( 'svc_xray.alerts' ),
@@ -1101,14 +1104,16 @@ class UiActionRegistryService {
 		if ( '' === $key ) {
 			return '';
 		}
-		$base = $user && is_object( $user )
-			? SimpleVPBot_Texts::get_for_user( $key, $user )
-			: SimpleVPBot_Texts::get( $key, '' );
-		$use_glass = $cell_glass || ! empty( $def['glass_default'] );
-		$max       = (int) ( $def['max_len'] ?? 256 );
-		return $use_glass
-			? SimpleVPBot_Keyboards::glass_button_text( $base, $max )
-			: $base;
+		$texts = app( TextService::class );
+		$base  = $user && is_object( $user )
+			? $texts->getForUser( $key, $user, '' )
+			: $texts->get( $key, '' );
+		$max = (int) ( $def['max_len'] ?? 256 );
+		if ( $max > 0 && function_exists( 'mb_strlen' ) && function_exists( 'mb_substr' ) && mb_strlen( $base, 'UTF-8' ) > $max ) {
+			return mb_substr( $base, 0, $max, 'UTF-8' );
+		}
+
+		return $base;
 	}
 
 	/**
@@ -1326,16 +1331,7 @@ class UiActionRegistryService {
     /** @return array{fa:string,en:string} */
     public static function defaultPairForKey(string $key): array
     {
-        $defaults = app(SettingsStore::class)->get('text_defaults', []);
-        if (is_array($defaults) && isset($defaults[$key]) && is_array($defaults[$key])) {
-            $row = $defaults[$key];
-            return [
-                'fa' => (string) ($row['fa'] ?? ''),
-                'en' => (string) ($row['en'] ?? ''),
-            ];
-        }
-
-        return ['fa' => '', 'en' => ''];
+        return BotTextDefaults::defaultPairForKey($key);
     }
 
     public static function l2tpEnabled(): bool

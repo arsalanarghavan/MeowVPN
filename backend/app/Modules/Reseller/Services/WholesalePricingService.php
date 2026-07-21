@@ -37,6 +37,123 @@ class WholesalePricingService
         return svp_ok();
     }
 
+    /**
+     * Apply wholesale line routing fields into plan row (reseller actor).
+     *
+     * @param  array<string, mixed>  $rowData
+     * @return array{ok: bool, code?: string}
+     */
+    public function applyLineToPlanRow(int $actor, array &$rowData): array
+    {
+        $lid = isset($rowData['wholesale_line_id']) ? (int) $rowData['wholesale_line_id'] : 0;
+        if ($actor < 1 || $lid < 1) {
+            return ['ok' => true];
+        }
+
+        if (! Schema::hasTable('svp_reseller_wholesale_line_assignments')
+            || ! Schema::hasTable('svp_reseller_wholesale_lines')) {
+            return ['ok' => false, 'code' => 'wholesale_line_invalid'];
+        }
+
+        $assigned = DB::table('svp_reseller_wholesale_line_assignments')
+            ->where('reseller_svp_user_id', $actor)
+            ->where('line_id', $lid)
+            ->exists();
+        if (! $assigned) {
+            return ['ok' => false, 'code' => 'wholesale_line_not_assigned'];
+        }
+
+        $line = DB::table('svp_reseller_wholesale_lines')->where('id', $lid)->first();
+        if (! $line) {
+            return ['ok' => false, 'code' => 'wholesale_line_invalid'];
+        }
+        if (Schema::hasColumn('svp_reseller_wholesale_lines', 'active') && ! (int) ($line->active ?? 0)) {
+            return ['ok' => false, 'code' => 'wholesale_line_invalid'];
+        }
+
+        $rowData['panel_id'] = max(1, (int) ($line->panel_id ?? 1));
+        $dstype = isset($line->default_service_type)
+            ? strtolower((string) $line->default_service_type)
+            : 'xray';
+        if (! in_array($dstype, ['xray', 'l2tp'], true)) {
+            $dstype = 'xray';
+        }
+        $rowData['service_type'] = $dstype;
+        if ($dstype === 'l2tp') {
+            $rowData['inbound_id'] = 0;
+            $l2 = max(0, (int) ($line->default_l2tp_server_id ?? 0));
+            $rowData['l2tp_server_id'] = $l2 > 0 ? $l2 : null;
+        } else {
+            $inbound = max(0, (int) ($line->default_inbound_id ?? $line->inbound_id ?? 0));
+            $rowData['inbound_id'] = $inbound;
+            $rowData['l2tp_server_id'] = null;
+        }
+
+        return ['ok' => true];
+    }
+
+    /** Effective min retail unit (per GB) from line + optional parent floor. */
+    public function wholesaleFloorUnit(int $resellerSvpUserId, int $lineId, int $panelId = 1): float
+    {
+        $unit = 0.0;
+        if ($lineId > 0) {
+            $unit = $this->effectiveUnitPrice($resellerSvpUserId, $lineId);
+        }
+        if ($unit <= 0 && Schema::hasTable('svp_reseller_panel_prices')) {
+            $unit = (float) (DB::table('svp_reseller_panel_prices')
+                ->where('reseller_svp_user_id', $resellerSvpUserId)
+                ->where('panel_id', $panelId)
+                ->value('price_per_gb') ?? 0);
+        }
+
+        $parentFloor = 0.0;
+        if ($resellerSvpUserId > 0
+            && Schema::hasTable('svp_users')
+            && Schema::hasTable('svp_reseller_parent_panel_floors')) {
+            $parentId = (int) (DB::table('svp_users')->where('id', $resellerSvpUserId)->value('invited_by') ?? 0);
+            if ($parentId > 0) {
+                $parentFloor = (float) (DB::table('svp_reseller_parent_panel_floors')
+                    ->where('parent_svp_user_id', $parentId)
+                    ->where('child_svp_user_id', $resellerSvpUserId)
+                    ->where('panel_id', $panelId)
+                    ->value('min_price_per_gb') ?? 0);
+            }
+        }
+
+        return max($unit, $parentFloor);
+    }
+
+    protected function effectiveUnitPrice(int $resellerSvpUserId, int $lineId): float
+    {
+        if ($lineId < 1 || ! Schema::hasTable('svp_reseller_wholesale_lines')) {
+            return 0.0;
+        }
+
+        $line = DB::table('svp_reseller_wholesale_lines')->where('id', $lineId)->first();
+        if (! $line) {
+            return 0.0;
+        }
+
+        if (Schema::hasColumn('svp_reseller_wholesale_lines', 'price_per_gb')) {
+            $direct = (float) ($line->price_per_gb ?? 0);
+            if ($direct > 0) {
+                return $direct;
+            }
+        }
+
+        if (! Schema::hasTable('svp_reseller_wholesale_tiers')) {
+            return 0.0;
+        }
+
+        $tier = DB::table('svp_reseller_wholesale_tiers')
+            ->where('line_id', $lineId)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->first();
+
+        return $tier ? (float) ($tier->price_per_gb ?? 0) : 0.0;
+    }
+
     /** @param  array<string, mixed>  $payload */
     public function saveLine(array $payload): array
     {

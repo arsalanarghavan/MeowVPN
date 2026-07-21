@@ -27,10 +27,17 @@ class DeferredConfigDeliveryCronJob implements ShouldQueue
             }
             $userId = (int) ($payload['owner_id'] ?? $payload['user_id'] ?? 0);
             $serviceId = (int) ($payload['service_id'] ?? 0);
+            $platform = (string) ($payload['platform'] ?? 'telegram');
+            $mode = (string) ($payload['mode'] ?? 'config');
             if ($userId > 0 && $serviceId > 0) {
-                $delivery->deliver($userId, $serviceId, (string) ($payload['cb_id'] ?? ''));
+                // deliver() schedules its own retry or clears cache — do not forget on retry.
+                $result = $delivery->deliver($userId, $serviceId, (string) ($payload['cb_id'] ?? ''), $platform, $mode);
+                if ($result === 'retry') {
+                    continue;
+                }
+            } else {
+                Cache::forget($key);
             }
-            Cache::forget($key);
         }
     }
 
@@ -48,10 +55,29 @@ class DeferredConfigDeliveryCronJob implements ShouldQueue
             }
         }
 
-        return DB::table('cache')
-            ->where('key', 'like', str_replace('*', '%', $pattern))
-            ->pluck('key')
-            ->map(fn ($k) => (string) $k)
-            ->all();
+        // Array/file cache: scan recent services as a best-effort sweep.
+        $out = [];
+        $ids = DB::table('svp_services')->orderByDesc('id')->limit(50)->pluck('id');
+        foreach ($ids as $sid) {
+            $sid = (int) $sid;
+            $owner = (int) (DB::table('svp_services')->where('id', $sid)->value('user_id') ?? 0);
+            if ($owner < 1) {
+                continue;
+            }
+            foreach (['telegram', 'bale'] as $plat) {
+                foreach (['config', 'subscription', 'link'] as $mode) {
+                    $k = "bot_config_delivery:{$owner}:{$sid}:{$plat}:{$mode}";
+                    if (Cache::has($k)) {
+                        $out[] = $k;
+                    }
+                }
+            }
+            $legacy = "bot_config_delivery:{$owner}:{$sid}";
+            if (Cache::has($legacy)) {
+                $out[] = $legacy;
+            }
+        }
+
+        return $out;
     }
 }

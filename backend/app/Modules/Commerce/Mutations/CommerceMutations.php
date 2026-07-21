@@ -5,6 +5,8 @@ namespace App\Modules\Commerce\Mutations;
 use App\Models\DashboardUser;
 use App\Models\SvpPlan;
 use App\Models\SvpService;
+use App\Modules\Commerce\Services\PlanResellerRulesService;
+use App\Modules\PasarGuard\Services\PanelClientFactory;
 use App\Modules\XuiPanel\Services\PlanInboundSyncService;
 use App\Services\Commerce\ReceiptActionService;
 use App\Services\Commerce\ReceiptProcessorService;
@@ -26,6 +28,8 @@ class CommerceMutations
         protected SettingsStore $settings,
         protected ResellerModuleGuard $resellerModule,
         protected PlanInboundSyncService $planInboundSync,
+        protected PlanResellerRulesService $planResellerRules,
+        protected PanelClientFactory $panelFactory,
     ) {}
     /** @return array<string, array{0: class-string, 1: string}> */
     public function handlers(): array
@@ -61,8 +65,22 @@ class CommerceMutations
     {
         $action = (string) ($payload['plan_action'] ?? '');
         $id = (int) ($payload['id'] ?? $payload['plan_id'] ?? 0);
+        $resellerActor = (int) ($payload['__actor_svp_user_id'] ?? 0);
 
         if ($action === 'delete' && $id > 0) {
+            $existing = SvpPlan::query()->find($id);
+            if ($resellerActor > 0) {
+                if (! $existing || ! $this->planResellerRules->resellerOwnsPlan($resellerActor, $existing)) {
+                    return svp_err('forbidden', ['code' => 'forbidden']);
+                }
+                if ((string) ($existing->service_type ?? '') === 'l2tp'
+                    && ! $this->planResellerRules->resellerL2tpAllowedOnPanel(
+                        $resellerActor,
+                        max(1, (int) ($existing->panel_id ?? 1))
+                    )) {
+                    return svp_err('l2tp_forbidden_for_reseller', ['code' => 'l2tp_forbidden_for_reseller']);
+                }
+            }
             SvpPlan::query()->where('id', $id)->delete();
 
             return svp_ok(['plan_id' => $id]);
@@ -72,6 +90,18 @@ class CommerceMutations
             $plan = SvpPlan::query()->find($id);
             if (! $plan) {
                 return svp_err('not_found');
+            }
+            if ($resellerActor > 0) {
+                if (! $this->planResellerRules->resellerOwnsPlan($resellerActor, $plan)) {
+                    return svp_err('forbidden', ['code' => 'forbidden']);
+                }
+                if ((string) ($plan->service_type ?? '') === 'l2tp'
+                    && ! $this->planResellerRules->resellerL2tpAllowedOnPanel(
+                        $resellerActor,
+                        max(1, (int) ($plan->panel_id ?? 1))
+                    )) {
+                    return svp_err('l2tp_forbidden_for_reseller', ['code' => 'l2tp_forbidden_for_reseller']);
+                }
             }
             $plan->update(['active' => ! $plan->active]);
 
@@ -107,10 +137,12 @@ class CommerceMutations
         }
         if (array_key_exists('quota_display_mode', $data)) {
             $qdm = strtolower(trim((string) $data['quota_display_mode']));
-            $data['quota_display_mode'] = $qdm === 'hide_as_unlimited' ? 'hide_as_unlimited' : 'show';
+            $data['quota_display_mode'] = in_array($qdm, ['hide_as_unlimited', 'hide'], true)
+                ? 'hide_as_unlimited'
+                : 'show';
         }
 
-        if (isset($payload['inbound_ids']) && is_array($payload['inbound_ids'])) {
+        if (array_key_exists('inbound_ids', $payload) && is_array($payload['inbound_ids'])) {
             $ids = [];
             foreach ($payload['inbound_ids'] as $raw) {
                 $n = (int) $raw;
@@ -118,13 +150,15 @@ class CommerceMutations
                     $ids[] = $n;
                 }
             }
+            if (Schema::hasColumn('svp_plans', 'inbound_ids')) {
+                $data['inbound_ids'] = $ids !== [] ? json_encode(array_values($ids)) : null;
+            }
             if ($ids !== []) {
-                if (Schema::hasColumn('svp_plans', 'inbound_ids')) {
-                    $data['inbound_ids'] = json_encode(array_values($ids));
-                }
                 if (! isset($data['inbound_id'])) {
                     $data['inbound_id'] = $ids[0];
                 }
+            } else {
+                $data['inbound_id'] = 0;
             }
         }
 
@@ -132,10 +166,33 @@ class CommerceMutations
         $oldInboundIds = $existing ? $this->planInboundIds($existing) : null;
         $isUpdate = $id > 0 && ($action === 'update' || $action === '');
 
-        if ($id > 0) {
-            if (! $existing) {
-                return svp_err('not_found');
+        if ($id > 0 && ! $existing) {
+            return svp_err('not_found');
+        }
+
+        if ($resellerActor > 0) {
+            if ($existing && (string) ($existing->service_type ?? '') === 'l2tp'
+                && ! $this->planResellerRules->resellerL2tpAllowedOnPanel(
+                    $resellerActor,
+                    max(1, (int) ($existing->panel_id ?? 1))
+                )) {
+                return svp_err('l2tp_forbidden_for_reseller', [
+                    'code' => 'l2tp_forbidden_for_reseller',
+                    'plan_id' => $id,
+                ]);
             }
+
+            $fr = $this->planResellerRules->apply($resellerActor, $data, $existing);
+            if (! empty($fr['block'])) {
+                return svp_err((string) ($fr['code'] ?? 'forbidden'), [
+                    'code' => (string) ($fr['code'] ?? 'forbidden'),
+                    'plan_id' => $id > 0 ? $id : null,
+                ]);
+            }
+            $data = $fr['row'];
+        }
+
+        if ($id > 0) {
             SvpPlan::query()->where('id', $id)->update($data);
             $planId = $id;
         } else {
@@ -191,24 +248,131 @@ class CommerceMutations
     /** @param  array<string, mixed>  $payload */
     public function planCategory(array $payload, ?Authenticatable $actor): array
     {
-        $id = (int) ($payload['id'] ?? 0);
-        $data = [
-            'panel_id' => (int) ($payload['panel_id'] ?? 1),
-            'slug' => (string) ($payload['slug'] ?? ''),
-            'label' => (string) ($payload['label'] ?? ''),
-            'sort_order' => (int) ($payload['sort_order'] ?? 0),
-            'active' => (bool) ($payload['active'] ?? true),
-        ];
+        $resellerActor = (int) ($payload['__actor_svp_user_id'] ?? 0);
+        $id = (int) ($payload['id'] ?? $payload['pc_id'] ?? $payload['category_id'] ?? 0);
+        $action = strtolower(trim((string) ($payload['pc_action'] ?? $payload['action'] ?? '')));
 
-        if ($id > 0) {
-            DB::table('svp_plan_categories')->where('id', $id)->update($data);
+        if ($action === 'delete' && $id > 0) {
+            $existing = DB::table('svp_plan_categories')->where('id', $id)->first();
+            if (! $existing) {
+                return svp_err('not_found', ['code' => 'not_found']);
+            }
+            if ($resellerActor > 0 && ! $this->planResellerRules->resellerMayUsePanelCatalog(
+                $resellerActor,
+                max(1, (int) ($existing->panel_id ?? 1))
+            )) {
+                return svp_err('forbidden', ['code' => 'panel_not_allowed']);
+            }
+            $slug = (string) ($existing->slug ?? '');
+            $panelId = max(1, (int) ($existing->panel_id ?? 1));
+            if ($slug !== '' && Schema::hasTable('svp_plans')
+                && DB::table('svp_plans')->where('panel_id', $panelId)->where('category', $slug)->exists()) {
+                return svp_err('inuse', ['code' => 'inuse']);
+            }
+            DB::table('svp_plan_categories')->where('id', $id)->delete();
 
-            return svp_ok(['id' => $id]);
+            return svp_ok(['id' => $id, 'code' => 'deleted']);
         }
 
-        $newId = DB::table('svp_plan_categories')->insertGetId(array_merge($data, ['created_at' => now()]));
+        if ($action === 'toggle' && $id > 0) {
+            $existing = DB::table('svp_plan_categories')->where('id', $id)->first();
+            if (! $existing) {
+                return svp_err('not_found', ['code' => 'not_found']);
+            }
+            if ($resellerActor > 0 && ! $this->planResellerRules->resellerMayUsePanelCatalog(
+                $resellerActor,
+                max(1, (int) ($existing->panel_id ?? 1))
+            )) {
+                return svp_err('forbidden', ['code' => 'panel_not_allowed']);
+            }
+            $next = empty($existing->active) ? 1 : 0;
+            DB::table('svp_plan_categories')->where('id', $id)->update(['active' => $next]);
 
-        return svp_ok(['id' => $newId]);
+            return svp_ok(['id' => $id, 'active' => $next, 'code' => 'toggled']);
+        }
+
+        // WP aliases
+        if (array_key_exists('pc_label', $payload) && ! array_key_exists('label', $payload)) {
+            $payload['label'] = $payload['pc_label'];
+        }
+        if (array_key_exists('pc_slug', $payload) && ! array_key_exists('slug', $payload)) {
+            $payload['slug'] = $payload['pc_slug'];
+        }
+        if (array_key_exists('pc_panel_id', $payload) && ! array_key_exists('panel_id', $payload)) {
+            $payload['panel_id'] = $payload['pc_panel_id'];
+        }
+        if (array_key_exists('pc_sort', $payload) && ! array_key_exists('sort_order', $payload)) {
+            $payload['sort_order'] = $payload['pc_sort'];
+        }
+        if (array_key_exists('pc_active', $payload) && ! array_key_exists('active', $payload)) {
+            $payload['active'] = $payload['pc_active'];
+        }
+        foreach (['pc_buy_plan_intro_fa' => 'buy_plan_intro_fa', 'pc_buy_plan_intro_en' => 'buy_plan_intro_en'] as $from => $to) {
+            if (array_key_exists($from, $payload) && ! array_key_exists($to, $payload)) {
+                $payload[$to] = $payload[$from];
+            }
+        }
+
+        $panelId = max(1, (int) ($payload['panel_id'] ?? 1));
+        if ($resellerActor > 0 && ! $this->planResellerRules->resellerMayUsePanelCatalog($resellerActor, $panelId)) {
+            return svp_err('forbidden', ['code' => 'panel_not_allowed']);
+        }
+
+        $data = [];
+        if (array_key_exists('label', $payload)) {
+            $data['label'] = (string) $payload['label'];
+        }
+        if (array_key_exists('sort_order', $payload)) {
+            $data['sort_order'] = (int) $payload['sort_order'];
+        }
+        if (array_key_exists('active', $payload)) {
+            $data['active'] = ! empty($payload['active']) ? 1 : 0;
+        }
+        foreach (['buy_plan_intro_fa', 'buy_plan_intro_en', 'buy_category_intro_fa', 'buy_category_intro_en'] as $col) {
+            if (array_key_exists($col, $payload) && Schema::hasColumn('svp_plan_categories', $col)) {
+                $data[$col] = (string) $payload[$col];
+            }
+        }
+
+        if ($id > 0) {
+            $existing = DB::table('svp_plan_categories')->where('id', $id)->first();
+            if (! $existing) {
+                return svp_err('not_found', ['code' => 'not_found']);
+            }
+            if ($resellerActor > 0 && ! $this->planResellerRules->resellerMayUsePanelCatalog(
+                $resellerActor,
+                max(1, (int) ($existing->panel_id ?? 1))
+            )) {
+                return svp_err('forbidden', ['code' => 'panel_not_allowed']);
+            }
+            // WP update: do not rewrite slug/panel_id.
+            if ($data !== []) {
+                DB::table('svp_plan_categories')->where('id', $id)->update($data);
+            }
+
+            return svp_ok(['id' => $id, 'code' => 'updated']);
+        }
+
+        $slug = strtolower(substr(preg_replace('/[^a-z0-9_]/', '', (string) ($payload['slug'] ?? '')) ?: '', 0, 32));
+        $label = (string) ($payload['label'] ?? '');
+        if ($slug === '' || $label === '') {
+            return svp_err('invalid', ['code' => 'invalid']);
+        }
+        if (DB::table('svp_plan_categories')->where('panel_id', $panelId)->where('slug', $slug)->exists()) {
+            return svp_err('dup', ['code' => 'dup']);
+        }
+
+        $insert = array_merge([
+            'panel_id' => $panelId,
+            'slug' => $slug,
+            'label' => $label,
+            'sort_order' => (int) ($payload['sort_order'] ?? 0),
+            'active' => array_key_exists('active', $payload) ? (! empty($payload['active']) ? 1 : 0) : 1,
+            'created_at' => now(),
+        ], $data);
+        $newId = DB::table('svp_plan_categories')->insertGetId($insert);
+
+        return svp_ok(['id' => $newId, 'code' => 'added']);
     }
 
     /** @param  array<string, mixed>  $payload */
@@ -289,10 +453,159 @@ class CommerceMutations
     public function receiptUpdate(array $payload, ?Authenticatable $actor): array
     {
         $id = (int) ($payload['id'] ?? $payload['receipt_id'] ?? 0);
-        $data = collect($payload)->only(['amount', 'note'])->filter(fn ($v) => $v !== null)->all();
-        DB::table('svp_receipts')->where('id', $id)->update($data);
+        if ($id < 1) {
+            return svp_err('invalid');
+        }
+        $rec = DB::table('svp_receipts')->where('id', $id)->first();
+        if (! $rec) {
+            return svp_err('not_found');
+        }
+        $tx = Schema::hasTable('svp_transactions')
+            ? DB::table('svp_transactions')->where('id', (int) ($rec->transaction_id ?? 0))->first()
+            : null;
+
+        $amountAdj = null;
+        if (array_key_exists('amount', $payload)) {
+            $newAmount = (float) str_replace(',', '.', (string) $payload['amount']);
+            if ($tx) {
+                $amountAdj = $this->adjustReceiptAmount($rec, $tx, $newAmount);
+                if (empty($amountAdj['ok'])) {
+                    return svp_err((string) ($amountAdj['message'] ?? 'bad_amount'), $amountAdj);
+                }
+                $rec = DB::table('svp_receipts')->where('id', $id)->first() ?: $rec;
+                $tx = DB::table('svp_transactions')->where('id', (int) ($rec->transaction_id ?? 0))->first() ?: $tx;
+            } else {
+                if ($newAmount < 0) {
+                    return svp_err('bad_amount');
+                }
+                DB::table('svp_receipts')->where('id', $id)->update(['amount' => round($newAmount, 2)]);
+                $amountAdj = ['ok' => true, 'message' => 'amount_updated'];
+            }
+        }
+
+        $noteCols = array_values(array_filter(
+            ['note', 'admin_note'],
+            fn ($c) => Schema::hasColumn('svp_receipts', $c)
+        ));
+        $noteData = [];
+        foreach ($noteCols as $col) {
+            if (array_key_exists($col, $payload)) {
+                $noteData[$col] = $payload[$col];
+            } elseif ($col === 'note' && array_key_exists('admin_note', $payload) && ! Schema::hasColumn('svp_receipts', 'admin_note')) {
+                $noteData['note'] = $payload['admin_note'];
+            }
+        }
+        if ($noteData !== []) {
+            DB::table('svp_receipts')->where('id', $id)->update($noteData);
+        }
+
+        $newStatus = strtolower(trim((string) ($payload['status'] ?? $payload['receipt_new_status'] ?? '')));
+        if ($newStatus !== '') {
+            if (! $tx && in_array($newStatus, ['approved', 'rejected'], true)) {
+                // Status transitions that fulfill/reject still need a linked transaction (WP no_tx).
+                return svp_err('no_tx');
+            }
+            $label = $actor?->username ?? ($actor?->email ?? 'admin');
+            $reason = (string) ($payload['reject_reason'] ?? '');
+
+            return $this->adminSetReceiptStatus($id, $newStatus, $label, $reason);
+        }
+
+        if (is_array($amountAdj)) {
+            return svp_ok(array_merge(['receipt_id' => $id], $amountAdj));
+        }
 
         return svp_ok(['receipt_id' => $id]);
+    }
+
+    /**
+     * @param  object  $rec
+     * @param  object  $tx
+     * @return array{ok:bool, message?:string, warnings?:list<string>}
+     */
+    protected function adjustReceiptAmount(object $rec, object $tx, float $newAmount): array
+    {
+        $old = round((float) ($rec->amount ?? 0), 2);
+        $new = round($newAmount, 2);
+        if ($new < 0) {
+            return ['ok' => false, 'message' => 'bad_amount'];
+        }
+        if (abs($new - $old) < 0.009) {
+            return ['ok' => true, 'message' => 'amount_unchanged'];
+        }
+
+        $warnings = [];
+        $meta = json_decode((string) ($tx->meta_json ?? ''), true);
+        if (is_array($meta) && ! empty($meta['referral_commission_paid'])) {
+            $warnings[] = 'commission_may_need_manual_review';
+        }
+
+        $status = (string) ($rec->status ?? '');
+        $type = (string) ($tx->type ?? '');
+        if ($status === 'approved' && in_array($type, ['topup', 'wallet_topup'], true)) {
+            $delta = $new - $old;
+            $uid = (int) ($rec->user_id ?? 0);
+            if ($uid > 0 && Schema::hasTable('svp_users') && Schema::hasColumn('svp_users', 'balance')) {
+                DB::table('svp_users')->where('id', $uid)->update([
+                    'balance' => DB::raw('balance + '.((float) $delta)),
+                ]);
+            }
+        }
+
+        DB::table('svp_receipts')->where('id', (int) $rec->id)->update(['amount' => $new]);
+        DB::table('svp_transactions')->where('id', (int) $tx->id)->update(['amount' => $new]);
+
+        $msg = ($status === 'approved' && in_array($type, ['topup', 'wallet_topup'], true))
+            ? 'topup_delta_applied'
+            : 'amount_updated';
+        $out = ['ok' => true, 'message' => $msg];
+        if ($warnings !== []) {
+            $out['warnings'] = $warnings;
+        }
+
+        return $out;
+    }
+
+    /** @return array<string, mixed> */
+    protected function adminSetReceiptStatus(int $receiptId, string $newStatus, string $adminLabel, string $rejectReason = ''): array
+    {
+        $rec = DB::table('svp_receipts')->where('id', $receiptId)->first();
+        if (! $rec) {
+            return svp_err('not_found');
+        }
+        $old = (string) ($rec->status ?? '');
+        $new = strtolower(trim($newStatus));
+
+        if (in_array($old, ['pending', 'processing'], true) && $new === 'approved') {
+            if ($old === 'processing') {
+                DB::table('svp_receipts')->where('id', $receiptId)->update(['status' => 'pending']);
+            }
+
+            return $this->receiptProcessor->approve($receiptId, $adminLabel);
+        }
+        if (in_array($old, ['pending', 'processing'], true) && $new === 'rejected') {
+            return $this->receiptProcessor->reject($receiptId, $adminLabel, $rejectReason);
+        }
+        if ($old === 'processing' && $new === 'pending') {
+            DB::table('svp_receipts')->where('id', $receiptId)->update(['status' => 'pending']);
+
+            return svp_ok(['receipt_id' => $receiptId, 'status' => 'pending']);
+        }
+        if ($old === 'rejected' && in_array($new, ['approved', 'pending'], true)) {
+            DB::table('svp_receipts')->where('id', $receiptId)->update([
+                'status' => $new === 'approved' ? 'pending' : 'pending',
+                'reject_reason' => null,
+                'decided_at' => null,
+                'decided_by' => null,
+            ]);
+            if ($new === 'approved') {
+                return $this->receiptProcessor->approve($receiptId, $adminLabel);
+            }
+
+            return svp_ok(['receipt_id' => $receiptId, 'status' => 'pending']);
+        }
+
+        return svp_err('invalid_status', ['old' => $old, 'new' => $new]);
     }
 
     /** @param  array<string, mixed>  $payload */
@@ -456,9 +769,65 @@ class CommerceMutations
     /** @param  array<string, mixed>  $payload */
     public function serviceDelete(array $payload, ?Authenticatable $actor): array
     {
-        SvpService::query()->where('id', (int) ($payload['service_id'] ?? 0))->update(['deleted_at' => now()]);
+        $serviceId = (int) ($payload['service_id'] ?? 0);
+        if ($serviceId < 1) {
+            return svp_err('invalid', ['message' => 'invalid_service']);
+        }
+        $svc = SvpService::query()->find($serviceId);
+        if (! $svc || $svc->deleted_at) {
+            return svp_err('not_found');
+        }
 
-        return svp_ok();
+        $email = (string) ($svc->email ?? '');
+        $panelId = max(1, (int) ($svc->panel_id ?? 1));
+        $inboundId = (int) ($svc->inbound_id ?? 0);
+        $isL2tp = strtolower((string) ($svc->service_type ?? '')) === 'l2tp';
+
+        $panelAbsent = false;
+        if (! $isL2tp) {
+            try {
+                $panelRow = $this->panelFactory->loadPanelRow($panelId) ?? [];
+                $result = $this->panelFactory
+                    ->forPanelId($panelId, $panelRow)
+                    ->deleteClient($panelRow, $serviceId);
+                if (empty($result['ok'])) {
+                    return svp_err('panel_delete_failed', [
+                        'message' => 'panel_delete_failed',
+                        'reason' => (string) ($result['message'] ?? $result['reason'] ?? 'failed'),
+                    ]);
+                }
+                $panelAbsent = ! empty($result['panel_absent']);
+            } catch (\Throwable $e) {
+                return svp_err('panel_delete_failed', [
+                    'message' => 'panel_delete_failed',
+                    'reason' => $e->getMessage(),
+                ]);
+            }
+
+            $this->invalidatePanelClientCacheRow($panelId, $inboundId, $email);
+        }
+
+        SvpService::query()->where('id', $serviceId)->update(['deleted_at' => now()]);
+
+        $out = ['service_id' => $serviceId, 'message' => 'deleted'];
+        if ($panelAbsent) {
+            $out['panel_absent'] = true;
+        }
+
+        return svp_ok($out);
+    }
+
+    protected function invalidatePanelClientCacheRow(int $panelId, int $inboundId, string $email): void
+    {
+        $email = trim($email);
+        if ($inboundId < 1 || $email === '' || ! Schema::hasTable('svp_panel_inbound_clients')) {
+            return;
+        }
+        DB::table('svp_panel_inbound_clients')
+            ->where('panel_id', max(1, $panelId))
+            ->where('inbound_id', $inboundId)
+            ->where('email', $email)
+            ->delete();
     }
 
     /** @param  array<string, mixed>  $payload */

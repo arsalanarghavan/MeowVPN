@@ -33,6 +33,8 @@ import {
   postAdminMutate,
   type AdminMutateResult,
 } from "@/lib/dash-admin-mutate"
+import { DataPagination } from "@/components/data-pagination"
+import { parsePaginationMeta, type PaginationMeta } from "@/lib/dash-pagination"
 import { formatNumber } from "@/lib/format-locale"
 import { cn } from "@/lib/utils"
 
@@ -54,8 +56,6 @@ type PanelForm = {
   sort_order: number
   active: boolean
 }
-
-type Pagination = { page: number; perPage: number; total: number }
 
 type OrphanRow = {
   panel_id: number
@@ -124,16 +124,6 @@ function panelBadgeLabel(row: DashRecord, t: (key: string) => string): string {
 
 function panelBadgeVariant(row: DashRecord): "default" | "secondary" | "outline" {
   return providerValue(row.panel_provider) === "pasarguard" ? "default" : "outline"
-}
-
-function parsePagination(raw: unknown): Pagination | null {
-  if (!raw || typeof raw !== "object") return null
-  const r = raw as Record<string, unknown>
-  const page = num(r.page)
-  const perPage = num(r.perPage ?? r.per_page)
-  const total = num(r.total)
-  if (page < 1 || perPage < 1 || total < 0) return null
-  return { page, perPage, total }
 }
 
 function probeLabelKey(name: string): string {
@@ -274,9 +264,9 @@ export function PanelsAdminClient() {
   const isFa = locale === "fa"
 
   const [panels, setPanels] = useState<DashRecord[]>([])
-  const [pagination, setPagination] = useState<Pagination | null>(null)
+  const [pagination, setPagination] = useState<PaginationMeta | null>(null)
   const [page, setPage] = useState(1)
-  const [perPage] = useState(20)
+  const [perPage, setPerPage] = useState(20)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [actionMsg, setActionMsg] = useState<string | null>(null)
@@ -329,7 +319,10 @@ export function PanelsAdminClient() {
               ? (data.rows as DashRecord[])
               : []
         setPanels(rows)
-        setPagination(parsePagination((data.pagination as Record<string, unknown> | undefined)?.panels))
+        setPagination(
+          parsePaginationMeta((data.pagination as Record<string, unknown> | undefined)?.panels) ??
+            parsePaginationMeta(data.panelsPagination)
+        )
         if (data.panelEconomicsMap && typeof data.panelEconomicsMap === "object") {
           setLocalEconomicsMap(data.panelEconomicsMap as Record<string, PanelEconomicsEntry>)
         }
@@ -387,11 +380,6 @@ export function PanelsAdminClient() {
     setEconomicsPanelLabel(String(row.label ?? ""))
     setEconomicsOpen(true)
   }
-
-  const totalPages = useMemo(() => {
-    if (!pagination || pagination.total < 1) return 1
-    return Math.max(1, Math.ceil(pagination.total / pagination.perPage))
-  }, [pagination])
 
   const openAdd = () => {
     setMode("add")
@@ -1047,37 +1035,15 @@ export function PanelsAdminClient() {
             </CardContent>
           </Card>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-            <p className="text-muted-foreground">
-              {pagination ? t("paginationSummary", { total: formatNumber(pagination.total, isFa) }) : t("empty")}
-            </p>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={page <= 1 || loading}
-                onClick={() => setPage((current) => Math.max(1, current - 1))}
-              >
-                {t("paginationPrevious")}
-              </Button>
-              <p className="tabular-nums text-muted-foreground" dir="ltr">
-                {t("paginationPage", {
-                  page: formatNumber(page, isFa),
-                  totalPages: formatNumber(totalPages, isFa),
-                })}
-              </p>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={page >= totalPages || loading}
-                onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-              >
-                {t("paginationNext")}
-              </Button>
-            </div>
-          </div>
+          <DataPagination
+            meta={pagination}
+            onPageChange={setPage}
+            onPerPageChange={(n) => {
+              setPerPage(n)
+              setPage(1)
+            }}
+            perPageOptions={[20, 25, 50, 100]}
+          />
 
           {repairMsg ? <p className="text-sm text-muted-foreground">{repairMsg}</p> : null}
         </div>

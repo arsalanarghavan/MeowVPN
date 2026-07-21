@@ -3,6 +3,7 @@
 namespace App\Services\Commerce;
 
 use App\Models\SvpUser;
+use App\Modules\Core\Bot\Services\BotConfigDeliveryService;
 use App\Modules\Core\Services\UserBotNotifyService;
 use Illuminate\Support\Facades\DB;
 
@@ -12,6 +13,7 @@ class TransactionFulfillService
         protected ServiceProvisioner $provisioner,
         protected ServiceProvisionService $provision,
         protected UserBotNotifyService $notify,
+        protected BotConfigDeliveryService $configDelivery,
     ) {}
 
     public function claimPendingTransaction(int $txId): bool
@@ -139,6 +141,13 @@ class TransactionFulfillService
                     $msg .= "\n".'Service #'.$serviceId;
                 }
                 $this->notifyUser($userId, $msg);
+                // WP notify_user_service_ready / ensure_subscription_delivered — new purchase only.
+                if ($serviceId > 0 && $type === 'purchase') {
+                    $user = SvpUser::query()->find($userId);
+                    if ($user) {
+                        $this->configDelivery->enqueueAfterProvision($user, $serviceId);
+                    }
+                }
 
                 return ['ok' => true, 'service_id' => $serviceId];
             } catch (\Throwable $e) {

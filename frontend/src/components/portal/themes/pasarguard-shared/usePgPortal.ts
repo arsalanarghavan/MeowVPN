@@ -48,6 +48,7 @@ export function usePgPortal() {
 }
 
 export function pgUsagePercent(user: PortalUser): number {
+  if ((user.quota_hidden_from_user ?? 0) === 1) return 0
   if (!user.data_limit || user.data_limit <= 0) {
     return 0
   }

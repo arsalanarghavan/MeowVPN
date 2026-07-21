@@ -137,11 +137,13 @@
 
 /* Portal theme ports (PasarGuard + XUI). Scoped to portal theme roots. */
 .theme-xui,
+.theme-classic,
 .pg-theme-root,
 .theme-pg-builtin,
 .theme-modern,
 .shell:has(.pg-theme-root),
 .shell:has(.theme-xui),
+.shell:has(.theme-classic),
 .shell:has(.theme-pg-builtin) {
   --bg: #f4f5f8;
   --fg: #1a1d2e;
@@ -161,10 +163,12 @@
 }
 
 :root[data-theme="dark"] .theme-xui,
+:root[data-theme="dark"] .theme-classic,
 :root[data-theme="dark"] .pg-theme-root,
 :root[data-theme="dark"] .theme-pg-builtin,
 :root[data-theme="dark"] .theme-modern,
 .dark .theme-xui,
+.dark .theme-classic,
 .dark .pg-theme-root,
 .dark .theme-pg-builtin,
 .dark .theme-modern {
@@ -183,19 +187,22 @@
 
 :root[data-theme="light"] .shell,
 :root[data-theme="light"] .pg-theme-root,
-:root[data-theme="light"] .theme-xui {
+:root[data-theme="light"] .theme-xui,
+:root[data-theme="light"] .theme-classic {
   background: radial-gradient(1200px 500px at 100% -10%, var(--primary-soft), transparent 55%), var(--bg);
 }
 
 .shell,
 .pg-theme-root,
-.theme-xui {
+.theme-xui,
+.theme-classic {
   max-width: 1280px;
   margin: 0 auto;
   padding: 1.5rem 1.25rem 2.5rem;
 }
 
 .theme-xui .card,
+.theme-classic .card,
 .pg-theme-root .card,
 .theme-pg-builtin .card,
 .usage-chart-card {
@@ -1667,4 +1674,220 @@
   .status-card__expiry-days {
     font-size: 1.35rem;
   }
+}
+
+/* Classic portal (WP shortcode card parity) */
+.theme-classic.svp-shell {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 1.25rem 1rem 2.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.theme-classic .svp-header-brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+.theme-classic .svp-header-brand strong {
+  font-size: 1.15rem;
+  display: block;
+}
+.theme-classic .svp-header-tagline {
+  display: block;
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-top: 0.15rem;
+}
+.theme-classic .svp-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1rem 1.1rem 1.15rem;
+}
+.theme-classic .svp-card--state-disabled {
+  opacity: 0.72;
+}
+.theme-classic .svp-card--state-exhausted {
+  border-color: #f59e0b;
+}
+.theme-classic .svp-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  position: relative;
+  margin-bottom: 0.75rem;
+}
+.theme-classic .svp-chip {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--primary);
+  background: var(--primary-soft);
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+}
+.theme-classic .svp-subid {
+  font-weight: 600;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.theme-classic .svp-gear {
+  border: 1px solid var(--border);
+  background: transparent;
+  border-radius: 8px;
+  padding: 0.25rem 0.45rem;
+  cursor: pointer;
+}
+.theme-classic .svp-gear__menu {
+  position: absolute;
+  inset-inline-end: 0;
+  top: 100%;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.5rem;
+  box-shadow: var(--shadow);
+  min-width: 10rem;
+}
+.theme-classic .svp-gear__menu button {
+  text-align: start;
+  border: 0;
+  background: transparent;
+  padding: 0.35rem 0.4rem;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.theme-classic .svp-gear__menu button:hover {
+  background: var(--primary-soft);
+}
+.theme-classic .svp-qr {
+  display: flex;
+  justify-content: center;
+  margin: 0.5rem 0 0.85rem;
+}
+.theme-classic .svp-qr__btn {
+  border: 1px dashed var(--border);
+  background: var(--primary-soft);
+  color: var(--fg);
+  border-radius: 12px;
+  padding: 0.65rem 1rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+.theme-classic .svp-rows {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0 0 0.85rem;
+}
+.theme-classic .svp-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.92rem;
+}
+.theme-classic .svp-row dt {
+  color: var(--muted);
+}
+.theme-classic .svp-row dd {
+  margin: 0;
+  font-weight: 600;
+  text-align: end;
+}
+.theme-classic .svp-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.12rem 0.55rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.theme-classic .svp-pill--ok {
+  background: var(--accent-green-soft);
+  color: var(--accent-green);
+}
+.theme-classic .svp-pill--bad {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+}
+.theme-classic .svp-pill--muted {
+  background: rgba(148, 163, 184, 0.18);
+  color: var(--muted);
+}
+.theme-classic .svp-cfg {
+  display: grid;
+  gap: 0.35rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+  margin-top: 0.35rem;
+}
+.theme-classic .svp-cfg__tag {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+.theme-classic .svp-cfg__code {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 0.75rem;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 8px;
+  padding: 0.45rem 0.55rem;
+}
+.theme-classic .svp-cfg__copy {
+  justify-self: start;
+  border: 1px solid var(--border);
+  background: transparent;
+  border-radius: 8px;
+  padding: 0.3rem 0.55rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+.theme-classic .svp-cfg__hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.theme-classic .svp-apps {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.9rem 1rem;
+}
+.theme-classic .svp-apps h2 {
+  margin: 0 0 0.55rem;
+  font-size: 0.95rem;
+}
+.theme-classic .svp-apps ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.theme-classic .svp-apps li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+.theme-classic .svp-sub-footer {
+  text-align: center;
+  padding-top: 0.5rem;
+}
+.theme-classic .svp-sub-footer a {
+  color: var(--primary);
 }

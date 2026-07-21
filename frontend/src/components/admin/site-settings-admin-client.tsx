@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useTranslations } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import type { DashboardFeatures } from "@/config/admin-nav"
 import { getAdminState } from "@/lib/dash-admin-mutate"
 import {
@@ -38,9 +38,10 @@ function portalPagesFrom(raw: unknown): PortalPage[] {
     .filter((p) => Number.isFinite(p.id) && p.id > 0)
 }
 
-function currentDashboardBaseUrl(): string {
-  if (typeof window === "undefined") return "/dashboard"
-  return `${window.location.origin}/dashboard`
+function currentDashboardBaseUrl(locale: string): string {
+  const loc = String(locale || "en").trim() || "en"
+  if (typeof window === "undefined") return `/${loc}/dashboard`
+  return `${window.location.origin}/${loc}/dashboard`
 }
 
 function isSubtabAllowed(subtab: SiteSettingsSubtab, features: DashboardFeatures | null): boolean {
@@ -57,6 +58,7 @@ function isSubtabAllowed(subtab: SiteSettingsSubtab, features: DashboardFeatures
 
 export function SiteSettingsAdminClient() {
   const t = useTranslations("siteSettings")
+  const locale = useLocale()
   const [data, setData] = useState<DashRecord>({})
   const [settings, setSettings] = useState<DashRecord>({})
   const [error, setError] = useState<string | null>(null)
@@ -135,7 +137,11 @@ export function SiteSettingsAdminClient() {
         .filter((p) => p.id > 0),
     [panels]
   )
-  const dashboardBaseUrl = currentDashboardBaseUrl()
+  const dashboardBaseUrl = currentDashboardBaseUrl(locale)
+  const portalBaseUrl =
+    typeof window === "undefined"
+      ? `/${locale}/portal`
+      : `${window.location.origin}/${locale}/portal`
   const onMutateSuccess = useCallback(() => void load(), [load])
 
   return (
@@ -167,7 +173,7 @@ export function SiteSettingsAdminClient() {
         <TabsContent value="subscription_portal" className="mt-4">
           <SiteSettingsSubscriptionPortalTab
             settings={settings}
-            portalBaseUrl={dashboardBaseUrl}
+            portalBaseUrl={portalBaseUrl}
             onMutateSuccess={onMutateSuccess}
           />
         </TabsContent>

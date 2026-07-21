@@ -2,6 +2,7 @@
 
 use App\Modules\Backup\Jobs\BackupJob;
 use App\Modules\Core\Jobs\AdminAlertsJob;
+use App\Modules\Core\Bot\Jobs\BotPollJob;
 use App\Modules\Core\Bot\Jobs\DeferredC2cSweepJob;
 use App\Modules\Core\Bot\Jobs\DeferredCheckoutSweepJob;
 use App\Modules\Core\Bot\Jobs\DeferredConfigDeliveryCronJob;
@@ -63,7 +64,7 @@ Schedule::job(new ExpiryJob)->hourly()->name('svp:expiry');
 Schedule::job(new AutorenewJob)->hourly()->name('svp:autorenew');
 if (svp_modules()->isEnabled('marketing')) {
     Schedule::job(new IdleOffersJob)->hourly()->name('svp:idle_offers');
-    Schedule::job(new MarketingJob)->hourly()->name('svp:marketing');
+    Schedule::job(new MarketingJob)->everyMinute()->name('svp:marketing');
 }
 Schedule::job(new AdminAlertsJob)->everyTenMinutes()->name('svp:admin_alerts');
 if (svp_modules()->isEnabled('xui_panel')) {
@@ -71,6 +72,8 @@ if (svp_modules()->isEnabled('xui_panel')) {
 }
 Schedule::job(new InboundQueueDrainJob)->everyMinute()->name('svp:inbound_queue_drain');
 Schedule::job(new DeferredConfigDeliveryCronJob)->everyMinute()->name('svp:deferred_svc_config_delivery_cron');
+// WP simplevpbot_cron_bot_poll (~20s). Job no-ops unless telegram/bale update_mode=polling.
+Schedule::job(new BotPollJob)->everyTwentySeconds()->name('svp:bot_poll');
 Schedule::job(new DeferredCheckoutSweepJob)->everyMinute()->name('svp:deferred_checkout_sweep');
 Schedule::job(new DeferredC2cSweepJob)->everyMinute()->name('svp:deferred_c2c_sweep');
 Schedule::job(new ReceiptReminderCronJob)->everyFiveMinutes()->name('svp:receipt_reminder');

@@ -42,6 +42,7 @@ class BotMutations
             'bot_diagnostics' => [self::class, 'botDiagnostics'],
             'bot_set_webhook' => [self::class, 'botSetWebhook'],
             'bot_delete_webhook' => [self::class, 'botDeleteWebhook'],
+            'bot_set_update_mode' => [self::class, 'botSetUpdateMode'],
             'bot_admin_id_add' => [self::class, 'botAdminIdAdd'],
             'bot_admin_id_remove' => [self::class, 'botAdminIdRemove'],
             'force_join_publish' => [self::class, 'forceJoinPublish'],
@@ -132,6 +133,53 @@ class BotMutations
     }
 
     /** @param  array<string, mixed>  $payload */
+    public function botSetUpdateMode(array $payload, ?Authenticatable $actor): array
+    {
+        $platform = strtolower(trim((string) ($payload['platform'] ?? 'telegram')));
+        if (! in_array($platform, ['telegram', 'bale'], true)) {
+            $platform = 'telegram';
+        }
+        $mode = app(\App\Modules\Core\Bot\Services\BotPollingService::class)
+            ->normalizeMode((string) ($payload['mode'] ?? $payload['update_mode'] ?? 'webhook'));
+        $key = $platform === 'bale' ? 'bale_update_mode' : 'telegram_update_mode';
+        $this->settings->set($key, $mode);
+
+        $token = trim($this->runtime->tokenForContext(new BotContext($platform)));
+        $webhookStep = null;
+        if ($mode === 'polling') {
+            // Drop webhook so getUpdates can receive messages (WP parity).
+            if ($token === '') {
+                $webhookStep = ['ok' => true, 'skipped' => 'no_token'];
+            } else {
+                try {
+                    $webhookStep = $this->botDeleteWebhook(['platform' => $platform], $actor);
+                } catch (\Throwable $e) {
+                    $webhookStep = ['ok' => false, 'message' => $e->getMessage()];
+                }
+            }
+        } else {
+            // Restore webhook when leaving polling (default mode).
+            if ($token === '') {
+                $webhookStep = ['ok' => false, 'message' => 'token_missing'];
+            } else {
+                try {
+                    $webhookStep = $this->botSetWebhook(['platform' => $platform], $actor);
+                } catch (\Throwable $e) {
+                    $webhookStep = ['ok' => false, 'message' => $e->getMessage()];
+                }
+            }
+        }
+
+        $ok = is_array($webhookStep) ? ! empty($webhookStep['ok']) : true;
+        $data = ['platform' => $platform, 'mode' => $mode, 'webhook_step' => $webhookStep];
+        if (! $ok) {
+            return svp_err((string) ($webhookStep['message'] ?? 'webhook_step_failed'), $data);
+        }
+
+        return svp_ok($data);
+    }
+
+    /** @param  array<string, mixed>  $payload */
     public function botDeleteWebhook(array $payload, ?Authenticatable $actor): array
     {
         $platform = (string) ($payload['platform'] ?? 'telegram');
@@ -186,15 +234,32 @@ class BotMutations
     /** @param  array<string, mixed>  $payload */
     public function forceJoinPublish(array $payload, ?Authenticatable $actor): array
     {
-        $channelId = (string) $this->settings->get('force_join_channel_id', '');
-        $text = (string) ($payload['text'] ?? $this->settings->get('force_join_prompt', ''));
-        if ($channelId === '' || $text === '') {
-            return svp_err('not_configured');
-        }
-        $ctx = new BotContext('telegram');
-        $this->runtime->sendMessage($ctx, (int) $channelId, $text);
+        $platform = strtolower(trim((string) ($payload['platform'] ?? '')));
+        if (! in_array($platform, ['telegram', 'bale'], true)) {
+            // Legacy payload: text + force_join_channel_id (no platform).
+            $channelId = (string) $this->settings->get('force_join_channel_id', '');
+            $text = (string) ($payload['text'] ?? $this->settings->get('force_join_prompt', ''));
+            if ($channelId === '' || $text === '') {
+                return svp_err('not_configured');
+            }
+            $ctx = new BotContext('telegram');
+            $this->runtime->sendMessage($ctx, (int) $channelId, $text);
 
-        return svp_ok();
+            return svp_ok();
+        }
+
+        $result = app(\App\Modules\Core\Bot\Services\RequiredChannelService::class)
+            ->publishAnnouncement($platform);
+        if (empty($result['ok'])) {
+            return svp_err((string) ($result['message'] ?? 'publish_failed'), array_filter([
+                'message_id' => $result['message_id'] ?? null,
+            ]));
+        }
+
+        return svp_ok([
+            'message' => (string) ($result['message'] ?? 'pinned'),
+            'message_id' => (int) ($result['message_id'] ?? 0),
+        ]);
     }
 
     /** @param  array<string, mixed>  $payload */
@@ -220,36 +285,139 @@ class BotMutations
     /** @param  array<string, mixed>  $payload */
     public function textsSave(array $payload, ?Authenticatable $actor): array
     {
-        $key = (string) ($payload['key'] ?? '');
-        $value = (string) ($payload['value'] ?? $payload['text'] ?? '');
-        if ($key === '') {
+        $saved = [];
+        if (isset($payload['texts']) && is_array($payload['texts'])) {
+            foreach ($payload['texts'] as $key => $bundle) {
+                $key = trim((string) $key);
+                if ($key === '') {
+                    continue;
+                }
+                if (! preg_match('/^[a-zA-Z0-9._-]+$/', $key)) {
+                    continue;
+                }
+                $this->upsertTextLocales($key, $bundle);
+                $saved[] = $key;
+            }
+            app(\App\Modules\Core\Bot\Services\TextService::class)->clearCache();
+
+            return $saved === [] ? svp_err('invalid') : svp_ok(['keys' => $saved]);
+        }
+
+        $key = trim((string) ($payload['key'] ?? $payload['text_key'] ?? ''));
+        if ($key === '' || ! preg_match('/^[a-zA-Z0-9._-]+$/', $key)) {
             return svp_err('invalid');
         }
-        \Illuminate\Support\Facades\DB::table('svp_texts')->updateOrInsert(
-            ['key_name' => $key],
-            ['value' => $value, 'updated_at' => now()]
-        );
+        if (isset($payload['fa']) || isset($payload['en']) || isset($payload['value_fa']) || isset($payload['value_en'])) {
+            $this->upsertTextLocales($key, [
+                'fa' => $payload['fa'] ?? $payload['value_fa'] ?? null,
+                'en' => $payload['en'] ?? $payload['value_en'] ?? null,
+            ]);
+        } else {
+            $locale = strtolower(trim((string) ($payload['locale'] ?? 'fa')));
+            if (! in_array($locale, ['fa', 'en'], true)) {
+                $locale = 'fa';
+            }
+            $value = (string) ($payload['value'] ?? $payload['text'] ?? '');
+            $this->upsertTextLocales($key, [$locale => $value]);
+        }
+        app(\App\Modules\Core\Bot\Services\TextService::class)->clearCache();
 
         return svp_ok(['key' => $key]);
+    }
+
+    /** @param  array<string, mixed>|string|null  $bundle */
+    protected function upsertTextLocales(string $key, mixed $bundle): void
+    {
+        $map = [];
+        if (is_string($bundle)) {
+            $map['fa'] = $this->sanitizeBotText($bundle);
+        } elseif (is_array($bundle)) {
+            if (array_key_exists('fa', $bundle) || array_key_exists('value_fa', $bundle)) {
+                $map['fa'] = $this->sanitizeBotText((string) ($bundle['fa'] ?? $bundle['value_fa'] ?? ''));
+            }
+            if (array_key_exists('en', $bundle) || array_key_exists('value_en', $bundle)) {
+                $map['en'] = $this->sanitizeBotText((string) ($bundle['en'] ?? $bundle['value_en'] ?? ''));
+            }
+            if ($map === [] && isset($bundle['value'])) {
+                $map['fa'] = $this->sanitizeBotText((string) $bundle['value']);
+            }
+        }
+        $category = \App\Modules\Core\Bot\Services\BotTextDefaults::categoryForKey($key);
+        $existingCat = \Illuminate\Support\Facades\DB::table('svp_texts')->where('key_name', $key)->value('category');
+        if (is_string($existingCat) && $existingCat !== '') {
+            $category = $existingCat;
+        }
+        foreach ($map as $locale => $value) {
+            \Illuminate\Support\Facades\DB::table('svp_texts')->updateOrInsert(
+                ['key_name' => $key, 'locale' => $locale],
+                ['value' => $value, 'category' => $category, 'updated_at' => now()]
+            );
+        }
+    }
+
+    protected function sanitizeBotText(string $text): string
+    {
+        return (string) preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F]/', '', $text);
     }
 
     /** @param  array<string, mixed>  $payload */
     public function textResetOne(array $payload, ?Authenticatable $actor): array
     {
-        $key = (string) ($payload['key'] ?? '');
-        if ($key !== '') {
-            \Illuminate\Support\Facades\DB::table('svp_texts')->where('key_name', $key)->delete();
+        $key = trim((string) ($payload['key'] ?? $payload['text_key'] ?? ''));
+        if ($key === '' || ! preg_match('/^[a-zA-Z0-9._-]+$/', $key)) {
+            return svp_err('bad_key');
         }
+        $pair = \App\Modules\Core\Bot\Services\BotTextDefaults::defaultPairForKey($key);
+        if ($pair['fa'] === '' && $pair['en'] === '') {
+            \Illuminate\Support\Facades\DB::table('svp_texts')->where('key_name', $key)->delete();
+            app(\App\Modules\Core\Bot\Services\TextService::class)->clearCache();
 
-        return svp_ok();
+            return svp_err('unknown_key');
+        }
+        $this->upsertTextLocales($key, $pair);
+        app(\App\Modules\Core\Bot\Services\TextService::class)->clearCache();
+
+        return svp_ok(['key' => $key]);
     }
 
     /** @param  array<string, mixed>  $payload */
     public function textsReset(array $payload, ?Authenticatable $actor): array
     {
-        \Illuminate\Support\Facades\DB::table('svp_texts')->truncate();
+        \Illuminate\Support\Facades\DB::table('svp_texts')->delete();
+        $now = now();
+        $chunk = [];
+        $n = 0;
+        $seen = [];
+        foreach (\App\Modules\Core\Bot\Services\BotTextDefaults::allRows() as $row) {
+            $kn = (string) ($row['key_name'] ?? '');
+            if ($kn === '') {
+                continue;
+            }
+            $locale = ((string) ($row['locale'] ?? 'fa')) === 'en' ? 'en' : 'fa';
+            $uniq = $kn."\x1e".$locale;
+            if (isset($seen[$uniq])) {
+                continue;
+            }
+            $seen[$uniq] = true;
+            $chunk[] = [
+                'key_name' => $kn,
+                'category' => (string) ($row['category'] ?? 'general'),
+                'locale' => $locale,
+                'value' => (string) ($row['value'] ?? ''),
+                'updated_at' => $now,
+            ];
+            $n++;
+            if (count($chunk) >= 100) {
+                \Illuminate\Support\Facades\DB::table('svp_texts')->insert($chunk);
+                $chunk = [];
+            }
+        }
+        if ($chunk !== []) {
+            \Illuminate\Support\Facades\DB::table('svp_texts')->insert($chunk);
+        }
+        app(\App\Modules\Core\Bot\Services\TextService::class)->clearCache();
 
-        return svp_ok();
+        return svp_ok(['reseeded' => $n, 'seeded' => $n]);
     }
 
     /** @param  array<string, mixed>  $payload */

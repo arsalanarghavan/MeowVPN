@@ -16,7 +16,10 @@ class UserBotNotifyService
         protected TelegramMirrorBotService $mirrors,
     ) {}
 
-    public function sendToUser(SvpUser $user, string $text, string $channel = 'both', int $resellerOwnerId = 0): void
+    /**
+     * @param  array<string, mixed>  $extra  Optional sendMessage extras (e.g. reply_markup).
+     */
+    public function sendToUser(SvpUser $user, string $text, string $channel = 'both', int $resellerOwnerId = 0, array $extra = []): void
     {
         $profile = $this->resellerProfile($resellerOwnerId);
         $sendTg = in_array($channel, ['both', 'telegram'], true);
@@ -24,11 +27,11 @@ class UserBotNotifyService
 
         if ($sendTg && (int) ($user->tg_user_id ?? 0) > 0) {
             $ctx = $this->telegramContextForUser($user, $resellerOwnerId, $profile);
-            $this->runtime->sendMessage($ctx, (int) $user->tg_user_id, $text);
+            $this->runtime->sendMessage($ctx, (int) $user->tg_user_id, $text, $extra);
         }
         if ($sendBl && (int) ($user->bale_user_id ?? 0) > 0) {
             $ctx = new BotContext('bale', $resellerOwnerId, $profile);
-            $this->runtime->sendMessage($ctx, (int) $user->bale_user_id, $text);
+            $this->runtime->sendMessage($ctx, (int) $user->bale_user_id, $text, $extra);
         }
     }
 

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { useTranslation } from "react-i18next"
+import { useTranslations } from "next-intl"
 import { Search, UserRound } from "lucide-react"
 import { useCommandState } from "cmdk"
 
@@ -18,7 +18,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { apiBase, apiHeaders, normalizeAdminApiPath } from "@/lib/api-base"
+import { apiBase, apiHeaders, normalizeAdminApiPath } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { ADMIN_NAV_SECTIONS, flattenNavForSearch, type AdminNavSection } from "@/config/admin-nav"
 import { formatPlainLatinInt } from "@/lib/format-locale"
@@ -73,7 +73,7 @@ export function DashboardSearch({
   const [paletteQuery, setPaletteQuery] = useState("")
   const [userHits, setUserHits] = useState<DashRecord[]>([])
   const [userLoading, setUserLoading] = useState(false)
-  const { t } = useTranslation()
+  const t = useTranslations()
   const rows = useMemo(() => flattenNavForSearch(sections), [sections])
 
   const bySection = useMemo(() => {
@@ -84,8 +84,13 @@ export function DashboardSearch({
     return m
   }, [rows, sections])
 
-  const itemLabel = (tabKey: string) =>
-    t(`sidebar.items.${tabKey}`, { defaultValue: tabKey })
+  const itemLabel = (tabKey: string) => {
+    try {
+      return t(`sidebar.items.${tabKey}`)
+    } catch {
+      return tabKey
+    }
+  }
 
   const canUserSearch = Boolean(onOpenUserDetail && (restUrl || apiBase()))
 
@@ -106,9 +111,7 @@ export function DashboardSearch({
       setUserLoading(false)
       return
     }
-    const base = apiBase(
-      restUrl ? ({ restUrl } as Record<string, unknown>) : undefined
-    )
+    const base = restUrl?.replace(/\/$/, "") || apiBase()
     const ctrl = new AbortController()
     setUserLoading(true)
     const timer = window.setTimeout(() => {

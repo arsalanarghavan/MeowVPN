@@ -32,6 +32,30 @@ class MutateBotSiteDepthTest extends TestCase
         ])->assertOk()->assertJsonPath('ok', true);
     }
 
+    public function test_bot_set_update_mode_polling_and_webhook(): void
+    {
+        Http::fake(['api.telegram.org/*' => Http::response(['ok' => true], 200)]);
+        $settings = app(SettingsStore::class);
+        $settings->set('telegram_bot_token', '123:ABC');
+        $settings->set('telegram_webhook_secret', 'sec');
+
+        $this->actingAsAdmin()->postJson('/api/v1/admin/mutate', [
+            'op' => 'bot_set_update_mode',
+            'platform' => 'telegram',
+            'mode' => 'polling',
+        ])->assertOk()->assertJsonPath('ok', true)->assertJsonPath('mode', 'polling');
+
+        $this->assertSame('polling', $settings->get('telegram_update_mode'));
+
+        $this->actingAsAdmin()->postJson('/api/v1/admin/mutate', [
+            'op' => 'bot_set_update_mode',
+            'platform' => 'telegram',
+            'mode' => 'webhook',
+        ])->assertOk()->assertJsonPath('ok', true)->assertJsonPath('mode', 'webhook');
+
+        $this->assertSame('webhook', $settings->get('telegram_update_mode'));
+    }
+
     public function test_bot_toggle_platform_enabled(): void
     {
         $this->actingAsAdmin()->postJson('/api/v1/admin/mutate', [
@@ -123,38 +147,58 @@ class MutateBotSiteDepthTest extends TestCase
     {
         $this->actingAsAdmin()->postJson('/api/v1/admin/mutate', [
             'op' => 'texts_save',
-            'key' => 'welcome',
-            'value' => 'Hello v12',
+            'texts' => [
+                'btn.main.buy' => ['fa' => 'خرید سفارشی', 'en' => 'Custom buy'],
+            ],
         ])->assertOk()->assertJsonPath('ok', true);
 
-        $this->assertDatabaseHas('svp_texts', ['key_name' => 'welcome', 'value' => 'Hello v12']);
+        $this->assertDatabaseHas('svp_texts', [
+            'key_name' => 'btn.main.buy',
+            'locale' => 'fa',
+            'value' => 'خرید سفارشی',
+        ]);
+        $this->assertDatabaseHas('svp_texts', [
+            'key_name' => 'btn.main.buy',
+            'locale' => 'en',
+            'value' => 'Custom buy',
+        ]);
 
         $this->actingAsAdmin()->postJson('/api/v1/admin/mutate', [
             'op' => 'text_reset_one',
-            'key' => 'welcome',
+            'text_key' => 'btn.main.buy',
         ])->assertOk()->assertJsonPath('ok', true);
 
-        $this->assertDatabaseMissing('svp_texts', ['key_name' => 'welcome']);
-
-        \Illuminate\Support\Facades\DB::table('svp_texts')->insert([
-            'key_name' => 'temp',
-            'value' => 'x',
-            'updated_at' => now(),
+        $this->assertDatabaseHas('svp_texts', [
+            'key_name' => 'btn.main.buy',
+            'locale' => 'en',
+            'value' => '🛒 Buy service',
         ]);
+
+        $this->actingAsAdmin()->postJson('/api/v1/admin/mutate', [
+            'op' => 'texts_save',
+            'key' => 'welcome.custom',
+            'value' => 'Hello v12',
+        ])->assertOk()->assertJsonPath('ok', true);
+
         $this->actingAsAdmin()->postJson('/api/v1/admin/mutate', [
             'op' => 'texts_reset',
-        ])->assertOk();
-        $this->assertSame(0, \Illuminate\Support\Facades\DB::table('svp_texts')->count());
+        ])->assertOk()->assertJsonPath('ok', true);
+
+        $this->assertGreaterThan(100, \Illuminate\Support\Facades\DB::table('svp_texts')->count());
+        $this->assertDatabaseMissing('svp_texts', ['key_name' => 'welcome.custom']);
+        $this->assertDatabaseHas('svp_texts', ['key_name' => 'btn.main.buy', 'locale' => 'fa']);
     }
 
     public function test_force_join_publish_requires_config(): void
     {
         app(SettingsStore::class)->set('force_join_channel_id', '');
+        app(SettingsStore::class)->set('force_join_telegram_chat_id', 0);
+        app(SettingsStore::class)->set('force_join_telegram_announce_text', '');
 
         $this->actingAsAdmin()->postJson('/api/v1/admin/mutate', [
             'op' => 'force_join_publish',
-            'text' => 'join us',
-        ])->assertOk()->assertJsonPath('ok', false);
+            'platform' => 'telegram',
+        ])->assertStatus(422)->assertJsonPath('ok', false);
     }
 
     public function test_telegram_proxy_test_depth(): void

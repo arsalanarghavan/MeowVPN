@@ -19,7 +19,8 @@ export function resolveTrafficStats(
   user: PortalUser,
   chart?: TrafficChartSlice | null
 ): ResolvedTrafficStats {
-  const total = Math.max(0, user.data_limit ?? 0)
+  const hideQuota = (user.quota_hidden_from_user ?? 0) === 1
+  const total = hideQuota ? 0 : Math.max(0, user.data_limit ?? 0)
   const used = Math.max(0, user.used_traffic ?? 0)
   let down = Math.max(0, chart?.down ?? 0)
   const up = Math.max(0, chart?.up ?? 0)

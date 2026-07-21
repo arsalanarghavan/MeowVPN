@@ -8,7 +8,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Cache;
 
 class DeferredConfigDeliveryJob implements ShouldQueue
 {
@@ -16,19 +15,17 @@ class DeferredConfigDeliveryJob implements ShouldQueue
 
     /**
      * Delivers deferred bot config / subscription messages for Telegram and Bale.
-     * Platform is taken from the cache payload set by BotConfigDeliveryService::enqueue
-     * (payload['platform'] = telegram|bale). Bale subscription delivery retries use this
-     * same job + DeferredConfigDeliveryCronJob — no separate Bale-only queue is required.
+     * Retries with backoff when URIs are not ready yet (WP config_delivery_retry_delays).
      */
     public function __construct(
         public int $userId,
         public int $serviceId,
+        public string $platform = 'telegram',
+        public string $mode = 'config',
     ) {}
 
     public function handle(BotConfigDeliveryService $delivery): void
     {
-        $payload = Cache::get("bot_config_delivery:{$this->userId}:{$this->serviceId}");
-        $cbId = is_array($payload) ? (string) ($payload['cb_id'] ?? '') : '';
-        $delivery->deliver($this->userId, $this->serviceId, $cbId);
+        $delivery->deliver($this->userId, $this->serviceId, '', $this->platform, $this->mode);
     }
 }

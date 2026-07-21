@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DashboardWholesaleLinesAdmin } from "@/components/dashboard-wholesale-lines-admin"
+import { readPlansViewFromUrl, writePlansViewToUrl, type PlansView } from "@/lib/plans-subview"
 
 type DashRecord = Record<string, unknown>
 type PlansView = "plans" | "wholesale"
@@ -42,6 +43,8 @@ type PlanForm = {
   sort_order: number
   plan_active: boolean
   wholesale_line_id: number
+  panel_template_id: number
+  quota_display_mode: "show" | "hide_as_unlimited"
 }
 
 type InboundRow = { id: number; remark: string; port: number; protocol: string }
@@ -140,6 +143,8 @@ function emptyForm(panelId: number, category: string, ownerId = 0): PlanForm {
     sort_order: 0,
     plan_active: true,
     wholesale_line_id: 0,
+    panel_template_id: 0,
+    quota_display_mode: "show",
   }
 }
 
@@ -166,6 +171,8 @@ function formFromPlan(plan: DashRecord): PlanForm {
     sort_order: num(plan.sort_order),
     plan_active: isActive(plan),
     wholesale_line_id: num(plan.wholesale_line_id),
+    panel_template_id: num(plan.panel_template_id),
+    quota_display_mode: plan.quota_display_mode === "hide_as_unlimited" ? "hide_as_unlimited" : "show",
   }
 }
 
@@ -192,7 +199,11 @@ function formPayload(form: PlanForm): Record<string, unknown> {
     sort_order: form.sort_order,
     plan_active: form.plan_active ? 1 : 0,
     active: form.plan_active,
-    ...(form.wholesale_line_id > 0 ? { wholesale_line_id: form.wholesale_line_id } : {}),
+    quota_display_mode: form.quota_display_mode,
+    ...(form.wholesale_line_id > 0 ? { wholesale_line_id: form.wholesale_line_id } : { wholesale_line_id: 0 }),
+    ...(form.panel_template_id > 0
+      ? { panel_template_id: form.panel_template_id }
+      : { panel_template_id: 0 }),
   }
 }
 
@@ -203,8 +214,10 @@ function formatPlanMutateError(
 ): string {
   const c = String(code ?? "").trim()
   if (c && SERVER_ERROR_LOCALE[c]) return tp(SERVER_ERROR_LOCALE[c])
-  const msg = String(message ?? c).trim()
-  return msg ? `${tp("mutateError")}: ${msg}` : tp("mutateError")
+  const msg = String(message ?? "").trim()
+  if (msg && SERVER_ERROR_LOCALE[msg]) return tp(SERVER_ERROR_LOCALE[msg])
+  const fallback = msg || c
+  return fallback ? `${tp("mutateError")}: ${fallback}` : tp("mutateError")
 }
 
 function parsePanelAccessDiagnostics(raw: unknown): ResellerPanelAccessDiagnostics | null {
@@ -241,7 +254,9 @@ export function PlansAdminClient() {
   const [resellerMode, setResellerMode] = useState(false)
   const [actorSvpUserId, setActorSvpUserId] = useState(0)
   const [panelAccessDiagnostics, setPanelAccessDiagnostics] = useState<ResellerPanelAccessDiagnostics | null>(null)
-  const [plansView, setPlansView] = useState<PlansView>("plans")
+  const [plansView, setPlansView] = useState<PlansView>(() =>
+    typeof window === "undefined" ? "plans" : readPlansViewFromUrl()
+  )
   const [sitePanelFilter, setSitePanelFilter] = useState("all")
   const [resellerPanelFilter, setResellerPanelFilter] = useState("all")
   const [panelFilter, setPanelFilter] = useState("all")
@@ -256,6 +271,8 @@ export function PlansAdminClient() {
   const [panelInbounds, setPanelInbounds] = useState<InboundRow[]>([])
   const [panelInboundsBusy, setPanelInboundsBusy] = useState(false)
   const [panelInboundsError, setPanelInboundsError] = useState<string | null>(null)
+  const [panelTemplates, setPanelTemplates] = useState<Array<{ id: number; name?: string }>>([])
+  const [panelTemplatesBusy, setPanelTemplatesBusy] = useState(false)
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(40)
   const [pagination, setPagination] = useState<PaginationMeta | null>(null)
@@ -267,6 +284,10 @@ export function PlansAdminClient() {
     default_concurrent_users: "2",
     price_per_extra_user: "0",
   })
+
+  useEffect(() => {
+    writePlansViewToUrl(plansView)
+  }, [plansView])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -361,10 +382,47 @@ export function PlansAdminClient() {
     }
   }, [t])
 
+  const loadPanelTemplates = useCallback(async (panelId: number) => {
+    if (panelId < 1) {
+      setPanelTemplates([])
+      return
+    }
+    setPanelTemplatesBusy(true)
+    try {
+      const json = await getAdminJson("/dashboard/admin/panel-templates", { panel_id: panelId })
+      const data = json.data as Record<string, unknown> | undefined
+      const rows =
+        data && Array.isArray(data.templates)
+          ? (data.templates as Array<{ id: number; name?: string }>)
+          : []
+      setPanelTemplates(rows)
+    } catch {
+      setPanelTemplates([])
+    } finally {
+      setPanelTemplatesBusy(false)
+    }
+  }, [])
+
+  const formPanelRow = useMemo(
+    () => panels.find((p) => num(p.id) === form.plan_panel_id),
+    [panels, form.plan_panel_id]
+  )
+  const isPgPlanPanel =
+    String(formPanelRow?.panel_provider ?? "") === "pasarguard" ||
+    String(formPanelRow?.panel_api_flavor ?? "") === "pasarguard_v5"
+
   useEffect(() => {
     if (!formOpen || form.service_type === "l2tp") return
     void loadPanelInbounds(form.plan_panel_id)
   }, [formOpen, form.plan_panel_id, form.service_type, loadPanelInbounds])
+
+  useEffect(() => {
+    if (!formOpen || resellerMode || !isPgPlanPanel) {
+      if (!isPgPlanPanel) setPanelTemplates([])
+      return
+    }
+    void loadPanelTemplates(form.plan_panel_id)
+  }, [formOpen, resellerMode, isPgPlanPanel, form.plan_panel_id, loadPanelTemplates])
 
   useEffect(() => {
     if (!formOpen || panelInbounds.length === 0) return
@@ -607,6 +665,7 @@ export function PlansAdminClient() {
         wholesale_line_id: keepLine ? f.wholesale_line_id : linesForPid.length === 1 ? num(linesForPid[0]?.id) : 0,
         inbound_ids: [],
         inbound_id: 0,
+        panel_template_id: 0,
       }
     })
   }
@@ -644,6 +703,11 @@ export function PlansAdminClient() {
             <span>
               {t("inbound")}: {parseInboundIds(plan).map((iid) => `#${formatNumber(iid, isFa)}`).join(" · ") || "—"}
             </span>
+            {String(plan.quota_display_mode ?? "show") === "hide_as_unlimited" ? (
+              <span className="col-span-2">
+                <Badge variant="outline">{t("quotaDisplayBadge")}</Badge>
+              </span>
+            ) : null}
           </div>
           <div className="flex flex-wrap justify-end gap-2">
             <Button type="button" size="sm" variant="outline" onClick={() => openEdit(plan)}>
@@ -952,8 +1016,50 @@ export function PlansAdminClient() {
                     })}
                   </div>
                 )}
+                {!resellerMode && isPgPlanPanel ? (
+                  <div className="mt-3 space-y-2">
+                    <Label>{t("templatePickerLabel")}</Label>
+                    {panelTemplatesBusy ? (
+                      <p className="text-sm text-muted-foreground">{t("templatePickerLoading")}</p>
+                    ) : (
+                      <select
+                        className="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm"
+                        value={form.panel_template_id || ""}
+                        onChange={(e) =>
+                          setForm((f) => ({ ...f, panel_template_id: num(e.target.value) }))
+                        }
+                      >
+                        <option value="">{t("templatePickerNone")}</option>
+                        {panelTemplates.map((tpl) => (
+                          <option key={tpl.id} value={tpl.id}>
+                            {String(tpl.name ?? `#${tpl.id}`)}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    <p className="text-xs text-muted-foreground">{t("templatePickerHint")}</p>
+                  </div>
+                ) : null}
               </div>
             ) : null}
+            <div className="grid gap-1.5 sm:col-span-2">
+              <Label>{t("quotaDisplayMode")}</Label>
+              <select
+                className="h-8 rounded-lg border border-input bg-background px-2 text-sm"
+                value={form.quota_display_mode}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    quota_display_mode:
+                      e.target.value === "hide_as_unlimited" ? "hide_as_unlimited" : "show",
+                  }))
+                }
+              >
+                <option value="show">{t("quotaDisplayShow")}</option>
+                <option value="hide_as_unlimited">{t("quotaDisplayHide")}</option>
+              </select>
+              <p className="text-xs text-muted-foreground">{t("quotaDisplayHint")}</p>
+            </div>
             <Label className="flex items-center gap-2 sm:col-span-2">
               <Switch checked={form.plan_active} onCheckedChange={(plan_active) => setForm((f) => ({ ...f, plan_active }))} />
               {t("active")}

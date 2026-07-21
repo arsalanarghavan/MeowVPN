@@ -28,7 +28,8 @@ function statusText(status: string, t: (key: string) => string): string {
 
 export function PgUserCard({ user }: Props) {
   const t = useTranslations("portal")
-  const total = user.data_limit
+  const hideQuota = (user.quota_hidden_from_user ?? 0) === 1
+  const total = hideQuota ? 0 : user.data_limit
   const used = user.used_traffic
   const remain = total > 0 ? Math.max(0, total - used) : 0
   const pct = usedPercent(used, total)

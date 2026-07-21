@@ -121,6 +121,65 @@ class L2tpProvisionerService
         return true;
     }
 
+    /**
+     * Rotate L2TP password on the SSH host and update the service row.
+     *
+     * @return array{ok:bool, password?:string, reason?:string, detail?:string}
+     */
+    public function rotatePassword(object $svc): array
+    {
+        $username = trim((string) ($svc->l2tp_username ?? ''));
+        $sid = (int) ($svc->l2tp_server_id ?? 0);
+        if ($username === '' || $sid < 1) {
+            return ['ok' => false, 'reason' => 'l2tp_service_incomplete'];
+        }
+        if (! Schema::hasTable('svp_l2tp_servers')) {
+            return ['ok' => false, 'reason' => 'l2tp_module_unavailable'];
+        }
+
+        $srv = DB::table('svp_l2tp_servers')->where('id', $sid)->where('active', 1)->first();
+        if (! $srv) {
+            return ['ok' => false, 'reason' => 'l2tp_server_missing'];
+        }
+
+        $password = $this->generatePassword();
+        $chap = trim((string) ($srv->chap_path ?? '/etc/ppp/chap-secrets'));
+        $reload = trim((string) ($srv->reload_cmd ?? 'sudo /bin/systemctl reload xl2tpd'));
+        $pattern = '/^'.preg_quote($username, '/').'[[:space:]]/d';
+        $line = $username.' L2TP-VPN '.$password.' *';
+        $cmd = sprintf(
+            'sudo /usr/bin/sed -i %s %s && printf %%s\\n %s | sudo /usr/bin/tee -a %s && %s',
+            escapeshellarg($pattern),
+            escapeshellarg($chap),
+            escapeshellarg($line),
+            escapeshellarg($chap),
+            $reload
+        );
+        $res = $this->ssh->exec($srv, $cmd);
+        if (! $res['ok']) {
+            Log::channel('svp-panel')->warning('l2tp.rotate_password_failed', [
+                'service_id' => (int) ($svc->id ?? 0),
+                'stderr' => $res['stderr'],
+            ]);
+
+            return ['ok' => false, 'reason' => 'l2tp_ssh_failed', 'detail' => $res['stderr']];
+        }
+
+        $upd = [];
+        if (Schema::hasColumn('svp_services', 'l2tp_password')) {
+            $upd['l2tp_password'] = $password;
+        }
+        if (Schema::hasColumn('svp_services', 'l2tp_password_enc')) {
+            $upd['l2tp_password_enc'] = Crypt::encryptString($password);
+        }
+        if ($upd === []) {
+            return ['ok' => false, 'reason' => 'l2tp_password_column_missing'];
+        }
+        DB::table('svp_services')->where('id', (int) $svc->id)->update($upd);
+
+        return ['ok' => true, 'password' => $password];
+    }
+
     public static function isL2tp(object $svc): bool
     {
         return (string) ($svc->service_type ?? 'xray') === 'l2tp';

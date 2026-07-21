@@ -159,6 +159,7 @@ trait InteractsWithMutate
             'panel_xp' => ['name' => 'Test Panel', 'url' => 'https://panel.test', 'username' => 'admin'],
             'bot_set_webhook' => ['platform' => 'telegram'],
             'bot_delete_webhook' => ['platform' => 'telegram'],
+            'bot_set_update_mode' => ['platform' => 'telegram', 'mode' => 'webhook'],
             'bot_toggle_enabled' => ['enabled' => true],
             'bot_toggle_platform_enabled' => ['platform' => 'telegram', 'enabled' => true],
             'bot_reseller_delete' => ['reseller_svp_user_id' => 100],

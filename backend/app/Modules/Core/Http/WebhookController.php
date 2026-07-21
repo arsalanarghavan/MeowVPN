@@ -46,6 +46,10 @@ class WebhookController extends Controller
             return response()->json(['ok' => true, 'disabled' => true]);
         }
 
+        if (app(\App\Modules\Core\Bot\Services\BotPollingService::class)->isPollingMode($platform)) {
+            return response()->json(['ok' => true, 'polling' => true]);
+        }
+
         $expected = (string) $this->settings->get("{$platform}_webhook_secret", '');
         if ($expected === '' || ! hash_equals($expected, $secret)) {
             return response()->json(['ok' => false, 'message' => 'forbidden'], 403);

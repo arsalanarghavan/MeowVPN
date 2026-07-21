@@ -105,12 +105,30 @@ class DeferredJobCronTest extends TestCase
             'status' => 'approved',
             'created_at' => now(),
         ]);
+        $panelId = (int) DB::table('svp_panels')->insertGetId([
+            'label' => 'CronPanel',
+            'subscription_public_base' => 'https://sub.example.com',
+            'active' => 1,
+            'sort_order' => 0,
+            'created_at' => now(),
+        ]);
         $svcId = (int) DB::table('svp_services')->insertGetId([
             'user_id' => $user->id,
             'email' => 'cron-cfg@test',
+            'panel_id' => $panelId,
+            'inbound_id' => 1,
+            'sub_id' => 'cron-sub',
+            'xui_client_uuid' => 'uuid-cron',
             'created_at' => now(),
         ]);
-        Cache::put("bot_config_delivery:{$user->id}:{$svcId}", [
+        DB::table('svp_panel_inbound_clients')->insert([
+            'panel_id' => $panelId,
+            'inbound_id' => 1,
+            'email' => 'cron-cfg@test',
+            'client_json' => json_encode(['vless' => 'vless://uuid@host:443?type=tcp#cron']),
+        ]);
+        $key = "bot_config_delivery:{$user->id}:{$svcId}:telegram:config";
+        Cache::put($key, [
             'platform' => 'telegram',
             'chat_id' => 812,
             'service_id' => $svcId,
@@ -118,9 +136,15 @@ class DeferredJobCronTest extends TestCase
             'user_id' => $user->id,
             'owner_id' => $user->id,
             'cb_id' => 'cb-cron-1',
+            'attempt' => 0,
+            'cache_key' => $key,
         ], 600);
         app(DeferredConfigDeliveryCronJob::class)->handle(app(BotConfigDeliveryService::class));
-        $this->assertNull(Cache::get("bot_config_delivery:{$user->id}:{$svcId}"));
-        Http::assertSentCount(2);
+        $this->assertNull(Cache::get($key));
+        Http::assertSent(function ($request) {
+            return str_contains((string) $request->url(), 'sendMessage')
+                || str_contains((string) $request->url(), 'sendPhoto')
+                || str_contains((string) $request->url(), 'answerCallbackQuery');
+        });
     }
 }

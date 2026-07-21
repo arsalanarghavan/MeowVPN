@@ -22,8 +22,12 @@ class AdminUsersMutateDepthTest extends TestCase
         $this->createSvpTestSchema();
         Http::fake(['*' => Http::response(['ok' => true, 'result' => []], 200)]);
         app(SettingsStore::class)->set('telegram_admin_ids', [9001]);
-        app(SettingsStore::class)->set('force_join_enabled', true);
-        app(SettingsStore::class)->set('force_join_channel_id', '-100123');
+        app(SettingsStore::class)->merge([
+            'telegram_bot_token' => '1:test-token',
+            'force_join_enabled' => true,
+            'force_join_channel_id' => '-100123',
+            'force_join_channel_url' => 'https://t.me/example',
+        ]);
     }
 
     protected function admin(): SvpUser
@@ -46,7 +50,9 @@ class AdminUsersMutateDepthTest extends TestCase
         $admin = $this->admin();
         $ctx = new BotContext('telegram');
         app(AdminUsersHandler::class)->handleCallback($ctx, ['pnl', 'mem', (string) $pending->id, 'fj'], $admin, 9001, 0);
-        Http::assertSentCount(2);
+        Http::assertSent(function ($request) {
+            return str_contains($request->url(), 'sendMessage');
+        });
     }
 
     public function test_user_status_approve_via_membership_callback(): void

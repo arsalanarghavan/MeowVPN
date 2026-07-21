@@ -16,17 +16,29 @@ class TextService
 
     public function get(string $key, string $default = '', ?string $locale = null): string
     {
-        $locale = $locale ?? $this->siteDefaultLocale();
+        $locale = BotTextDefaults::normalizeLocale($locale ?? $this->siteDefaultLocale());
         $ck = $key."\x1e".$locale;
         if (array_key_exists($ck, $this->cache)) {
             return $this->cache[$ck];
         }
 
-        $value = $default;
+        $value = '';
         if (Schema::hasTable('svp_texts')) {
-            $row = DB::table('svp_texts')->where('key_name', $key)->first();
-            if ($row && (string) $row->value !== '') {
+            $row = DB::table('svp_texts')
+                ->where('key_name', $key)
+                ->where('locale', $locale)
+                ->first();
+            if ($row && (string) ($row->value ?? '') !== '') {
                 $value = (string) $row->value;
+            }
+        }
+
+        if ($value === '') {
+            if ($default !== '') {
+                $value = $default;
+            } else {
+                $def = BotTextDefaults::defaultRowForKey($key, $locale);
+                $value = $def ? (string) ($def['value'] ?? '') : '';
             }
         }
 
@@ -65,5 +77,10 @@ class TextService
         $v = trim((string) $this->settings->get('default_bot_locale', 'fa'));
 
         return $v === 'en' ? 'en' : 'fa';
+    }
+
+    public function clearCache(): void
+    {
+        $this->cache = [];
     }
 }

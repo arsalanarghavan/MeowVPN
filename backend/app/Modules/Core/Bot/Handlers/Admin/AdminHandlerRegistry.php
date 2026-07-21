@@ -54,7 +54,7 @@ class AdminHandlerRegistry
 
             return;
         }
-        if (in_array($sub, ['umsg', 'wbp', 'wbm', 'ui', 'cs', 'pq', 'aq', 'rq', 'pe', 'svc_del', 'ar', 'av', 'rv', 'ad', 'sd', 'asv', 'mem', 'urcp'], true)
+        if (in_array($sub, ['umsg', 'wbp', 'wbm', 'ui', 'cs', 'pq', 'aq', 'rq', 'pe', 'svc_del', 'ar', 'av', 'rv', 'ad', 'sd', 'asv', 'mem', 'urcp', 'nsx', 'nsm', 'nrr', 'nva', 'nus', 'rr'], true)
             || ($sub === 'svc' && isset($parts[2]))) {
             if ($sub === 'pe') {
                 $parts[1] = 'pq';

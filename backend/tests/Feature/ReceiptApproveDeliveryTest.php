@@ -4,10 +4,13 @@ namespace Tests\Feature;
 
 use App\Models\SvpPlan;
 use App\Models\SvpUser;
+use App\Modules\Core\Bot\Jobs\DeferredConfigDeliveryJob;
 use App\Services\Commerce\ReceiptProcessorService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\Concerns\CreatesSvpTestSchema;
 use Tests\Concerns\InteractsWithMutate;
 use Tests\TestCase;
@@ -66,11 +69,17 @@ class ReceiptApproveDeliveryTest extends TestCase
             'created_at' => now(),
         ]);
 
+        Queue::fake();
         $result = app(ReceiptProcessorService::class)->approve($receiptId, 'test-admin');
         $this->assertTrue($result['ok']);
 
         $this->assertDatabaseHas('svp_services', ['user_id' => 101, 'plan_id' => 1]);
         $this->assertDatabaseHas('svp_receipts', ['id' => $receiptId, 'status' => 'approved']);
+
+        $svcId = (int) DB::table('svp_services')->where('user_id', 101)->orderByDesc('id')->value('id');
+        $this->assertGreaterThan(0, $svcId);
+        Queue::assertPushed(DeferredConfigDeliveryJob::class);
+        $this->assertIsArray(Cache::get("bot_config_delivery:101:{$svcId}:telegram:config"));
     }
 
     public function test_mutate_receipt_action_approve(): void

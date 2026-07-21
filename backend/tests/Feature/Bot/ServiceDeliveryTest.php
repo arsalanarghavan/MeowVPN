@@ -90,7 +90,7 @@ class ServiceDeliveryTest extends TestCase
             'svc_id' => $svcId,
             'chat_id' => 303,
         ]);
-        \Illuminate\Support\Facades\Queue::assertPushed(\App\Modules\Core\Bot\Jobs\DeferredConfigDeliveryJob::class);
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Modules\Core\Bot\Jobs\DeferredSvcPanelDeliveryJob::class);
     }
 
     public function test_renew_callback_creates_invoice_transaction(): void

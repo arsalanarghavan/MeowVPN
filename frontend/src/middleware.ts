@@ -84,9 +84,10 @@ export async function middleware(request: NextRequest) {
   const rest = segments.slice(1)
   const isDashboard = rest[0] === "dashboard"
   const isLogin = rest[0] === "login"
+  const isSetup = rest[0] === "setup" || (isDashboard && rest[1] === "setup")
   const isMagicAuth = isDashboard && rest[1] === "auth" && rest[2] === "magic"
 
-  if (isDashboard && !isMagicAuth) {
+  if (isDashboard && !isMagicAuth && !isSetup) {
     const loggedIn = await sessionLooksLoggedIn(request)
     if (!loggedIn) {
       const url = request.nextUrl.clone()

@@ -15,6 +15,7 @@ export function DataPagination({
   onPerPageChange,
   perPageOptions = [10, 20, 40, 50, 100],
   className,
+  "data-testid": dataTestId = "data-pagination",
 }: {
   meta: PaginationMeta | null | undefined
   isFa?: boolean
@@ -22,6 +23,7 @@ export function DataPagination({
   onPerPageChange?: (perPage: number) => void
   perPageOptions?: number[]
   className?: string
+  "data-testid"?: string
 }) {
   const t = useTranslations("pagination")
   const { isFa } = useDashLocale()
@@ -33,7 +35,10 @@ export function DataPagination({
   const to = Math.min(total, page * perPage)
 
   return (
-    <div className={cn("flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-sm", className)}>
+    <div
+      data-testid={dataTestId}
+      className={cn("flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-sm", className)}
+    >
       <p className="text-muted-foreground">
         {t("range", {
           from: formatNumber(from, localize),

@@ -657,27 +657,75 @@ class XuiClient
     /** @param  array<string, mixed>  $panel */
     public function deleteClient(array $panel, int $serviceId): array
     {
+        unset($panel);
         $svc = DB::table('svp_services')->where('id', $serviceId)->first();
         if (! $svc) {
-            return ['ok' => false, 'message' => 'not_found'];
+            return ['ok' => false, 'message' => 'not_found', 'reason' => 'bad_service'];
         }
         $panelId = (int) ($svc->panel_id ?? 0);
 
         return $this->runWithPanel($panelId, function () use ($svc) {
-            if ($this->loginWithRetries()) {
-                $this->delClient(
-                    (int) $svc->inbound_id,
-                    (string) ($svc->xui_client_uuid ?? $svc->xui_client_id ?? ''),
-                    (string) $svc->email
-                );
+            if (! $this->loginWithRetries()) {
+                return ['ok' => false, 'reason' => 'panel_login', 'message' => 'panel_login'];
             }
+
+            $email = (string) ($svc->email ?? '');
+            $inboundId = (int) ($svc->inbound_id ?? 0);
+            $panelAbsent = false;
+
+            if ($this->isV3ClientsApi()) {
+                $existing = $this->clientGetV3($email);
+                if (! is_array($existing)) {
+                    $panelAbsent = true;
+                } else {
+                    $res = $this->delClient($inboundId, $email, $email);
+                    if (! $this->responseIsSuccess($res)) {
+                        $still = $this->clientGetV3($email);
+                        if (! is_array($still)) {
+                            $panelAbsent = true;
+                        } else {
+                            return ['ok' => false, 'reason' => 'del_failed', 'message' => 'del_failed', 'panel' => $res];
+                        }
+                    }
+                }
+            } else {
+                $inbound = $this->inboundGet($inboundId);
+                if (! $inbound) {
+                    $panelAbsent = true;
+                } else {
+                    $oldKey = $this->resolveClientKeyForUpdate(
+                        (string) ($svc->xui_client_id ?? $svc->xui_client_uuid ?? ''),
+                        $inbound,
+                        $email
+                    );
+                    if (! $oldKey) {
+                        $panelAbsent = true;
+                    } else {
+                        $res = $this->delClient($inboundId, (string) $oldKey, $email);
+                        if (! $this->responseIsSuccess($res)) {
+                            $inbound2 = $this->inboundGet($inboundId);
+                            $still = $inbound2 ? $this->inboundClientByEmail($inbound2, $email) : null;
+                            if (! is_array($still)) {
+                                $panelAbsent = true;
+                            } else {
+                                return ['ok' => false, 'reason' => 'del_failed', 'message' => 'del_failed', 'panel' => $res];
+                            }
+                        }
+                    }
+                }
+            }
+
             DB::table('svp_services')->where('id', $svc->id)->update([
                 'xui_client_id' => null,
                 'xui_client_uuid' => null,
-                'deleted_at' => now(),
             ]);
 
-            return ['ok' => true];
+            $out = ['ok' => true];
+            if ($panelAbsent) {
+                $out['panel_absent'] = true;
+            }
+
+            return $out;
         });
     }
 

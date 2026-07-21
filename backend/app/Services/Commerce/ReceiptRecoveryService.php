@@ -2,6 +2,7 @@
 
 namespace App\Services\Commerce;
 
+use App\Modules\Core\Bot\Services\ReceiptNotifyService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -9,31 +10,12 @@ class ReceiptRecoveryService
 {
     public function __construct(
         protected ReceiptProcessorService $processor,
+        protected ReceiptNotifyService $receiptNotify,
     ) {}
 
     public function runNotifyRecovery(): void
     {
-        $cutoff = now()->subSeconds(120);
-        $rows = DB::table('svp_receipts')
-            ->whereIn('status', ['pending', 'processing'])
-            ->where('created_at', '<=', $cutoff)
-            ->orderBy('id')
-            ->limit(25)
-            ->get();
-        foreach ($rows as $rec) {
-            if (trim((string) ($rec->tg_file_id ?? '')) === '' && trim((string) ($rec->bale_file_id ?? '')) === '') {
-                continue;
-            }
-            // Notify recovery is handled by admin bot handlers; mark for reprocessing via log hook.
-            if (Schema::hasTable('svp_logs')) {
-                DB::table('svp_logs')->insert([
-                    'level' => 'info',
-                    'message' => 'receipt_notify_recovery_enqueued',
-                    'context_json' => json_encode(['receipt_id' => (int) $rec->id]),
-                    'created_at' => now(),
-                ]);
-            }
-        }
+        $this->receiptNotify->recoverPending(25);
     }
 
     public function runApproveRecovery(): void

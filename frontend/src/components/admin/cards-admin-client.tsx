@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import {
@@ -26,11 +27,11 @@ import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { PaymentMethodSection } from "@/components/admin/payment-methods/payment-method-section"
 import { AddCardTile } from "@/components/admin/payment-methods/add-card-tile"
-import { SortableCardTile } from "@/components/payment-methods/sortable-card-tile"
+import { SortableCardTile } from "@/components/admin/payment-methods/sortable-card-tile"
 import {
   DisplayModeBanner,
   type CardsDisplayMode,
-} from "@/components/payment-methods/display-mode-banner"
+} from "@/components/admin/payment-methods/display-mode-banner"
 import { WalletMethodCard } from "@/components/admin/payment-methods/wallet-method-card"
 
 type DashRecord = Record<string, unknown>
@@ -42,7 +43,7 @@ type MethodKey =
   | "rial_zarinpal"
   | "rial_aqayepardakht"
   | "rial_zibal"
-type GatewaySheetKey = "zarinpal" | "aqayepardakht" | "zibal" | "tetra" | "nowpayments" | null
+type GatewaySheetKey = "zarinpal" | "aqayepardakht" | "zibal" | "tetra" | "nowpayments" | "bale_wallet" | null
 type PaymentMethodKey = "c2c" | "crypto" | "crypto_auto" | "bale_wallet" | "site_wallet" | "wallet_topup"
 
 const PAYMENT_METHOD_KEYS: PaymentMethodKey[] = [
@@ -409,21 +410,18 @@ export function CardsAdminClient() {
     }
   }
 
-  const onC2cDragEnd = async (event: DragEndEvent) => {
+  const onCardsDragEnd = async (event: DragEndEvent) => {
     if (filter !== "all") return
     const { active, over } = event
     if (!over || active.id === over.id) return
-    const list = grouped.c2c
+    const list = cards
     const oldIndex = list.findIndex((c) => num(c.id) === Number(active.id))
     const newIndex = list.findIndex((c) => num(c.id) === Number(over.id))
     if (oldIndex < 0 || newIndex < 0) return
-    const nextC2c = arrayMove(list, oldIndex, newIndex)
-    const others = cards.filter((c) => methodOf(c) !== "c2c")
-    const fullOrdered = [...nextC2c, ...others]
+    const fullOrdered = arrayMove(list, oldIndex, newIndex)
     setCards(fullOrdered)
     setReordering(true)
     try {
-      // Prefer full card_reorder when filter is all (legacy behavior).
       const res = await postAdminMutate("card_reorder", {
         ordered_ids: fullOrdered.map((row) => num(row.id)).filter((id) => id > 0),
       })
@@ -508,7 +506,11 @@ export function CardsAdminClient() {
   const cardSubtitle = (row: DashRecord) => shorten(row.card_number)
   const isGatewayMethod = (key: MethodKey) =>
     key === "crypto" || key === "crypto_auto" || key === "crypto_tetra" || key.startsWith("rial_")
-  const c2cSortableIds = grouped.c2c.map((c) => num(c.id)).filter((id) => id > 0)
+  const allSortableIds = useMemo(
+    () => (filter === "all" ? cards.map((c) => num(c.id)).filter((id) => id > 0) : []),
+    [cards, filter]
+  )
+  const canDragAll = !reordering && filter === "all" && allSortableIds.length > 1
 
   return (
     <div className="space-y-6">
@@ -573,15 +575,15 @@ export function CardsAdminClient() {
         ))}
       </div>
 
-      <PaymentMethodSection title={t("sectionC2c")} description={t("sectionC2cDesc")}>
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => void onC2cDragEnd(e)}>
-          <SortableContext items={c2cSortableIds} strategy={rectSortingStrategy}>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => void onCardsDragEnd(e)}>
+        <SortableContext items={allSortableIds} strategy={rectSortingStrategy}>
+          <PaymentMethodSection title={t("sectionC2c")} description={t("sectionC2cDesc")}>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {grouped.c2c.map((card) => (
                 <SortableCardTile
                   key={num(card.id)}
                   c={card}
-                  canDrag={!reordering && filter === "all"}
+                  canDrag={canDragAll}
                   busy={busyId === num(card.id)}
                   saving={saving || reordering}
                   tp={t}
@@ -593,80 +595,80 @@ export function CardsAdminClient() {
               ))}
               <AddCardTile label={t("addCardTile")} onClick={() => openAdd("c2c")} />
             </div>
-          </SortableContext>
-        </DndContext>
-        {grouped.c2c.length === 0 ? <p className="text-sm text-muted-foreground">{t("emptyC2c")}</p> : null}
-        {filter === "all" && grouped.c2c.length > 1 ? (
-          <p className="mt-2 text-xs text-muted-foreground">{t("dragHint")}</p>
-        ) : null}
-      </PaymentMethodSection>
+            {grouped.c2c.length === 0 ? <p className="text-sm text-muted-foreground">{t("emptyC2c")}</p> : null}
+            {filter === "all" && allSortableIds.length > 1 ? (
+              <p className="mt-2 text-xs text-muted-foreground">{t("dragHint")}</p>
+            ) : null}
+          </PaymentMethodSection>
 
-      <PaymentMethodSection title={t("sectionRial")} description={t("sectionRialDesc")}>
-        <div className="mb-3 flex flex-wrap gap-2">
-          <Button type="button" size="sm" variant="outline" onClick={() => setGatewaySheet("zarinpal")}>
-            {t("zarinpalTitle")} · {zarinpalConfigured ? t("zarinpalMerchantConfigured") : t("zarinpalMerchantMissing")}
-          </Button>
-          <Button type="button" size="sm" variant="outline" onClick={() => setGatewaySheet("aqayepardakht")}>
-            {t("aqayepardakhtTitle")} · {aqayepardakhtConfigured ? t("aqayepardakhtPinConfigured") : t("aqayepardakhtPinMissing")}
-          </Button>
-          <Button type="button" size="sm" variant="outline" onClick={() => setGatewaySheet("zibal")}>
-            {t("zibalTitle")} · {zibalConfigured ? t("zibalMerchantConfigured") : t("zibalMerchantMissing")}
-          </Button>
-        </div>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {[...grouped.rial_zarinpal, ...grouped.rial_aqayepardakht, ...grouped.rial_zibal].map((card) => (
-            <SortableCardTile
-              key={num(card.id)}
-              c={card}
-              canDrag={false}
-              busy={busyId === num(card.id)}
-              saving={saving}
-              tp={t}
-              cardSubtitle={cardSubtitle}
-              showMethod
-              methodLabel={methodLabel}
-              onToggleActive={toggleActive}
-              onEdit={openEdit}
-              onDelete={setDeleteTarget}
-            />
-          ))}
-          <AddCardTile label={t("zarinpalTitle")} onClick={() => openAdd("rial_zarinpal")} />
-          <AddCardTile label={t("aqayepardakhtTitle")} onClick={() => openAdd("rial_aqayepardakht")} />
-          <AddCardTile label={t("zibalTitle")} onClick={() => openAdd("rial_zibal")} />
-        </div>
-      </PaymentMethodSection>
+          <PaymentMethodSection title={t("sectionRial")} description={t("sectionRialDesc")}>
+            <div className="mb-3 flex flex-wrap gap-2">
+              <Button type="button" size="sm" variant="outline" onClick={() => setGatewaySheet("zarinpal")}>
+                {t("zarinpalTitle")} · {zarinpalConfigured ? t("zarinpalMerchantConfigured") : t("zarinpalMerchantMissing")}
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setGatewaySheet("aqayepardakht")}>
+                {t("aqayepardakhtTitle")} · {aqayepardakhtConfigured ? t("aqayepardakhtPinConfigured") : t("aqayepardakhtPinMissing")}
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setGatewaySheet("zibal")}>
+                {t("zibalTitle")} · {zibalConfigured ? t("zibalMerchantConfigured") : t("zibalMerchantMissing")}
+              </Button>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {[...grouped.rial_zarinpal, ...grouped.rial_aqayepardakht, ...grouped.rial_zibal].map((card) => (
+                <SortableCardTile
+                  key={num(card.id)}
+                  c={card}
+                  canDrag={canDragAll}
+                  busy={busyId === num(card.id)}
+                  saving={saving || reordering}
+                  tp={t}
+                  cardSubtitle={cardSubtitle}
+                  showMethod
+                  methodLabel={methodLabel}
+                  onToggleActive={toggleActive}
+                  onEdit={openEdit}
+                  onDelete={setDeleteTarget}
+                />
+              ))}
+              <AddCardTile label={t("zarinpalTitle")} onClick={() => openAdd("rial_zarinpal")} />
+              <AddCardTile label={t("aqayepardakhtTitle")} onClick={() => openAdd("rial_aqayepardakht")} />
+              <AddCardTile label={t("zibalTitle")} onClick={() => openAdd("rial_zibal")} />
+            </div>
+          </PaymentMethodSection>
 
-      <PaymentMethodSection title={t("sectionCrypto")} description={t("sectionCryptoDesc")}>
-        <div className="mb-3 flex flex-wrap gap-2">
-          <Button type="button" size="sm" variant="outline" onClick={() => setGatewaySheet("nowpayments")}>
-            {t("cryptoNowPaymentsTitle")} · {nowPaymentsConfigured ? t("nowPaymentsApiConfigured") : t("nowPaymentsApiMissing")}
-          </Button>
-          <Button type="button" size="sm" variant="outline" onClick={() => setGatewaySheet("tetra")}>
-            {t("cryptoTetraTitle")} · {tetraConfigured ? t("tetraApiConfigured") : t("tetraApiMissing")}
-          </Button>
-        </div>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {[...grouped.crypto, ...grouped.crypto_auto, ...grouped.crypto_tetra].map((card) => (
-            <SortableCardTile
-              key={num(card.id)}
-              c={card}
-              canDrag={false}
-              busy={busyId === num(card.id)}
-              saving={saving}
-              tp={t}
-              cardSubtitle={cardSubtitle}
-              showMethod
-              methodLabel={methodLabel}
-              onToggleActive={toggleActive}
-              onEdit={openEdit}
-              onDelete={setDeleteTarget}
-            />
-          ))}
-          <AddCardTile label={t("addCryptoWalletTile")} onClick={() => openAdd("crypto")} />
-          <AddCardTile label={t("cryptoNowPaymentsTitle")} onClick={() => openAdd("crypto_auto")} />
-          <AddCardTile label={t("cryptoTetraTitle")} onClick={() => openAdd("crypto_tetra")} />
-        </div>
-      </PaymentMethodSection>
+          <PaymentMethodSection title={t("sectionCrypto")} description={t("sectionCryptoDesc")}>
+            <div className="mb-3 flex flex-wrap gap-2">
+              <Button type="button" size="sm" variant="outline" onClick={() => setGatewaySheet("nowpayments")}>
+                {t("cryptoNowPaymentsTitle")} · {nowPaymentsConfigured ? t("nowPaymentsApiConfigured") : t("nowPaymentsApiMissing")}
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setGatewaySheet("tetra")}>
+                {t("cryptoTetraTitle")} · {tetraConfigured ? t("tetraApiConfigured") : t("tetraApiMissing")}
+              </Button>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {[...grouped.crypto, ...grouped.crypto_auto, ...grouped.crypto_tetra].map((card) => (
+                <SortableCardTile
+                  key={num(card.id)}
+                  c={card}
+                  canDrag={canDragAll}
+                  busy={busyId === num(card.id)}
+                  saving={saving || reordering}
+                  tp={t}
+                  cardSubtitle={cardSubtitle}
+                  showMethod
+                  methodLabel={methodLabel}
+                  onToggleActive={toggleActive}
+                  onEdit={openEdit}
+                  onDelete={setDeleteTarget}
+                />
+              ))}
+              <AddCardTile label={t("addCryptoWalletTile")} onClick={() => openAdd("crypto")} />
+              <AddCardTile label={t("cryptoNowPaymentsTitle")} onClick={() => openAdd("crypto_auto")} />
+              <AddCardTile label={t("cryptoTetraTitle")} onClick={() => openAdd("crypto_tetra")} />
+            </div>
+          </PaymentMethodSection>
+        </SortableContext>
+      </DndContext>
 
       <DataPagination
         meta={pagination}
@@ -689,6 +691,8 @@ export function CardsAdminClient() {
               checked={paymentMethodsMap[key]}
               disabled={savingPaymentMethods}
               onCheckedChange={(checked) => setPaymentMethodsMap((m) => ({ ...m, [key]: checked }))}
+              configureLabel={key === "bale_wallet" ? t("configureMethod") : undefined}
+              onConfigure={key === "bale_wallet" ? () => setGatewaySheet("bale_wallet") : undefined}
             />
           ))}
         </div>
@@ -937,6 +941,30 @@ export function CardsAdminClient() {
             </Button>
             <Button type="button" disabled={saving} onClick={() => void saveNowPaymentsSettings()}>
               {tFinance("cryptoSave")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={gatewaySheet === "bale_wallet"} onOpenChange={(open) => !open && setGatewaySheet(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("walletBaleTitle")}</DialogTitle>
+            <DialogDescription>{t("paymentMethodHint_bale_wallet")}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">{t("baleWalletConfigureHint")}</p>
+            {!isReseller ? (
+              <Button type="button" variant="secondary" size="sm" render={<Link href={`/${locale}/dashboard/bots`} />}>
+                {t("openBotsSettings")}
+              </Button>
+            ) : (
+              <p className="text-xs text-muted-foreground">{t("gatewaySettingsReadOnly")}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setGatewaySheet(null)}>
+              {t("cancel")}
             </Button>
           </DialogFooter>
         </DialogContent>

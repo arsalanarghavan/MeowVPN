@@ -14,7 +14,7 @@ class MutateRegistryCompletenessTest extends TestCase
         $all = $registry->all();
         $canonical = MutateOpCatalog::all();
 
-        $this->assertCount(164, $canonical);
+        $this->assertCount(165, $canonical);
         $this->assertSame(count($canonical), count(array_unique($canonical)), 'Duplicate ops in catalog');
 
         foreach ($canonical as $op) {

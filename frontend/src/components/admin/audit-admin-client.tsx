@@ -1,56 +1,64 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { DataPagination } from "@/components/data-pagination"
 import { getAdminState } from "@/lib/dash-admin-mutate"
-import { formatDateTime, formatNumber } from "@/lib/format-locale"
+import { parsePaginationMeta, type PaginationMeta } from "@/lib/dash-pagination"
+import {
+  canonicalAuditEventType,
+  formatAuditActor,
+  formatAuditDomain,
+  formatAuditEventLabel,
+  formatAuditSummary,
+  formatAuditTarget,
+  type AuditRow,
+} from "@/lib/format-audit-log"
+import { formatDateTime } from "@/lib/format-locale"
 
-type AuditRow = {
-  id?: number
-  created_at?: string | number | null
-  domain?: string
-  event_type?: string
-  actor_type?: string
-  actor_id?: number | string | null
-  actor_label?: string | null
-  target_type?: string
-  target_id?: number | string | null
-  payload_json?: string | Record<string, unknown> | null
-}
-
-type Pagination = { page: number; perPage: number; total: number }
-
-const domains = ["admin", "billing", "bot", "security", "reseller"]
+const DOMAIN_OPTIONS = ["admin", "billing", "bot", "security", "reseller"] as const
 
 function num(v: unknown): number {
   const n = Number(v)
   return Number.isFinite(n) ? n : 0
 }
 
-function parsePagination(raw: unknown): Pagination {
-  if (!raw || typeof raw !== "object") return { page: 1, perPage: 30, total: 0 }
-  const r = raw as Record<string, unknown>
-  return { page: num(r.page) || 1, perPage: num(r.perPage ?? r.per_page) || 30, total: num(r.total) }
-}
-
-function parsePayload(raw: AuditRow["payload_json"]): Record<string, unknown> {
-  if (!raw) return {}
-  if (typeof raw === "object") return raw as Record<string, unknown>
+function parsePayload(raw: unknown): unknown {
+  if (raw == null) return {}
+  if (typeof raw === "object") return raw
+  if (typeof raw !== "string") return {}
+  const s = raw.trim()
+  if (!s) return {}
   try {
-    const data = JSON.parse(raw)
-    return data && typeof data === "object" && !Array.isArray(data) ? (data as Record<string, unknown>) : {}
+    return JSON.parse(s) as unknown
   } catch {
     return {}
   }
 }
 
-function canonicalEvent(event: string): string {
-  return event.trim().replace(/[.:]/g, "_")
+function toAuditRow(raw: unknown): AuditRow | null {
+  if (!raw || typeof raw !== "object") return null
+  const r = raw as Record<string, unknown>
+  const id = num(r.id)
+  if (id < 1) return null
+  return {
+    id,
+    created_at: String(r.created_at ?? ""),
+    domain: String(r.domain ?? ""),
+    event_type: String(r.event_type ?? ""),
+    actor_kind: String(r.actor_kind ?? r.actor_type ?? "unknown"),
+    actor_wp_user_id: num(r.actor_wp_user_id),
+    actor_svp_user_id: num(r.actor_svp_user_id ?? r.actor_id),
+    target_type: String(r.target_type ?? ""),
+    target_id: num(r.target_id),
+    reseller_scope_id: num(r.reseller_scope_id),
+    payload: parsePayload(r.payload ?? r.payload_json),
+  }
 }
 
 export function AuditAdminClient() {
@@ -59,9 +67,9 @@ export function AuditAdminClient() {
   const isFa = locale === "fa"
 
   const [rows, setRows] = useState<AuditRow[]>([])
-  const [pagination, setPagination] = useState<Pagination>({ page: 1, perPage: 30, total: 0 })
+  const [pagination, setPagination] = useState<PaginationMeta | null>(null)
   const [page, setPage] = useState(1)
-  const [perPage, setPerPage] = useState(30)
+  const [perPage, setPerPage] = useState(25)
   const [domain, setDomain] = useState("")
   const [eventType, setEventType] = useState("")
   const [searchInput, setSearchInput] = useState("")
@@ -69,12 +77,12 @@ export function AuditAdminClient() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const tr = useCallback(
-    (key: string, fallback: string, values?: Record<string, string | number>) => {
+  const auditT = useCallback(
+    (key: string, opts?: Record<string, string | number>) => {
       try {
-        return t(key, values)
+        return t(key as never, opts as never)
       } catch {
-        return fallback
+        return key
       }
     },
     [t]
@@ -91,8 +99,11 @@ export function AuditAdminClient() {
         event_type: eventType,
         q: search,
       })
-      setRows(Array.isArray(data.auditRows) ? (data.auditRows as AuditRow[]) : [])
-      setPagination(parsePagination(data.auditPagination))
+      const list = Array.isArray(data.auditRows)
+        ? (data.auditRows as unknown[]).map(toAuditRow).filter((row): row is AuditRow => row != null)
+        : []
+      setRows(list)
+      setPagination(parsePaginationMeta(data.auditPagination))
     } catch {
       setError(t("loadError"))
     } finally {
@@ -103,46 +114,6 @@ export function AuditAdminClient() {
   useEffect(() => {
     void load()
   }, [load])
-
-  const totalPages = useMemo(
-    () => Math.max(1, Math.ceil(pagination.total / (pagination.perPage || perPage))),
-    [pagination, perPage]
-  )
-
-  const domainLabel = (value: string) => tr(`domain_${value}`, value || "—")
-  const eventLabel = (value: string) => {
-    const key = canonicalEvent(value)
-    return key ? tr(`event_${key}`, value || "—") : "—"
-  }
-  const actorLabel = (row: AuditRow) => {
-    const label = String(row.actor_label ?? "").trim()
-    if (label) return label
-    const type = String(row.actor_type ?? "unknown")
-    const id = String(row.actor_id ?? "").trim()
-    const kind = tr(`actor_${type}`, type)
-    return id ? `${kind} #${id}` : kind
-  }
-  const targetLabel = (row: AuditRow) => {
-    const type = String(row.target_type ?? "unknown")
-    const id = String(row.target_id ?? "").trim()
-    const kind = tr(`target_${type}`, type)
-    return id ? `${kind} #${id}` : kind
-  }
-  const payloadLines = (row: AuditRow) => {
-    const payload = parsePayload(row.payload_json)
-    return Object.entries(payload)
-      .slice(0, 5)
-      .map(([key, value]) => {
-        const label = tr(`payload_${key}`, key)
-        const text =
-          typeof value === "boolean"
-            ? value ? t("payloadYes") : t("payloadNo")
-            : typeof value === "object" && value !== null
-              ? JSON.stringify(value)
-              : String(value ?? "—")
-        return `${label}: ${text}`
-      })
-  }
 
   return (
     <div className="space-y-6">
@@ -173,18 +144,45 @@ export function AuditAdminClient() {
               }}
             >
               <option value="">{t("domainAll")}</option>
-              {domains.map((d) => <option key={d} value={d}>{domainLabel(d)}</option>)}
+              {DOMAIN_OPTIONS.map((d) => (
+                <option key={d} value={d}>
+                  {formatAuditDomain(d, auditT)}
+                </option>
+              ))}
             </select>
           </div>
           <div className="space-y-1.5">
             <Label>{t("filterEvent")}</Label>
-            <Input className="w-48" dir="ltr" value={eventType} placeholder={t("eventPlaceholder")} onChange={(e) => { setEventType(e.target.value); setPage(1) }} />
+            <Input
+              className="w-48"
+              dir="ltr"
+              value={eventType}
+              placeholder={t("eventPlaceholder")}
+              onChange={(e) => {
+                setEventType(e.target.value)
+                setPage(1)
+              }}
+            />
           </div>
           <div className="min-w-52 flex-1 space-y-1.5">
             <Label>{t("search")}</Label>
             <div className="flex gap-2">
-              <Input dir="ltr" value={searchInput} placeholder={t("searchPlaceholder")} onChange={(e) => setSearchInput(e.target.value)} />
-              <Button type="button" size="sm" onClick={() => { setSearch(searchInput.trim()); setPage(1) }}>{t("searchBtn")}</Button>
+              <Input
+                dir="ltr"
+                value={searchInput}
+                placeholder={t("searchPlaceholder")}
+                onChange={(e) => setSearchInput(e.target.value)}
+              />
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => {
+                  setSearch(searchInput.trim())
+                  setPage(1)
+                }}
+              >
+                {t("searchBtn")}
+              </Button>
             </div>
           </div>
         </CardContent>
@@ -208,31 +206,47 @@ export function AuditAdminClient() {
               </TableHeader>
               <TableBody>
                 {loading && rows.length === 0 ? (
-                  <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground">{t("loading")}</TableCell></TableRow>
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center text-muted-foreground">
+                      {t("loading")}
+                    </TableCell>
+                  </TableRow>
                 ) : null}
                 {!loading && rows.length === 0 ? (
-                  <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground">{t("empty")}</TableCell></TableRow>
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center text-muted-foreground">
+                      {t("empty")}
+                    </TableCell>
+                  </TableRow>
                 ) : null}
                 {rows.map((row) => {
-                  const event = String(row.event_type ?? "")
-                  const lines = payloadLines(row)
+                  const summary = formatAuditSummary(row, auditT, isFa)
                   return (
-                    <TableRow key={String(row.id ?? `${event}-${row.created_at}`)}>
-                      <TableCell className="text-xs text-muted-foreground">{formatDateTime(row.created_at, isFa)}</TableCell>
-                      <TableCell>{domainLabel(String(row.domain ?? ""))}</TableCell>
-                      <TableCell>
-                        <span className="font-medium">{eventLabel(event)}</span>
-                        <span className="mt-0.5 block font-mono text-[10px] text-muted-foreground" dir="ltr">{event || "—"}</span>
+                    <TableRow key={row.id}>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {formatDateTime(row.created_at, isFa)}
                       </TableCell>
-                      <TableCell>{actorLabel(row)}</TableCell>
-                      <TableCell>{targetLabel(row)}</TableCell>
+                      <TableCell>{formatAuditDomain(row.domain, auditT)}</TableCell>
+                      <TableCell>
+                        <span className="font-medium">{formatAuditEventLabel(row.event_type, auditT)}</span>
+                        {row.event_type ? (
+                          <span className="mt-0.5 block font-mono text-[10px] text-muted-foreground" dir="ltr">
+                            {canonicalAuditEventType(row.event_type) || row.event_type}
+                          </span>
+                        ) : null}
+                      </TableCell>
+                      <TableCell>{formatAuditActor(row, auditT, isFa)}</TableCell>
+                      <TableCell>{formatAuditTarget(row, auditT, isFa)}</TableCell>
                       <TableCell className="max-w-md whitespace-normal text-xs">
-                        {lines.length > 0 ? (
-                          <ul className="space-y-1 text-muted-foreground">
-                            {lines.map((line) => <li key={line}>{line}</li>)}
+                        <p className="text-foreground">{summary.headline}</p>
+                        {summary.details.length > 0 ? (
+                          <ul className="mt-1 space-y-0.5 text-muted-foreground">
+                            {summary.details.slice(0, 4).map((line) => (
+                              <li key={line}>{line}</li>
+                            ))}
                           </ul>
                         ) : (
-                          <span className="text-muted-foreground">{t("payloadEmpty")}</span>
+                          <p className="mt-1 text-muted-foreground">{t("payloadEmpty")}</p>
                         )}
                       </TableCell>
                     </TableRow>
@@ -241,17 +255,15 @@ export function AuditAdminClient() {
               </TableBody>
             </Table>
           </div>
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
-            <p className="text-muted-foreground">{formatNumber(pagination.total, isFa)}</p>
-            <div className="flex items-center gap-2">
-              <Button type="button" size="sm" variant="outline" disabled={page <= 1 || loading} onClick={() => setPage((p) => Math.max(1, p - 1))}>‹</Button>
-              <span className="tabular-nums" dir="ltr">{formatNumber(page, isFa)} / {formatNumber(totalPages, isFa)}</span>
-              <Button type="button" size="sm" variant="outline" disabled={page >= totalPages || loading} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>›</Button>
-              <select className="h-8 rounded-md border bg-background px-2 text-sm" value={perPage} onChange={(e) => { setPerPage(num(e.target.value)); setPage(1) }}>
-                {[25, 30, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
-              </select>
-            </div>
-          </div>
+          <DataPagination
+            meta={pagination}
+            onPageChange={setPage}
+            onPerPageChange={(n) => {
+              setPerPage(n)
+              setPage(1)
+            }}
+            perPageOptions={[25, 30, 50, 100]}
+          />
         </CardContent>
       </Card>
     </div>

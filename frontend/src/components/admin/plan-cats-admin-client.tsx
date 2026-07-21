@@ -4,7 +4,7 @@ import { useTranslations } from "next-intl"
 import { useAdminTabState } from "@/hooks/use-admin-tab-state"
 
 import { EllipsisVerticalIcon } from "lucide-react"
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 
 import { DashTableShell, DashTd, DashTh } from "@/components/dash-data-table"
 import { Badge } from "@/components/ui/badge"
@@ -33,10 +33,10 @@ import type { PaginationMeta } from "@/lib/dash-pagination"
 import { DashSelect } from "@/components/dash-select"
 import { formatNumber } from "@/lib/format-locale"
 import { DashboardPageHeader } from "@/components/dashboard-page-header"
-import { cn } from "@/lib/utils"
+import { Switch } from "@/components/ui/switch"
 import { useDashLocale } from "@/lib/dash-locale-context"
+import { cn } from "@/lib/utils"
 import { DashDialogContent, DashDialogFooter, DashDialogHeader } from "@/components/dash-dialog-content"
-import { Dialog, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 
 type DashRecord = Record<string, unknown>
 
@@ -99,10 +99,13 @@ function formFromRow(r: DashRecord): FormState {
   }
 }
 
+import { Dialog, DialogDescription, DialogTitle } from "@/components/ui/dialog"
+
 export function PlanCatsAdminView({
   planCategories,
   panels,
   pagination,
+  settings,
   onMutateSuccess,
   onPageChange,
   onPerPageChange,
@@ -110,7 +113,8 @@ export function PlanCatsAdminView({
   planCategories: DashRecord[]
   panels: DashRecord[]
   pagination: PaginationMeta | null
-onMutateSuccess?: () => void
+  settings?: Record<string, unknown>
+  onMutateSuccess?: () => void
   onPageChange: (page: number) => void
   onPerPageChange: (perPage: number) => void
 }) {
@@ -119,6 +123,36 @@ onMutateSuccess?: () => void
   const t = useTranslations("planCatsAdmin")
   const tp = (k: string) => t(`${k}`)
   const defaultPanel = Math.max(1, num(panels[0]?.id) || 1)
+
+  const buyPanelStepEnabled =
+    settings?.buy_panel_step_enabled === true ||
+    settings?.buy_panel_step_enabled === 1 ||
+    settings?.buy_panel_step_enabled === "1"
+
+  const [panelStepEnabled, setPanelStepEnabled] = useState(buyPanelStepEnabled)
+  const [buyFlowSaving, setBuyFlowSaving] = useState(false)
+
+  useEffect(() => {
+    setPanelStepEnabled(buyPanelStepEnabled)
+  }, [buyPanelStepEnabled])
+
+  const onSaveBuyFlow = useCallback(async () => {
+    setBuyFlowSaving(true)
+    setError(null)
+    try {
+      const res = await postAdminMutate("settings_tab", {
+        tab: "plans_catalog",
+        buy_panel_step_enabled: panelStepEnabled ? 1 : 0,
+      })
+      if (!res.ok) {
+        setError(res.message || tp("buyFlowSaveError"))
+        return
+      }
+      onMutateSuccess?.()
+    } finally {
+      setBuyFlowSaving(false)
+    }
+  }, [onMutateSuccess, panelStepEnabled, tp])
 
   const [sheetOpen, setSheetOpen] = useState(false)
   const [mode, setMode] = useState<"add" | "edit">("add")
@@ -197,6 +231,26 @@ onMutateSuccess?: () => void
           </Button>
         }
       />
+
+      <div className="mb-4 space-y-3 rounded-lg border border-border/60 p-4">
+        <p className="text-sm font-medium">{t("buyFlowTitle")}</p>
+        <div className={cn("flex items-center justify-between gap-4")}>
+          <div className="space-y-1">
+            <Label htmlFor="buy-panel-step">{t("buyPanelStepEnabled")}</Label>
+            <p className="text-xs text-muted-foreground">{t("buyPanelStepHint")}</p>
+          </div>
+          <Switch id="buy-panel-step" checked={panelStepEnabled} onCheckedChange={setPanelStepEnabled} />
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          disabled={buyFlowSaving || panelStepEnabled === buyPanelStepEnabled}
+          onClick={() => void onSaveBuyFlow()}
+        >
+          {t("save")}
+        </Button>
+      </div>
 
       {error ? (
         <div role="alert" className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -354,6 +408,8 @@ onMutateSuccess?: () => void
 export function PlanCatsAdminClient() {
   const { data, loading, error, reload, setPage, setPer, pickPagination, rows } = useAdminTabState("plan_cats")
   const t = useTranslations("planCatsAdmin")
+  const settings =
+    data.settings && typeof data.settings === "object" ? (data.settings as Record<string, unknown>) : undefined
   if (loading && rows(data.planCategories).length === 0) {
     return <p className="text-sm text-muted-foreground">{t("loading")}</p>
   }
@@ -363,6 +419,7 @@ export function PlanCatsAdminClient() {
       planCategories={rows(data.planCategories ?? data.plan_categories)}
       panels={rows(data.panels)}
       pagination={pickPagination("planCategories")}
+      settings={settings}
       onMutateSuccess={reload}
       onPageChange={(p) => setPage("planCategories", p)}
       onPerPageChange={(n) => setPer("planCategories", n)}

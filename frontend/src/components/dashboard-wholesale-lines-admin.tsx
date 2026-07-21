@@ -233,7 +233,7 @@ export function DashboardWholesaleLinesAdmin({
       </div>
 
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <DashSheetContent className="w-full overflow-y-auto sm:max-w-lg">
+        <DashSheetContent side={isFa ? "left" : "right"} className="w-full overflow-y-auto sm:max-w-lg">
           <SheetHeader>
             <SheetTitle>{editingId ? t("editLine") : t("addLine")}</SheetTitle>
           </SheetHeader>

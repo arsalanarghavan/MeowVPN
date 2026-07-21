@@ -24,8 +24,9 @@ export function PasarguardBuiltinLayout() {
 
   const brand = branding.name || user.username
   const support = meta.support_url || headers["support-url"]
+  const hideQuota = (user.quota_hidden_from_user ?? 0) === 1
   const used = chart?.used ?? user.used_traffic
-  const total = chart?.total ?? user.data_limit
+  const total = hideQuota ? 0 : (chart?.total ?? user.data_limit)
   const remaining = total > 0 ? Math.max(0, total - used) : 0
 
   return (

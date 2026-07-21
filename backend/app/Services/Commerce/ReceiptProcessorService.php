@@ -4,6 +4,7 @@ namespace App\Services\Commerce;
 
 use App\Models\SvpUser;
 use App\Modules\Core\Bot\BotContext;
+use App\Modules\Core\Bot\Services\BotConfigDeliveryService;
 use App\Modules\Core\Bot\Services\BotRuntime;
 use App\Modules\Core\Bot\Services\KeyboardBuilder;
 use App\Modules\Core\Bot\Services\TextService;
@@ -16,6 +17,7 @@ class ReceiptProcessorService
         protected BotRuntime $runtime,
         protected TextService $texts,
         protected KeyboardBuilder $keyboards,
+        protected BotConfigDeliveryService $configDelivery,
     ) {}
 
     /** @return array<string, mixed> */
@@ -73,7 +75,13 @@ class ReceiptProcessorService
             'status' => $provisionError ? 'completed_with_error' : 'completed',
         ]);
 
-        $this->notifyUser((int) $rec->user_id, $receiptId, $provisionError, $serviceId);
+        $this->notifyUser(
+            (int) $rec->user_id,
+            $receiptId,
+            $provisionError,
+            $serviceId,
+            $tx ? (string) $tx->type : ''
+        );
 
         if ($provisionError) {
             return [
@@ -140,7 +148,13 @@ class ReceiptProcessorService
         }
 
         if (! $provisionError) {
-            $this->notifyUser((int) $rec->user_id, $receiptId, null, $serviceId);
+            $this->notifyUser(
+                (int) $rec->user_id,
+                $receiptId,
+                null,
+                $serviceId,
+                $tx ? (string) $tx->type : ''
+            );
         }
 
         if ($provisionError) {
@@ -181,8 +195,13 @@ class ReceiptProcessorService
             ->update(['status' => 'processing']) === 1;
     }
 
-    protected function notifyUser(int $userId, int $receiptId, ?string $provisionError, ?int $serviceId): void
-    {
+    protected function notifyUser(
+        int $userId,
+        int $receiptId,
+        ?string $provisionError,
+        ?int $serviceId,
+        string $txType = '',
+    ): void {
         $user = SvpUser::query()->find($userId);
         if (! $user) {
             return;
@@ -203,6 +222,10 @@ class ReceiptProcessorService
                 $msg .= "\n".'Service #'.$serviceId;
             }
             $this->runtime->sendMessage($ctx, $chatId, $msg);
+            // WP finish_approved → notify_user_service_ready (purchase only; fulfill may already have enqueued).
+            if ($serviceId && $serviceId > 0 && $txType === 'purchase') {
+                $this->configDelivery->enqueueAfterProvision($user, $serviceId);
+            }
         }
     }
 

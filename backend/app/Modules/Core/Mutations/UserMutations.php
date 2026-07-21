@@ -6,6 +6,7 @@ use App\Models\DashboardUser;
 use App\Models\SvpUser;
 use App\Modules\Core\Services\UsersBulkEnqueueService;
 use App\Modules\Reseller\Services\ResellerClosureService;
+use App\Services\SettingsStore;
 use App\Services\UserMergeService;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\DB;
@@ -15,6 +16,7 @@ class UserMutations
     public function __construct(
         protected UsersBulkEnqueueService $bulkEnqueue,
         protected UserMergeService $merge,
+        protected SettingsStore $settings,
     ) {}
     /** @return array<string, array{0: class-string, 1: string}> */
     public function handlers(): array
@@ -270,10 +272,10 @@ class UserMutations
     /** @param  array<string, mixed>  $payload */
     protected function enqueueBulkJob(string $operation, array $payload, ?Authenticatable $actor): array
     {
-        $merged = array_merge($payload, match ($operation) {
+        $notifyFields = $this->bulkNotifyFields($payload);
+        $merged = array_merge($payload, $notifyFields, match ($operation) {
             'wallet' => [
                 'delta' => (float) ($payload['delta'] ?? 0),
-                'notify' => $payload['notify'] ?? false,
             ],
             'volume' => [
                 'extra_gb' => max(1, (int) ($payload['extra_gb'] ?? $payload['volume_gb'] ?? 1)),
@@ -291,5 +293,27 @@ class UserMutations
         });
 
         return $this->bulkEnqueue->enqueueJob($operation, $merged, $actor);
+    }
+
+    /**
+     * WP users_bulk_notify_fields: default notify = !suppress_bulk_user_notifications.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array{notify: int, notify_message: string}
+     */
+    protected function bulkNotifyFields(array $payload): array
+    {
+        $notify = array_key_exists('notify', $payload)
+            ? (bool) $payload['notify']
+            : ! (bool) $this->settings->get('suppress_bulk_user_notifications', false);
+        $msg = isset($payload['notify_message']) ? (string) $payload['notify_message'] : '';
+        if (strlen($msg) > 3500) {
+            $msg = function_exists('mb_substr') ? mb_substr($msg, 0, 3500) : substr($msg, 0, 3500);
+        }
+
+        return [
+            'notify' => $notify ? 1 : 0,
+            'notify_message' => $msg,
+        ];
     }
 }

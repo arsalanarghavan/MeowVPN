@@ -66,6 +66,18 @@ class CatalogLoader extends AbstractLoader
 
         $p = $ctx->page('plans');
         $q = SvpPlan::query()->orderByDesc('id');
+
+        // WP parity: reseller / resellerContextId → owner_svp_user_id scope.
+        // Site admin (no context) → all plans; UI splits site (owner 0) vs reseller-owned.
+        $ownerCtx = 0;
+        if ($ctx->isReseller && $ctx->actorSvpUserId > 0) {
+            $ownerCtx = $ctx->actorSvpUserId;
+        } elseif ($ctx->resellerContextId > 0) {
+            $ownerCtx = $ctx->resellerContextId;
+        }
+        if ($ownerCtx > 0) {
+            $q->where('owner_svp_user_id', $ownerCtx);
+        }
         if ($ctx->allowedPanelIds !== []) {
             $q->whereIn('panel_id', $ctx->allowedPanelIds);
         } elseif ($ctx->isReseller) {
@@ -94,6 +106,13 @@ class CatalogLoader extends AbstractLoader
 
         $p = $ctx->page('planCategories');
         $q = SvpPlanCategory::query()->orderBy('sort_order')->orderBy('id');
+        if ($ctx->allowedPanelIds !== []) {
+            $q->whereIn('panel_id', $ctx->allowedPanelIds);
+        } elseif ($ctx->isReseller) {
+            $result->setTotal('planCategories', 0);
+
+            return [];
+        }
         $total = (clone $q)->count();
         $result->setTotal('planCategories', $total);
 

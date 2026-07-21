@@ -1,5 +1,8 @@
 "use client"
 
+import Link from "next/link"
+import type { ReactNode } from "react"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
@@ -11,6 +14,8 @@ export function WalletMethodCard({
   onCheckedChange,
   disabled,
   switchId,
+  configureLabel,
+  onConfigure,
 }: {
   title: string
   hint: string
@@ -18,6 +23,8 @@ export function WalletMethodCard({
   onCheckedChange: (checked: boolean) => void
   disabled?: boolean
   switchId: string
+  configureLabel?: string
+  onConfigure?: () => void
 }) {
   return (
     <Card>
@@ -26,17 +33,20 @@ export function WalletMethodCard({
           <CardTitle className="text-base">{title}</CardTitle>
           <CardDescription className="text-xs leading-snug">{hint}</CardDescription>
         </div>
-        <Switch
-          id={switchId}
-          checked={checked}
-          onCheckedChange={onCheckedChange}
-          disabled={disabled}
-        />
+        <Switch id={switchId} checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} />
         <Label htmlFor={switchId} className="sr-only">
           {title}
         </Label>
       </CardHeader>
-      <CardContent className="hidden" />
+      {onConfigure ? (
+        <CardContent className="pt-0">
+          <Button type="button" variant="outline" size="sm" onClick={onConfigure}>
+            {configureLabel ?? "Configure"}
+          </Button>
+        </CardContent>
+      ) : (
+        <CardContent className="hidden" />
+      )}
     </Card>
   )
 }

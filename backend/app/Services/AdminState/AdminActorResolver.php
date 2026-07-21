@@ -43,6 +43,7 @@ class AdminActorResolver
             }
             $ctx->resellerContextId = $validated;
             $ctx->moderatableUserIds = $this->scope->moderatableUserIds($validated);
+            $ctx->allowedPanelIds = $this->scope->allowedPanelIdsFor($validated);
         }
     }
 

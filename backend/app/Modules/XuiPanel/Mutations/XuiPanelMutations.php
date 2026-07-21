@@ -649,7 +649,77 @@ class XuiPanelMutations
     /** @param  array<string, mixed>  $payload */
     public function panelXp(array $payload, ?Authenticatable $actor): array
     {
-        $id = (int) ($payload['id'] ?? 0);
+        $id = (int) ($payload['id'] ?? $payload['panel_id'] ?? $payload['xp_id'] ?? 0);
+        $action = strtolower(trim((string) ($payload['xp_action'] ?? $payload['action'] ?? '')));
+
+        if ($action === 'delete' && $id > 0) {
+            $planCount = Schema::hasTable('svp_plans')
+                ? (int) DB::table('svp_plans')->where('panel_id', $id)->count()
+                : 0;
+            $serviceCount = Schema::hasTable('svp_services')
+                ? (int) DB::table('svp_services')->where('panel_id', $id)->whereNull('deleted_at')->count()
+                : 0;
+            if (($planCount > 0 || $serviceCount > 0) && empty($payload['force'])) {
+                return svp_err('inuse', [
+                    'code' => 'inuse',
+                    'message' => 'inuse',
+                    'can_merge' => true,
+                    'plan_count' => $planCount,
+                    'service_count' => $serviceCount,
+                    'source_panel_id' => $id,
+                ]);
+            }
+            if (Schema::hasTable('svp_panel_economics_lines')) {
+                DB::table('svp_panel_economics_lines')->where('panel_id', $id)->delete();
+            }
+            DB::table('svp_panels')->where('id', $id)->delete();
+
+            return svp_ok(['panel_id' => $id, 'code' => 'deleted']);
+        }
+
+        if ($action === 'toggle' && $id > 0) {
+            $row = DB::table('svp_panels')->where('id', $id)->first();
+            if (! $row) {
+                return svp_err('not_found');
+            }
+            $next = empty($row->active) ? 1 : 0;
+            DB::table('svp_panels')->where('id', $id)->update(['active' => $next]);
+
+            return svp_ok(['panel_id' => $id, 'active' => $next, 'code' => 'toggled']);
+        }
+
+        $aliases = [
+            'xp_label' => 'label',
+            'xp_panel_url' => 'panel_url',
+            'xp_panel_username' => 'panel_username',
+            'xp_username' => 'panel_username',
+            'xp_panel_password' => 'panel_password',
+            'xp_password' => 'panel_password',
+            'xp_panel_api_base' => 'panel_api_base',
+            'xp_api_base' => 'panel_api_base',
+            'xp_panel_login_secret' => 'panel_login_secret',
+            'xp_login_secret' => 'panel_login_secret',
+            'xp_panel_api_token' => 'panel_api_token',
+            'xp_api_token' => 'panel_api_token',
+            'xp_panel_api_flavor' => 'panel_api_flavor',
+            'xp_api_flavor' => 'panel_api_flavor',
+            'xp_subscription_public_base' => 'subscription_public_base',
+            'xp_sub_base' => 'subscription_public_base',
+            'xp_sort_order' => 'sort_order',
+            'xp_sort' => 'sort_order',
+            'xp_active' => 'active',
+            'xp_panel_provider' => 'panel_provider',
+            'xp_provider' => 'panel_provider',
+            'xp_panel_template_required' => 'panel_template_required',
+            'xp_buy_category_intro_fa' => 'buy_category_intro_fa',
+            'xp_buy_category_intro_en' => 'buy_category_intro_en',
+        ];
+        foreach ($aliases as $from => $to) {
+            if (array_key_exists($from, $payload) && ! array_key_exists($to, $payload)) {
+                $payload[$to] = $payload[$from];
+            }
+        }
+
         $data = $this->encryptPanelSecrets(collect($payload)->only([
             'label', 'panel_url', 'panel_username', 'panel_password', 'panel_api_base',
             'panel_login_secret', 'panel_api_token', 'panel_api_flavor', 'subscription_public_base',
@@ -664,14 +734,42 @@ class XuiPanelMutations
         if (array_key_exists('panel_template_required', $data)) {
             $data['panel_template_required'] = ! empty($data['panel_template_required']) ? 1 : 0;
         }
+        if (array_key_exists('active', $data)) {
+            $data['active'] = ! empty($data['active']) ? 1 : 0;
+        }
+        foreach (['buy_category_intro_fa', 'buy_category_intro_en'] as $col) {
+            if (array_key_exists($col, $payload) && Schema::hasColumn('svp_panels', $col)) {
+                $data[$col] = $payload[$col];
+            }
+        }
+
+        if ($action === 'add' || ($id < 1 && $action === '')) {
+            $label = trim((string) ($data['label'] ?? ''));
+            $purl = trim((string) ($data['panel_url'] ?? ''));
+            $token = trim((string) ($payload['panel_api_token'] ?? ''));
+            $user = trim((string) ($data['panel_username'] ?? ''));
+            $pw = trim((string) ($payload['panel_password'] ?? ''));
+            $hasAuth = $token !== '' || ($user !== '' && $pw !== '');
+            if ($label === '' || $purl === '' || ! $hasAuth) {
+                return svp_err('invalid', ['code' => 'invalid']);
+            }
+        }
+
         if ($id > 0) {
+            // On update, skip empty secret fields so we don't wipe credentials.
+            if (array_key_exists('panel_password', $data) && trim((string) ($payload['panel_password'] ?? '')) === '') {
+                unset($data['panel_password']);
+            }
+            if (array_key_exists('panel_api_token', $data) && trim((string) ($payload['panel_api_token'] ?? '')) === '') {
+                unset($data['panel_api_token']);
+            }
             DB::table('svp_panels')->where('id', $id)->update($data);
 
-            return svp_ok(['panel_id' => $id]);
+            return svp_ok(['panel_id' => $id, 'code' => 'updated']);
         }
         $newId = DB::table('svp_panels')->insertGetId(array_merge($data, ['created_at' => now()]));
 
-        return svp_ok(['panel_id' => $newId]);
+        return svp_ok(['panel_id' => $newId, 'code' => 'added']);
     }
 
     /** @param  array<string, mixed>  $payload */
@@ -737,12 +835,16 @@ class XuiPanelMutations
         if (! $svc) {
             return svp_err('not_found');
         }
-        $panel = DB::table('svp_panels')->where('id', (int) $svc->panel_id)->first();
-
-        $result = $this->xui->deleteClient((array) ($panel ?? []), $serviceId);
-        if ($svc) {
-            $this->configs->syncInboundsAfterMutation((int) $svc->panel_id, [(int) $svc->inbound_id]);
+        $panelId = max(1, (int) ($svc->panel_id ?? 1));
+        $panelRow = $this->panelFactory->loadPanelRow($panelId) ?? [];
+        $result = $this->panelFactory->forPanelId($panelId, $panelRow)->deleteClient($panelRow, $serviceId);
+        if (empty($result['ok'])) {
+            return svp_err('panel_delete_failed', [
+                'message' => 'panel_delete_failed',
+                'reason' => (string) ($result['message'] ?? $result['reason'] ?? 'failed'),
+            ]);
         }
+        $this->configs->syncInboundsAfterMutation($panelId, [(int) $svc->inbound_id]);
 
         return svp_ok($result);
     }
@@ -804,10 +906,22 @@ class XuiPanelMutations
         if ($serviceId < 1) {
             return svp_err('invalid');
         }
-        if (! SvpService::query()->find($serviceId)) {
+        $svc = SvpService::query()->find($serviceId);
+        if (! $svc) {
             return svp_err('not_found');
         }
-        $r = $this->xui->regenerateSubId($serviceId);
+        $panelId = max(1, (int) ($svc->panel_id ?? 1));
+        $panelRow = $this->panelFactory->loadPanelRow($panelId) ?? [];
+        $client = $this->panelFactory->forPanelId($panelId, $panelRow);
+        $r = method_exists($client, 'regenerateSubId')
+            ? $client->regenerateSubId($serviceId)
+            : $this->xui->regenerateSubId($serviceId);
+        if (empty($r['ok'])) {
+            return svp_err((string) ($r['reason'] ?? $r['message'] ?? 'regen_sub_failed'), [
+                'message' => (string) ($r['message'] ?? $r['reason'] ?? 'regen_sub_failed'),
+                'reason' => (string) ($r['reason'] ?? ''),
+            ]);
+        }
 
         return svp_ok(['sub_id' => $r['sub_id'] ?? '']);
     }
@@ -889,6 +1003,15 @@ class XuiPanelMutations
         if ($inboundId < 1 || $panelId < 1) {
             return svp_err('invalid');
         }
+
+        if ($actor instanceof DashboardUser && (int) ($actor->svp_user_id ?? 0) > 0) {
+            $resellerId = (int) $actor->svp_user_id;
+            $allowed = app(\App\Modules\Reseller\Services\ResellerScopeService::class)->allowedPanelIdsFor($resellerId);
+            if (! in_array($panelId, $allowed, true)) {
+                return svp_err('forbidden_scope');
+            }
+        }
+
         if (Schema::hasTable('svp_inbounds')) {
             DB::table('svp_inbounds')->updateOrInsert(
                 ['panel_id' => $panelId, 'inbound_id' => $inboundId],

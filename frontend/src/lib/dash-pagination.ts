@@ -3,6 +3,7 @@ export const LIST_QUERY_PREFIX = {
   usersList: "users",
   resellers: "resellers",
   botsList: "bots",
+  telegramMirrorsList: "mirrors",
   pendingUsers: "pendingUsers",
   receipts: "receipts",
   broadcasts: "broadcasts",
@@ -30,7 +31,7 @@ export function parsePaginationMeta(raw: unknown): PaginationMeta | null {
   if (!raw || typeof raw !== "object") return null
   const o = raw as Record<string, unknown>
   const page = Number(o.page)
-  const perPage = Number(o.perPage)
+  const perPage = Number(o.perPage ?? o.per_page)
   const total = Number(o.total)
   if (!Number.isFinite(page) || !Number.isFinite(perPage) || !Number.isFinite(total)) return null
   return {

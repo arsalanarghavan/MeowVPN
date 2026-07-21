@@ -95,22 +95,22 @@ function ClickableRow({ href, children }: { href: string; children: ReactNode })
 
 export function OverviewPreviewGrid({
   dashboardBaseUrl,
+  allowTab,
   recentUsers,
   recentReceipts,
   pendingUsersPreview,
   recentResellers,
   recentBroadcasts,
-  showResellers = true,
-  showBroadcast = true,
+  isReseller = false,
 }: {
   dashboardBaseUrl: string
+  allowTab: (tab: string) => boolean
   recentUsers: DashRecord[]
   recentReceipts: DashRecord[]
   pendingUsersPreview: DashRecord[]
   recentResellers: DashRecord[]
   recentBroadcasts: DashRecord[]
-  showResellers?: boolean
-  showBroadcast?: boolean
+  isReseller?: boolean
 }) {
   const t = useTranslations("dashboardOverview")
   const tUsers = useTranslations("usersAdmin")
@@ -118,6 +118,13 @@ export function OverviewPreviewGrid({
   const tBroadcast = useTranslations("broadcastAdmin")
   const { isFa } = useDashLocale()
   const base = dashboardBaseUrl.replace(/\/?$/, "")
+
+  const showUsers = allowTab("users")
+  const showReceipts = allowTab("receipts") || allowTab("payments")
+  const showResellers = !isReseller && allowTab("resellers")
+  const showBroadcast = allowTab("broadcast")
+
+  if (!showUsers && !showReceipts && !showResellers && !showBroadcast) return null
 
   const userStatusLabel = (st: string) => {
     const key = `status_${st}` as "status_pending"
@@ -209,7 +216,7 @@ export function OverviewPreviewGrid({
     const id = overviewNum(u.id)
     const st = String(u.status ?? "")
     return (
-      <ClickableRow key={id} href={`${base}/resellers/`}>
+      <ClickableRow key={id} href={`${base}/reseller_workspace/${id}`}>
         <TableCell className="font-medium">{userDisplayLabel(u)}</TableCell>
         <TableCell className="text-start">
           <Badge variant={userStatusBadgeVariant(st)} className="font-normal">
@@ -246,45 +253,51 @@ export function OverviewPreviewGrid({
   return (
     <section className="space-y-4">
       <div className="grid gap-4 lg:grid-cols-2">
-        <OverviewSectionCard
-          title={t("recentUsers")}
-          viewAllHref={`${base}/users/`}
-          viewAllLabel={t("viewAll")}
-        >
-          {userRows.length === 0 ? (
-            <OverviewEmpty message={t("emptyPreview")} />
-          ) : (
-            <OverviewDataTable headers={[t("colUser"), t("colStatus"), t("colDate")]} rows={userRows} />
-          )}
-        </OverviewSectionCard>
+        {showUsers ? (
+          <OverviewSectionCard
+            title={t("recentUsers")}
+            viewAllHref={`${base}/users/`}
+            viewAllLabel={t("viewAll")}
+          >
+            {userRows.length === 0 ? (
+              <OverviewEmpty message={t("emptyPreview")} />
+            ) : (
+              <OverviewDataTable headers={[t("colUser"), t("colStatus"), t("colDate")]} rows={userRows} />
+            )}
+          </OverviewSectionCard>
+        ) : null}
 
-        <OverviewSectionCard
-          title={t("recentReceipts")}
-          viewAllHref={`${base}/payments/?payments_view=receipts`}
-          viewAllLabel={t("viewAll")}
-        >
-          {receiptRows.length === 0 ? (
-            <OverviewEmpty message={t("emptyPreview")} />
-          ) : (
-            <OverviewDataTable
-              headers={[t("colUser"), tReceipts("colSelectedService"), t("colAmount"), t("colStatus"), t("colDate")]}
-              rows={receiptRows}
-            />
-          )}
-        </OverviewSectionCard>
+        {showReceipts ? (
+          <OverviewSectionCard
+            title={t("recentReceipts")}
+            viewAllHref={`${base}/payments/?payments_view=receipts`}
+            viewAllLabel={t("viewAll")}
+          >
+            {receiptRows.length === 0 ? (
+              <OverviewEmpty message={t("emptyPreview")} />
+            ) : (
+              <OverviewDataTable
+                headers={[t("colUser"), tReceipts("colSelectedService"), t("colAmount"), t("colStatus"), t("colDate")]}
+                rows={receiptRows}
+              />
+            )}
+          </OverviewSectionCard>
+        ) : null}
 
-        <OverviewSectionCard
-          title={t("pendingApprovals")}
-          description={t("pendingApprovalsHint")}
-          viewAllHref={`${base}/users/`}
-          viewAllLabel={t("viewAll")}
-        >
-          {pendingRows.length === 0 ? (
-            <OverviewEmpty message={t("emptyPreview")} />
-          ) : (
-            <OverviewDataTable headers={[t("colUser"), t("colDate")]} rows={pendingRows} />
-          )}
-        </OverviewSectionCard>
+        {showUsers ? (
+          <OverviewSectionCard
+            title={t("pendingApprovals")}
+            description={t("pendingApprovalsHint")}
+            viewAllHref={`${base}/users/`}
+            viewAllLabel={t("viewAll")}
+          >
+            {pendingRows.length === 0 ? (
+              <OverviewEmpty message={t("emptyPreview")} />
+            ) : (
+              <OverviewDataTable headers={[t("colUser"), t("colDate")]} rows={pendingRows} />
+            )}
+          </OverviewSectionCard>
+        ) : null}
 
         {showResellers ? (
           <OverviewSectionCard

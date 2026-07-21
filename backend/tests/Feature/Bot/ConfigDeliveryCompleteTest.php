@@ -39,10 +39,12 @@ class ConfigDeliveryCompleteTest extends TestCase
             'created_at' => now(),
         ]);
         $ctx = new BotContext('telegram');
+        \Illuminate\Support\Facades\Queue::fake();
         app(BotConfigDeliveryService::class)->enqueue($ctx, $user, 730, $svcId, 'config');
-        $payload = Cache::get("bot_config_delivery:{$user->id}:{$svcId}");
+        $payload = Cache::get("bot_config_delivery:{$user->id}:{$svcId}:telegram:config");
         $this->assertIsArray($payload);
         $this->assertSame($user->id, (int) ($payload['owner_id'] ?? 0));
+        $this->assertSame(0, (int) ($payload['attempt'] ?? -1));
     }
 
     public function test_deliver_l2tp_includes_decrypted_psk(): void
@@ -71,8 +73,9 @@ class ConfigDeliveryCompleteTest extends TestCase
         ]);
         $ctx = new BotContext('telegram');
         $delivery = app(BotConfigDeliveryService::class);
+        \Illuminate\Support\Facades\Queue::fake();
         $delivery->enqueue($ctx, $user, 731, $svcId, 'config', 'cb-psk-1');
-        $delivery->deliver($user->id, $svcId, 'cb-psk-1');
+        $delivery->deliver($user->id, $svcId, 'cb-psk-1', 'telegram', 'config');
         Http::assertSent(function ($request) use ($psk) {
             $body = json_encode($request->data());
 
@@ -112,10 +115,20 @@ class ConfigDeliveryCompleteTest extends TestCase
         ]);
         $ctx = new BotContext('telegram');
         $delivery = app(BotConfigDeliveryService::class);
+        \Illuminate\Support\Facades\Queue::fake();
         $delivery->enqueue($ctx, $user, 732, $svcId, 'subscription', 'cb-sub-1');
-        $delivery->deliver($user->id, $svcId, 'cb-sub-1');
+        $result = $delivery->deliver($user->id, $svcId, 'cb-sub-1', 'telegram', 'subscription');
+        $this->assertSame('delivered', $result);
         Http::assertSent(function ($request) {
-            return str_contains((string) $request->url(), 'sendPhoto');
+            $url = (string) $request->url();
+            if (str_contains($url, 'sendPhoto')) {
+                return true;
+            }
+            $text = (string) ($request->data()['text'] ?? '');
+
+            // Primary may be subscription URL; QR falls back to text when GD is unavailable.
+            return str_contains($url, 'sendMessage')
+                && (str_contains($text, 'sub.example.com') || str_contains($text, 'vless://'));
         });
     }
 }

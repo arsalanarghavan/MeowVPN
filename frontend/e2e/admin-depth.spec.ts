@@ -9,15 +9,15 @@ test.describe("admin depth (API session)", () => {
     }
   })
 
-  test("overview tab renders economics / KPI shell", async ({ page, request }) => {
+  test("overview tab renders OverviewAdminClient shell", async ({ page, request }) => {
     const authed = await ensureAdminApiSession(page, request)
     test.skip(!authed, "Laravel API unavailable or admin login failed")
 
     await page.goto("/en/dashboard", { waitUntil: "domcontentloaded" })
     await expect(page).not.toHaveURL(/\/login/)
-    await expect(page.locator("body")).toContainText(/Overview|Business health|KPI|Revenue|Users/i, {
-      timeout: 15000,
-    })
+    // Next `/en/dashboard` mounts OverviewAdminClient (not a static stub).
+    await expect(page.getByRole("heading", { name: /^Overview$/i })).toBeVisible({ timeout: 15000 })
+    await expect(page.getByText(/Business health at a glance/i)).toBeVisible()
   })
 
   test("backup tab shows settings and reset-stuck control when locked", async ({ page, request }) => {
@@ -43,9 +43,9 @@ test.describe("admin depth (API session)", () => {
     const authed = await ensureAdminApiSession(page, request)
     test.skip(!authed, "Laravel API unavailable or admin login failed")
 
-    await page.goto("/en/dashboard/marketing", { waitUntil: "domcontentloaded" })
+    await page.goto("/en/dashboard/marketing_lifecycle", { waitUntil: "domcontentloaded" })
     await expect(page).not.toHaveURL(/\/login/)
-    await expect(page.locator("body")).toContainText(/lifecycle|retention|campaign|automation/i, {
+    await expect(page.getByRole("heading", { name: /Customer lifecycle|چرخه عمر مشتری/i })).toBeVisible({
       timeout: 15000,
     })
 
@@ -56,7 +56,7 @@ test.describe("admin depth (API session)", () => {
       return
     }
 
-    const result = await waitForMutate(page, "marketing_confirm_defaults", async () => {
+    const result = await waitForMutate(page, "marketing_lifecycle_confirm_defaults", async () => {
       await confirmBtn.click()
     })
     expect(result.status).toBeLessThan(500)

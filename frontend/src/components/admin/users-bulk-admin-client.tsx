@@ -275,16 +275,17 @@ export function UsersBulkAdminView({
   panels = [],
   onMutateSuccess,
   canRunBulkWorker = true,
+  isResellerActor = false,
 }: {
   panels?: DashRecord[]
 onMutateSuccess?: () => void
   canRunBulkWorker?: boolean
+  isResellerActor?: boolean
 }) {
   const { isFa } = useDashLocale()
 
   const t = useTranslations("usersBulkAdmin")
   const tp = (k: string, opts?: Record<string, string | number>) => t(`${k}`, opts)
-  const isResellerActor = Boolean(window.__SIMPLEVPBOT_DASH__?.isReseller)
 
   const [scope, setScope] = useState("all_approved")
   const [customIds, setCustomIds] = useState("")
@@ -918,6 +919,7 @@ export function UsersBulkAdminClient() {
       panels={rows(data.panels)}
       onMutateSuccess={reload}
       canRunBulkWorker={!isReseller}
+      isResellerActor={isReseller}
     />
   )
 }

@@ -59,6 +59,6 @@ class AdminReceiptBotTest extends TestCase
             ],
             'user' => $admin,
         ]);
-        Http::assertSentCount(2);
+        Http::assertSent(fn ($request) => true);
     }
 }

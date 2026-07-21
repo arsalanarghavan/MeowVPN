@@ -22,6 +22,7 @@ import { Progress } from "@/components/ui/progress"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useLiveMetricsSse, type LiveMetricsSsePayload } from "@/hooks/use-live-metrics-sse"
 import { getAdminState } from "@/lib/dash-admin-mutate"
+import { parsePaginationMeta, type PaginationMeta } from "@/lib/dash-pagination"
 import { apiBase } from "@/lib/api"
 import { useChartPrimaryColor } from "@/lib/chart-accent"
 import {
@@ -32,6 +33,7 @@ import {
   formatNumber,
   formatNumericString,
 } from "@/lib/format-locale"
+import { DataPagination } from "@/components/data-pagination"
 
 type DashRecord = Record<string, unknown>
 
@@ -141,6 +143,15 @@ function truncateUrl(url: string, max = 40): string {
   return `${u.slice(0, max - 1)}…`
 }
 
+function pickPagination(data: DashRecord, key: string): PaginationMeta | null {
+  const raw = data.pagination
+  if (raw && typeof raw === "object") {
+    const parsed = parsePaginationMeta((raw as DashRecord)[key])
+    if (parsed) return parsed
+  }
+  return parsePaginationMeta(data[`${key}Pagination`])
+}
+
 export function MonitoringAdminClient() {
   const t = useTranslations("monitoringPage")
   const tOverview = useTranslations("dashboardOverview")
@@ -155,6 +166,9 @@ export function MonitoringAdminClient() {
   const [loading, setLoading] = useState(true)
   const [healthBusy, setHealthBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [panelsPage, setPanelsPage] = useState(1)
+  const [panelsPerPage, setPanelsPerPage] = useState(20)
+  const [panelsPagination, setPanelsPagination] = useState<PaginationMeta | null>(null)
 
   const applyState = useCallback((data: Record<string, unknown>) => {
     const ov = data.overview && typeof data.overview === "object" ? (data.overview as DashRecord) : {}
@@ -166,6 +180,7 @@ export function MonitoringAdminClient() {
         ? (ov.panels as DashRecord[])
         : []
     setPanels(panelRows)
+    setPanelsPagination(pickPagination(data, "panels"))
     const liveFromOverview = ov.livePanelSnapshots
     const liveTop = data.livePanelSnapshots
     if (Array.isArray(liveTop)) {
@@ -180,7 +195,10 @@ export function MonitoringAdminClient() {
       setLoading(true)
       setError(null)
       try {
-        const query: Record<string, string | number> = {}
+        const query: Record<string, string | number> = {
+          panels_page: panelsPage,
+          panels_per_page: panelsPerPage,
+        }
         if (opts?.refreshLivePanelMetrics) query.refreshLivePanelMetrics = 1
         if (opts?.refreshPanelHealth) query.refreshPanelHealth = 1
         const data = await getAdminState("monitoring", query)
@@ -191,7 +209,7 @@ export function MonitoringAdminClient() {
         setLoading(false)
       }
     },
-    [applyState, t]
+    [applyState, panelsPage, panelsPerPage, t]
   )
 
   useEffect(() => {
@@ -610,6 +628,14 @@ export function MonitoringAdminClient() {
               )
             })
           )}
+          <DataPagination
+            meta={panelsPagination}
+            onPageChange={setPanelsPage}
+            onPerPageChange={(n) => {
+              setPanelsPerPage(n)
+              setPanelsPage(1)
+            }}
+          />
         </CardContent>
       </Card>
 
